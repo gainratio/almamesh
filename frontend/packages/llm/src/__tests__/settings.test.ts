@@ -84,9 +84,9 @@ describe("readLlmSettings — self-heals AlmaMesh's retired default cloud model"
         privacyMode: "cloud_premium",
       }),
     );
-    expect(readLlmSettings().model).toBe("deepseek/deepseek-v4.1-flash");
+    expect(readLlmSettings().model).toBe("openai/gpt-6-luna");
     const healed = JSON.parse(persisted.at(-1)!);
-    expect(healed.model).toBe("deepseek/deepseek-v4.1-flash");
+    expect(healed.model).toBe("openai/gpt-6-luna");
     expect(healed.apiKey).toBe("sk-or-123"); // key + base preserved
   });
 

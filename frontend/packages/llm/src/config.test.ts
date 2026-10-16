@@ -77,12 +77,13 @@ describe("openRouterPreset", () => {
 
 describe("the product default model", () => {
   // Pinned as a literal: asserting the constant against itself passes for any value.
-  // The legacy live reading (streamNatalInterpretation / streamCurrentTimeline) runs
-  // on it, and it is the only model that path has been driven and measured on.
-  it("is deepseek/deepseek-v4.1-flash", () => {
-    expect(RECOMMENDED_CLOUD_MODEL).toBe("deepseek/deepseek-v4.1-flash");
+  // The legacy live reading (streamNatalInterpretation / streamCurrentTimeline) runs on it:
+  // measured 2026-10-15 on e2e/timeline.real.spec.ts, 3 runs, 39-49 s, about half a cent each.
+  it("is openai/gpt-6-luna", () => {
+    expect(RECOMMENDED_CLOUD_MODEL).toBe("openai/gpt-6-luna");
   });
 
+  // Restored 2026-10-15: the default is the model Harish chose, pinned, never the moving alias.
   it("is a pinned model id, not a ~ moving alias, so quality/latency/cost cannot shift without a code change", () => {
     expect(RECOMMENDED_CLOUD_MODEL.startsWith("~")).toBe(false);
     expect(RECOMMENDED_CLOUD_MODEL).not.toMatch(/:/);
@@ -101,8 +102,12 @@ describe("the report engine's own model", () => {
     expect(REPORT_ENGINE_MODEL).not.toMatch(/:/);
   });
 
-  it("is NOT the legacy reading default: Luna must not reach the live legacy path by default", () => {
-    expect(REPORT_ENGINE_MODEL).not.toBe(RECOMMENDED_CLOUD_MODEL);
-    expect(openRouterPreset("sk-or-x", RECOMMENDED_CLOUD_MODEL).chatModel).not.toBe(REPORT_ENGINE_MODEL);
+  // CONTRACT REVERSED 2026-10-15: this asserted the report engine's Luna must not reach the live
+  // legacy path by default (it had only been measured on the report engine). Harish chose that
+  // same pinned Luna as the reading and chat default after the legacy timeline was measured on
+  // it (39-49 s, 3/3), so the report engine and the default are now one pinned model.
+  it("is the same pinned model as the reading and chat default", () => {
+    expect(REPORT_ENGINE_MODEL).toBe(RECOMMENDED_CLOUD_MODEL);
+    expect(openRouterPreset("sk-or-x", RECOMMENDED_CLOUD_MODEL).chatModel).toBe(REPORT_ENGINE_MODEL);
   });
 });

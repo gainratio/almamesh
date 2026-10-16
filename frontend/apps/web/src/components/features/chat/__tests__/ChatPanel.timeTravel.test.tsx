@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
-import { useChatStore } from '@almamesh/store';
+import { useChartLibraryStore, useChatStore, type StoredChart } from '@almamesh/store';
 import { hydrateLlmSettings, openRouterPreset, writeLlmSettings } from '@almamesh/llm';
 
 vi.mock('../../../../lib/storeSaved', () => ({ waitForStoreSaved: vi.fn(async () => undefined) }));
@@ -12,14 +12,24 @@ import { ChatPanel } from '../ChatPanel';
 import { waitForStoreSaved } from '../../../../lib/storeSaved';
 import { __resetMemoryForTest, __setMemoryForTest } from '../../../../lib/chatMemory';
 import { useChartReanchorStatus } from '../../../../lib/chartReanchorStatus';
+import { askToPickPlace } from '../../../../lib/placePick';
+
+/** 2026-10-13: the birth place is a suggestion the person confirms; a test that relies on it taps it. */
+function confirmSuggestedPlace(): void {
+  const suggestion = screen.queryByTestId('time-travel-where-suggestion');
+  if (suggestion) fireEvent.click(suggestion);
+}
 
 // 2050: stays in the future for decades, so 'future' starters do not flip with the calendar.
 const YEAR_2050 = { start: '2050-01-01', end: '2050-12-31', granularity: 'year' } as const;
 const PAST = { start: '2019-06-01', end: '2019-06-30', granularity: 'month' } as const;
+// Every trip has a place (2026-10-13): the sheet prefills the birth place.
+const DELHI = { city: 'Delhi', country: 'India', latitude: 28.6139, longitude: 77.209, timezone: 'Asia/Kolkata' };
+const CHART = { chart_id: 'c1', profile_id: 'p1', birth_data: { birth_location_details: DELHI } } as unknown as StoredChart;
 
 type AskFn = NonNullable<ComponentProps<typeof ChatPanel>['onAskQuestionStream']>;
 
-function renderPanel(onAsk = vi.fn<AskFn>(async () => ({ answer: 'ok' })), configured = true) {
+function renderPanel(onAsk = vi.fn<AskFn>(async () => 'ok'), configured = true) {
   if (configured) writeLlmSettings(openRouterPreset('sk-or-v1-0000-synthetic-test-key', 'test-org/test-model'));
   render(
     <MemoryRouter>
@@ -33,11 +43,13 @@ async function pinYear(year: string) {
   fireEvent.click(screen.getByTestId('time-travel-button'));
   fireEvent.click(screen.getByTestId('time-travel-tab-year'));
   fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: year } });
+  confirmSuggestedPlace();
   fireEvent.click(screen.getByTestId('time-travel-go'));
   await screen.findByTestId('time-travel-banner');
 }
 
 beforeEach(() => {
+  useChartLibraryStore.setState({ charts: { c1: CHART } });
   hydrateLlmSettings(null);
   useChatStore.setState({ threads: {}, messages: {}, summaries: {} });
   useChartReanchorStatus.setState({ pendingAttempts: new Map() });
@@ -57,30 +69,48 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe('ChatPanel place picker', () => {
+  it('asks "Which Springfield?" inside the chat when resolve_place finds several, and answers with the pick', async () => {
+    renderPanel();
+    const illinois = {
+      summary: { place_ref: 'city:3823', label: 'Springfield, Illinois, United States', timezone: 'America/Chicago' },
+      latitude: 39.8, longitude: -89.64, region: 'Illinois, United States',
+    };
+    let answer!: Promise<unknown>;
+    act(() => { answer = askToPickPlace('Springfield', [illinois], new AbortController().signal); });
+    expect(screen.getByTestId('place-pick').textContent).toContain('Which Springfield?');
+    fireEvent.click(screen.getByTestId('place-pick-option-0'));
+    expect(await answer).toBe(illinois);
+  });
+});
+
 describe('ChatPanel time travel', () => {
   it('shows the Time travel button beside the input only when AI is configured', () => {
     renderPanel(undefined, false);
     expect(screen.queryByTestId('time-travel-button')).toBeNull();
   });
 
-  it('the composer button shows its text label at every width (no sm:inline)', () => {
+  // Contract reversed 2026-10-13: the composer button is an icon; its name is the tooltip and the accessible label.
+  it('the composer button is an icon whose tooltip and accessible name say "Time travel"', () => {
     renderPanel();
-    const label = screen.getByTestId('time-travel-button').querySelector('span:not([aria-hidden])');
-    expect(label?.textContent).toBe('Time travel');
-    expect(label?.className ?? '').not.toMatch(/\bhidden\b/);
+    const button = screen.getByTestId('time-travel-button');
+    expect(button.getAttribute('title')).toBe('Time travel');
+    expect(screen.getByRole('button', { name: 'Time travel' })).toBe(button);
+    expect(button.querySelector('span:not([aria-hidden])')).toBeNull();
   });
 
   it('Year 2050 → Go opens a pinned thread with badge, title, banner and future starters', async () => {
     renderPanel();
     await pinYear('2050');
     expect(screen.getByTestId('time-travel-badge').textContent).toBe('⏳');
-    expect(screen.getByTestId('time-travel-title').textContent?.replace(/\u00a0/g, ' ')).toBe('Time travel · 2050');
-    expect(screen.getByTestId('time-travel-banner').textContent).toContain('answers are about this period');
-    expect(screen.getByRole('button', { name: 'What should I prepare for?' })).toBeTruthy();
+    // Contract changed 2026-10-13: one period header row; the title is the period itself.
+    expect(screen.getByTestId('time-travel-title').textContent?.replace(/\u00a0/g, ' ')).toBe('2050');
+    expect(screen.getByTestId('time-travel-banner').textContent).toContain('what your chart highlights for this period');
+    expect(screen.getByRole('button', { name: 'What does my chart highlight for this time?' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Which months look strongest?' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'What are my career strengths?' })).toBeNull();
     const threads = Object.values(useChatStore.getState().threads);
-    expect(threads.map((thread) => thread.as_of)).toEqual([YEAR_2050]);
+    expect(threads.map((thread) => thread.as_of)).toEqual([{ ...YEAR_2050, place: expect.objectContaining({ timezone: 'Asia/Kolkata', latitude: 28.6139 }) }]);
   });
 
   it('shows past starters for a pin that is over', async () => {
@@ -96,7 +126,7 @@ describe('ChatPanel time travel', () => {
     fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'Will work get easier?' } });
     fireEvent.click(screen.getByTestId('chat-send-button'));
     await waitFor(() => expect(onAsk).toHaveBeenCalled());
-    expect((onAsk.mock.calls[0] as unknown[])[7]).toEqual(YEAR_2050);
+    expect(onAsk.mock.calls[0]?.[0].asOf).toEqual({ ...YEAR_2050, place: expect.objectContaining({ timezone: 'Asia/Kolkata' }) });
   });
 
   it('a pinned thread can send while the chart re-anchors to a new day', async () => {
@@ -114,8 +144,10 @@ describe('ChatPanel time travel', () => {
     fireEvent.click(screen.getByTestId('time-travel-change'));
     expect((screen.getByTestId('time-travel-year') as HTMLSelectElement).value).toBe('2050');
     fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: '2051' } });
+    confirmSuggestedPlace();
     fireEvent.click(screen.getByTestId('time-travel-go'));
-    await waitFor(() => expect(screen.getByTestId('time-travel-title').textContent?.replace(/\u00a0/g, ' ')).toBe('Time travel · 2051'));
+    // Contract changed 2026-10-13: one period header row; the title is the period itself.
+    await waitFor(() => expect(screen.getByTestId('time-travel-title').textContent?.replace(/\u00a0/g, ' ')).toBe('2051'));
     expect(Object.keys(useChatStore.getState().threads)).toHaveLength(1);
 
     await act(async () => fireEvent.click(screen.getByTestId('time-travel-back')));
@@ -144,7 +176,7 @@ describe('ChatPanel time travel', () => {
     renderPanel();
     expect(screen.getByRole('button', { name: 'What are my career strengths?' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Why did this time feel hard?' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'What should I prepare for?' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'What does my chart highlight for this time?' })).toBeNull();
   });
 
   it('a failed Back to today save keeps the banner, shows an alert and re-enables Back', async () => {
@@ -172,5 +204,58 @@ describe('ChatPanel time travel', () => {
     fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'Hello?' } });
     fireEvent.click(screen.getByTestId('chat-send-button'));
     await waitFor(() => expect(button.disabled).toBe(true));
+  });
+});
+
+describe('ChatPanel: the answer follows a chat-initiated trip (2026-10-14)', () => {
+  const JUNE_DELHI = { ...PAST, place: { label: 'Delhi, India', timezone: 'Asia/Kolkata', latitude: 28.6139, longitude: 77.209 } };
+
+  it('shows the question and answer in the new trip, and the old thread a one-line pointer that opens it', async () => {
+    const onAsk = renderPanel(vi.fn<AskFn>(async ({ onTravel }) => {
+      onTravel?.({ kind: 'travel', asOf: JUNE_DELHI });
+      return 'June 2019 was busy.';
+    }));
+    act(() => {
+      const today = useChatStore.getState().startThread('p1', 'c1');
+      useChatStore.getState().appendMessage(today, 'user', 'How is today?');
+      useChatStore.getState().appendMessage(today, 'assistant', 'Calm.');
+    });
+    fireEvent.change(screen.getByTestId('chat-input'), { target: { value: 'Take me to June 2019 in Delhi' } });
+    fireEvent.click(screen.getByTestId('chat-send-button'));
+    await screen.findByTestId('time-travel-banner');
+    await waitFor(() => expect(screen.getAllByTestId('chat-message-assistant').at(-1)?.textContent).toContain('June 2019 was busy.'));
+    const asked = screen.getAllByTestId('chat-message-user');
+    expect(asked).toHaveLength(1);
+    expect(asked[0]?.textContent).toContain('Take me to June 2019 in Delhi');
+    expect(onAsk).toHaveBeenCalledTimes(1);
+
+    const today = Object.values(useChatStore.getState().threads).find((thread) => !thread.as_of)!;
+    act(() => { useChatStore.getState().renameThread(today.id, 'How is today?'); });
+    fireEvent.click(screen.getByTestId('chat-threads-button'));
+    fireEvent.click(await screen.findByText('How is today?'));
+    const pointer = await screen.findByTestId('chat-moved-pointer');
+    expect(pointer.textContent).toBe('Moved to ⏳ Jun 2019 · Delhi, India');
+    expect(pointer.tagName).toBe('BUTTON');
+    expect(screen.getAllByTestId('chat-message-assistant').map((node) => node.textContent)).toEqual([expect.stringContaining('Calm.')]);
+    fireEvent.click(pointer);
+    await screen.findByTestId('time-travel-banner');
+    await waitFor(() => expect(screen.getAllByTestId('chat-message-assistant').at(-1)?.textContent).toContain('June 2019 was busy.'));
+  });
+
+  it('a pointer whose trip was deleted is plain text, not a dead link', async () => {
+    // A today thread whose pointer names a trip that was deleted since.
+    act(() => {
+      const today = useChatStore.getState().startThread('p1', 'c1');
+      useChatStore.getState().appendMessage(today, 'user', 'Earlier');
+      const trip = useChatStore.getState().startThread('p1', 'c1');
+      const asked = useChatStore.getState().appendMessage(today, 'user', 'Go');
+      useChatStore.getState().moveMessages(today, trip, [asked.id], 'Moved to ⏳ Jun 2019 · Delhi, India');
+      useChatStore.getState().deleteThread(trip);
+      useChatStore.getState().appendMessage(today, 'assistant', 'Still here.');
+    });
+    renderPanel();
+    const pointer = await screen.findByTestId('chat-moved-pointer');
+    expect(pointer.tagName).not.toBe('BUTTON');
+    expect(pointer.textContent).toBe('Moved to ⏳ Jun 2019 · Delhi, India');
   });
 });

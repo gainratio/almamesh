@@ -75,6 +75,8 @@ export interface EnsurePredictiveInput {
   readonly utcOffsetMinutes: number;
   /** The engine timeline's length; omitted means 12. Only a time-travel period sends 24. */
   readonly windowMonths?: 24;
+  /** The period reading's inclusive last day; omitted means the reference day (today). */
+  readonly readingEnd?: string;
 }
 
 export interface PredictiveStore {
@@ -134,7 +136,9 @@ export function predictiveRequestKey(input: EnsurePredictiveInput): string {
     input.referenceInstant,
     input.utcOffsetMinutes,
   ];
-  return JSON.stringify(input.windowMonths === undefined ? base : [...base, input.windowMonths]);
+  const window = input.windowMonths === undefined ? [] : [input.windowMonths];
+  const reading = input.readingEnd === undefined ? [] : [{ readingEnd: input.readingEnd }];
+  return JSON.stringify([...base, ...window, ...reading]);
 }
 
 // --- Persistence (canonical OPFS SQLite) ------------------------------------
@@ -155,8 +159,11 @@ export function predictiveRequestKey(input: EnsurePredictiveInput): string {
  * every older snapshot is a cache miss and is recomputed (derived data only).
  * v4 → v5: circular-contact selection excludes false oppositions; recompute
  * older slow-hit results without changing profiles, charts or life events.
+ * v5 → v6 (2026-10-14): the engine added `period_reading`. A v5 snapshot lacks
+ * it, and today's request key (no readingEnd) is unchanged, so without the bump
+ * it short-circuits the recompute and today's chat reading is unavailable.
  */
-export const PREDICTIVE_PERSIST_VERSION = 5;
+export const PREDICTIVE_PERSIST_VERSION = 6;
 
 /** The canonical SQLite key holding the persisted predictive slice. */
 export const PREDICTIVE_PERSIST_NAME = 'almamesh-predictive';

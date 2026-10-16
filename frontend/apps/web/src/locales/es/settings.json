@@ -86,7 +86,13 @@
     "success_description": "Tus datos de nacimiento se han actualizado y tu carta se ha regenerado en el dispositivo.",
     "view_new_chart": "Ver nueva carta",
     "processing_title": "Regenerando tu carta",
-    "processing_description": "Calculando en el dispositivo — solo toma un momento."
+    "processing_description": "Calculando en el dispositivo — solo toma un momento.",
+    "current_place_label": "¿Dónde vives ahora?",
+    "current_place_placeholder": "Busca una ciudad",
+    "current_place_hint": "Opcional. Se queda en este dispositivo.",
+    "current_place_clear": "Borrar",
+    "current_place_saved": "Guardado",
+    "current_place_failed": "No se pudo guardar. Inténtalo de nuevo."
   },
   "rectification_record": {
     "title": "Tu rectificación",
@@ -182,13 +188,15 @@
   },
   "aiModels": {
     "interpretation_label": "Modelo de interpretación / lectura de la carta",
-    "interpretation_advice": "El predeterminado, DeepSeek V4.1 Flash, es rápido y económico: en nuestras pruebas escribió la cronología completa en unos 50 segundos por unos 2 centavos. Un modelo más grande puede escribir con más profundidad, pero tarda más.",
+    "interpretation_advice": "El predeterminado, GPT Luna, es rápido y económico: en nuestras pruebas escribió la cronología completa en unos 45 segundos por menos de 1 centavo. Un modelo más grande puede escribir con más profundidad, pero tarda más.",
     "chat_label": "Modelo de chat",
-    "switch_title": "¿Cambiar a DeepSeek V4.1 Flash?",
-    "switch_body": "Usas GLM 5.3 Flash. En nuestras pruebas (3 ejecuciones cada uno), DeepSeek V4.1 Flash escribió la cronología completa en unos 50 s cada vez. GLM 5.3 Flash no mostró nada durante más de un minuto en 2 de 3 ejecuciones y tardó 200 s en la que terminó.",
-    "switch_accept": "Cambiar a DeepSeek V4.1 Flash",
+    "switch_title": "¿Cambiar a GPT Luna?",
+    "switch_body": "Usas GLM 5.3 Flash. En nuestras pruebas (3 ejecuciones cada uno), GPT Luna escribió la cronología completa en 39–49 s cada vez. GLM 5.3 Flash no mostró nada durante más de un minuto en 2 de 3 ejecuciones y tardó 200 s en la que terminó.",
+    "switch_accept": "Cambiar a GPT Luna",
     "switch_dismiss": "Mantener GLM 5.3 Flash",
     "chat_advice": "Se aconseja un modelo más pequeño y rápido. El chat ya reutiliza los datos de la carta y la lectura generada, así que no necesita un modelo pesado — uno rápido mantiene las respuestas ágiles.",
+    "context_label": "Ventana de contexto (tokens)",
+    "context_advice": "Cuánto puede leer este modelo de una vez. El chat mantiene cada petición dentro de la mitad. Déjalo en blanco si no lo sabes: el chat supondrá una ventana pequeña de 8k.",
     "loading_models": "Cargando modelos…",
     "more_models": "Escribe para buscar…",
     "catalog_hint": "Elige entre {{count}} modelos de OpenRouter — o escribe cualquier id de modelo.",
@@ -201,7 +209,9 @@
     "none_button": "Desactivar la IA",
     "active_badge": "Activo",
     "cloud_title": "Conectar IA",
-    "cloud_body": "Añade interpretaciones escritas y chat con una clave de OpenRouter (recomendado) o cualquier endpoint compatible con OpenAI. Las solicitudes basadas en la carta no incluyen tu nombre ni tu fecha de nacimiento, pero las posiciones planetarias y las fechas de los periodos que incluyen pueden revelar tu fecha de nacimiento. Si usas IA para organizar eventos vitales, el relato que escribas se envía tal cual después del aviso; no se adjuntan tus datos de nacimiento ni la carta."
+    "cloud_body": "Añade interpretaciones escritas y chat con una clave de OpenRouter (recomendado) o cualquier endpoint compatible con OpenAI. Las solicitudes basadas en la carta no incluyen tu nombre ni tu fecha de nacimiento, pero las posiciones planetarias y las fechas de los periodos que incluyen pueden revelar tu fecha de nacimiento. Si usas IA para organizar eventos vitales, el relato que escribas se envía tal cual después del aviso; no se adjuntan tus datos de nacimiento ni la carta.",
+    "cloud_summary": "Las solicitudes de la carta no incluyen tu nombre ni tu fecha de nacimiento, pero las posiciones planetarias y las fechas que llevan pueden revelarla.",
+    "cloud_details_summary": "Qué se envía"
   },
   "preferences": {
     "title": "Preferencias",

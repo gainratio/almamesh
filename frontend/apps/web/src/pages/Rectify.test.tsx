@@ -660,6 +660,42 @@ describe('RectifyPage', () => {
     expect(mockNavigate).toHaveBeenCalledWith('/dashboard');
   });
 
+  describe('entered from onboarding (the AI step comes next)', () => {
+    function renderFromOnboarding() {
+      return render(
+        <MemoryRouter initialEntries={[{ pathname: '/rectify/profile-abc', state: { next: '/onboarding/ai' } }]}>
+          <Routes>
+            <Route path="/rectify/:profileId" element={<RectifyPage />} />
+          </Routes>
+        </MemoryRouter>,
+      );
+    }
+
+    it('keep recorded goes on to the AI step', async () => {
+      const { rerender } = renderFromOnboarding();
+      fireEvent.click(await screen.findByTestId('intro-start-btn'));
+      fireEvent.click(await screen.findByTestId('events-continue-btn'));
+      await navigateToResults(rerender);
+
+      fireEvent.click(screen.getByTestId('keep-recorded-btn'));
+
+      expect(mockNavigate).toHaveBeenCalledWith('/onboarding/ai');
+    });
+
+    it('confirming a time goes on to the AI step once the chart is applied', async () => {
+      const { rerender } = renderFromOnboarding();
+      fireEvent.click(await screen.findByTestId('intro-start-btn'));
+      fireEvent.click(await screen.findByTestId('events-continue-btn'));
+      await navigateToResults(rerender);
+      fireEvent.click(screen.getByTestId('confirm-candidate-btn'));
+      await screen.findByTestId('regen-modal');
+      fireEvent.click(screen.getByRole('checkbox'));
+      fireEvent.click(screen.getByTestId('regen-confirm-btn'));
+
+      await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('/onboarding/ai'));
+    });
+  });
+
   it('window mode: whole-day is the pre-selected default when detectedMode is window', async () => {
     vi.mocked(useRectification).mockReturnValue(hookState({ detectedMode: 'window' }));
 

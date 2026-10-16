@@ -1,7 +1,8 @@
 /**
- * The period loader behind `get_timing` (spec 2026-10-08, "Computing a
+ * The period loader behind `read_period` (spec 2026-10-08, "Computing a
  * period's sky"): build the engine input for the period's first day and run it
- * through this tab's period-sky queue.
+ * through this tab's period-sky queue. The reading is bounded to the period's
+ * last day, so its themes and segments are the period's own.
  *
  * The engine handed to the queue is the chart-engine context's `engine`: the
  * object `AlmaMeshRuntime.bootstrap()` returns, i.e. the booted worker wrapped
@@ -10,14 +11,23 @@
  */
 import type { ChartEngine } from '@almamesh/browser';
 import type { SiderealChart } from '@almamesh/browser/types';
-import { periodWindowMonths, type AgentToolContext, type PeriodRange } from '@almamesh/llm';
+import { periodWindowMonths, type PeriodRange } from '@almamesh/llm';
+import type { ToolContext } from '@almamesh/llm/toolLoop';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
 
 import type { ChartEngineContextValue } from '../providers/chartEngineContext';
 import { buildEnsurePredictiveInput } from './predictive';
 import { withDeadline } from './deadline';
 import { periodReferenceInstant, periodSkyCache, periodSkyDeadline, type PeriodSkyCache } from './periodSky';
-import { PeriodSkyUnavailableError } from './timingTool';
+
+export type PeriodSkyFailure = 'engine_unavailable' | 'timeout' | 'incomplete_birth_data';
+
+export class PeriodSkyUnavailableError extends Error {
+  constructor(readonly reason: PeriodSkyFailure) {
+    super(`The period sky is unavailable: ${reason}`);
+    this.name = 'PeriodSkyUnavailableError';
+  }
+}
 
 export interface PeriodChartLoaderInput {
   /** The natal chart the period's sky is merged onto. */
@@ -29,7 +39,7 @@ export interface PeriodChartLoaderInput {
   readonly cache?: PeriodSkyCache;
 }
 
-export type PeriodChartLoader = (period: PeriodRange, context: AgentToolContext) => Promise<SiderealChart>;
+export type PeriodChartLoader = (period: PeriodRange, context: ToolContext) => Promise<SiderealChart>;
 
 /**
  * The one engine wait every chat engine load goes through: start the boot if
@@ -47,7 +57,7 @@ export function createPeriodChartLoader(input: PeriodChartLoaderInput): PeriodCh
       input.profileKey,
       input.birth,
       periodReferenceInstant(period.start),
-      periodWindowMonths(period),
+      { windowMonths: periodWindowMonths(period), readingEnd: period.end },
     );
     if (!predictiveInput) throw new PeriodSkyUnavailableError('incomplete_birth_data');
     // The deadline starts here, at tool entry, so a cold engine boot counts

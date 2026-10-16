@@ -441,9 +441,10 @@ describe('buildReportPdfData — comprehensive slices mirror the web report', ()
     expect(JSON.stringify(strength)).not.toContain('6.128260954302394');
   });
 
-  it('builds the seven domain blocks with dated windows', () => {
+  it('builds the eight domain blocks with dated windows, obstacles named in plain words', () => {
     const data = buildReportPdfData({ ...baseInput(), comprehensive: COMPREHENSIVE });
-    expect(data.domains?.blocks).toHaveLength(7);
+    expect(data.domains?.blocks).toHaveLength(8);
+    expect(data.domains?.blocks.at(-1)?.name).toBe('Obstacles & setbacks');
     expect(data.domains?.blocks.every((b) => b.windows.length === 2)).toBe(true);
   });
 });

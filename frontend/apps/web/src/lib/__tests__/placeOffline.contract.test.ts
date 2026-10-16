@@ -3,9 +3,9 @@ import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const SRC = resolve(__dirname, '../..');
-const PLACE_PATH_FILES = ['lib/placeTool.ts', 'lib/geo/placeLookup.ts', 'lib/timingTool.ts', 'lib/chatToolset.ts', 'lib/moonWindow.ts', 'lib/timingPlaces.ts'];
+const PLACE_PATH_FILES = ['lib/readPeriod.ts', 'lib/travelTool.ts', 'lib/chatTurn.ts', 'lib/geo/placeLookup.ts', 'lib/moonWindow.ts'];
 /** Files in every tier's chat chunk: they must not pull tz-lookup or the online geocoder in by a static import. */
-const CHAT_CHUNK_FILES = ['lib/chatToolset.ts', 'lib/placeTool.ts', 'lib/timingTool.ts', 'lib/timingPlaces.ts', 'lib/chatAgentTools.ts'];
+const CHAT_CHUNK_FILES = ['lib/chatTurn.ts', 'lib/readPeriod.ts', 'lib/travelTool.ts'];
 const STATIC_GEO_IMPORT = /^\s*(?:import|export)\s+(?!type\b)[^;]*?\bfrom\s+['"][./]*(?:geo\/)?(?:placeLookup|cityLookup)['"]/m;
 
 function sourceFiles(dir: string): string[] {
@@ -28,11 +28,11 @@ describe('a chat-typed city never leaves the device', () => {
   });
 
   it('the static-import check catches a value import and ignores a type-only one', () => {
-    expect("import { placeFromRef } from './geo/placeLookup';").toMatch(STATIC_GEO_IMPORT);
+    expect("import { lookupPlaceOffline } from './geo/placeLookup';").toMatch(STATIC_GEO_IMPORT);
     expect("import {\n  searchCitiesOffline,\n} from './geo/cityLookup';").toMatch(STATIC_GEO_IMPORT);
-    expect("export { placeFromRef } from './geo/placeLookup';").toMatch(STATIC_GEO_IMPORT);
+    expect("export { lookupPlaceOffline } from './geo/placeLookup';").toMatch(STATIC_GEO_IMPORT);
     expect("import type { ResolvedPlace } from './geo/placeLookup';").not.toMatch(STATIC_GEO_IMPORT);
-    expect("(ref) => import('./geo/placeLookup').then((m) => m.placeFromRef(ref))").not.toMatch(STATIC_GEO_IMPORT);
+    expect("(ref) => import('./geo/placeLookup').then((m) => m.lookupPlaceOffline(ref))").not.toMatch(STATIC_GEO_IMPORT);
   });
 
   it('city rows are fetched in batches, never imported into the JS module cache', () => {

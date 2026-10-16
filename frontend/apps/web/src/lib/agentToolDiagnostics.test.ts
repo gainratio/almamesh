@@ -9,11 +9,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const failure = {
-  toolName: 'resolve_place',
-  code: 'tool_failed' as const,
-  error: new CityLookupError('geo.city_import', new TypeError('Load failed for Bogotá')),
-};
+const failure = new CityLookupError('geo.city_import', new TypeError('Load failed for Bogotá'));
 
 describe('reportAgentToolFailure', () => {
   it('says a chat tool failed, naming the step and cause class in hook builds, never the text', () => {

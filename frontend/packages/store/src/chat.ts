@@ -18,6 +18,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import {
   safeWarn,
   type ChatMessage,
+  type ChatMessagePart,
   type ChatThread,
   type ChatThreadAsOf,
   type ChatThreadSummary,
@@ -27,6 +28,7 @@ import { unlinkMissingChartLinks } from './chatChartLinks';
 import { deletionAwareIdbStorage, whenPersistenceCommitted } from './deletionTombstones';
 import { reportHydrationFailure, whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 import { chatAsOfProblem, isChatThreadAsOf } from './chatAsOf';
+import { chatMessagePartsProblem } from './chatParts';
 
 type ChatRole = ChatMessage['role'];
 
@@ -34,7 +36,7 @@ type ChatRole = ChatMessage['role'];
 const PERSIST_NAME = 'almamesh-chat-history';
 
 /** Bump when the persisted chat shape changes; always pair with `migrate`. */
-export const CHAT_PERSIST_VERSION = 3;
+export const CHAT_PERSIST_VERSION = 4;
 
 /** The slice of the store that `partialize` actually persists. */
 export interface PersistedChatState {
@@ -60,6 +62,43 @@ function withoutMalformedPins(threads: PersistedChatState['threads']): Persisted
 }
 
 /**
+ * v4 (visible tool calls): a message whose `parts` are malformed keeps its text
+ * and loses only the parts. v3 rows have no parts, so for them this is identity.
+ */
+function withoutMalformedParts(messages: PersistedChatState['messages']): PersistedChatState['messages'] {
+  return Object.fromEntries(
+    Object.entries(messages).map(([threadId, list]) => [
+      threadId,
+      Array.isArray(list)
+        ? list.map((message: unknown) => {
+            if (!isPlainRecord(message) || !('parts' in message)) return message;
+            if (chatMessagePartsProblem(message.parts) === undefined) return message;
+            const { parts: _malformed, ...kept } = message;
+            return kept;
+          })
+        : list,
+    ]),
+  ) as PersistedChatState['messages'];
+}
+
+/** A pointer's `moved_to` is a thread id; anything else is dropped (the message is kept). */
+function withoutMalformedPointers(messages: PersistedChatState['messages']): PersistedChatState['messages'] {
+  return Object.fromEntries(
+    Object.entries(messages).map(([threadId, list]) => [
+      threadId,
+      Array.isArray(list)
+        ? list.map((message: unknown) => {
+            if (!isPlainRecord(message) || !('moved_to' in message)) return message;
+            if (typeof message.moved_to === 'string' && message.moved_to.length > 0) return message;
+            const { moved_to: _malformed, ...kept } = message;
+            return kept;
+          })
+        : list,
+    ]),
+  ) as PersistedChatState['messages'];
+}
+
+/**
  * Defensive hydration: tolerate ANY old/unknown/corrupt persisted blob and
  * always return valid `{ threads, messages, summaries }` maps. A returning visitor whose
  * stored chat history is malformed (a string, an array, one half missing) must
@@ -73,9 +112,9 @@ export function migrateChatPersistedState(
   const threads = withoutMalformedPins(
     isPlainRecord(source.threads) ? (source.threads as PersistedChatState['threads']) : {},
   );
-  const messages = isPlainRecord(source.messages)
-    ? (source.messages as PersistedChatState['messages'])
-    : {};
+  const messages = withoutMalformedPointers(withoutMalformedParts(
+    isPlainRecord(source.messages) ? (source.messages as PersistedChatState['messages']) : {},
+  ));
   const summaries: PersistedChatState['summaries'] = isPlainRecord(source.summaries)
     ? Object.fromEntries(
         Object.entries(source.summaries).filter(
@@ -129,6 +168,20 @@ function nextId(prefix: string): string {
   return `${prefix}-${Date.now()}-${idFallbackCounter}`;
 }
 
+export interface AppendMessageOptions {
+  readonly error?: true;
+  readonly parts?: readonly ChatMessagePart[];
+  readonly notice?: 'app_updated';
+}
+
+/** Valid parts are kept as given; malformed ones are dropped with a warning. */
+function partsField(parts: readonly ChatMessagePart[] | undefined): Pick<ChatMessage, 'parts'> {
+  if (parts === undefined) return {};
+  if (chatMessagePartsProblem(parts) === undefined) return { parts };
+  safeWarn('chat.tool_failed');
+  return {};
+}
+
 export interface ChatStore {
   /** All threads, keyed by thread id. */
   readonly threads: Readonly<Record<string, ChatThread>>;
@@ -150,14 +203,28 @@ export interface ChatStore {
   /**
    * Append a message. `options.error` marks a failed-turn notice: rendered as
    * an error bubble, excluded from the model-visible history by consumers.
+   * `options.parts` are the visible text and tool-call parts; malformed parts
+   * are dropped (the message and its text are kept).
    */
   appendMessage: (
     threadId: string,
     role: ChatRole,
     content: string,
-    options?: { readonly error?: true },
+    options?: AppendMessageOptions,
   ) => ChatMessage;
   getMessages: (threadId: string) => ChatMessage[];
+  /**
+   * Move whole messages (one turn), in order, to the end of another thread of the same profile.
+   * The source keeps a one-line `pointer` (role 'system', `moved_to`), or is removed when the
+   * move leaves it empty. False, and nothing changes, for an unknown or foreign thread or id.
+   */
+  moveMessages: (fromThreadId: string, toThreadId: string, messageIds: readonly string[], pointer: string) => boolean;
+  /**
+   * Record a result on one tool-call part of a stored message (assistant-ui's
+   * onAddToolResult). False, and nothing changes, for an unknown message or
+   * call, or a result the part validator refuses.
+   */
+  setToolCallResult: (threadId: string, messageId: string, toolCallId: string, result: unknown, isError: boolean) => boolean;
   getSummary: (threadId: string) => ChatThreadSummary | null;
   /** Commit only a source-current summary; invalid/stale candidates are a no-op. */
   commitSummary: (summary: ChatThreadSummary) => Promise<boolean>;
@@ -204,6 +271,30 @@ function makeThread(profileId: string, chartId?: string, asOf?: ChatThreadAsOf):
     message_count: 0,
     ...(asOf ? { as_of: asOf } : {}),
   };
+}
+
+type MessagesState = Pick<ChatStore, 'threads' | 'messages' | 'summaries'>;
+
+/** The state after `moving` leaves `from` for the end of `to` (see `moveMessages`). */
+function movedState(state: MessagesState, from: ChatThread, to: ChatThread, moving: readonly ChatMessage[], pointer: string): MessagesState {
+  const now = new Date().toISOString();
+  const moved = moving.map((message) => ({ ...message, thread_id: to.id }));
+  const target = [...(state.messages[to.id] ?? []), ...moved];
+  const title = moved.reduce<string | null>((current, message) => deriveTitle({ ...to, title: current }, message.role, message.content), to.title);
+  const threads = { ...state.threads, [to.id]: { ...to, title, message_count: target.length, updated_at: now } };
+  const messages = { ...state.messages, [to.id]: target };
+  const left = (state.messages[from.id] ?? []).filter((message) => !moving.includes(message));
+  if (left.length === 0) {
+    delete threads[from.id];
+    delete messages[from.id];
+    const summaries = { ...state.summaries };
+    delete summaries[from.id];
+    return { threads, messages, summaries };
+  }
+  const note: ChatMessage = { id: nextId('msg'), thread_id: from.id, role: 'system', content: pointer, created_at: now, moved_to: to.id };
+  messages[from.id] = [...left, note];
+  threads[from.id] = { ...from, message_count: left.length + 1 };
+  return { threads, messages, summaries: state.summaries };
 }
 
 /** The first user message becomes the title only when the thread is untitled. */
@@ -258,6 +349,8 @@ export const chatStoreCreator: StateCreator<ChatStore> = (set, get) => ({
       content,
       created_at: now,
       ...(options?.error ? { error: true as const } : {}),
+      ...partsField(options?.parts),
+      ...(options?.notice === 'app_updated' ? { notice: 'app_updated' as const } : {}),
     };
     set((state) => {
       const thread = state.threads[threadId];
@@ -278,6 +371,37 @@ export const chatStoreCreator: StateCreator<ChatStore> = (set, get) => ({
   },
 
   getMessages: (threadId) => [...(get().messages[threadId] ?? [])],
+
+  moveMessages: (fromThreadId, toThreadId, messageIds, pointer) => {
+    const state = get();
+    const from = state.threads[fromThreadId];
+    const to = state.threads[toThreadId];
+    if (!from || !to || from.id === to.id || from.profile_id !== to.profile_id) return false;
+    const source = state.messages[fromThreadId] ?? [];
+    const wanted = new Set(messageIds);
+    const moving = source.filter((message) => wanted.has(message.id));
+    if (moving.length !== wanted.size || moving.length === 0) return false;
+    set((current) => movedState(current, from, to, moving, pointer));
+    return true;
+  },
+
+  setToolCallResult: (threadId, messageId, toolCallId, result, isError) => {
+    const list = get().messages[threadId] ?? [];
+    const message = list.find((candidate) => candidate.id === messageId);
+    const parts = message?.parts;
+    if (!message || !parts?.some((part) => part.type === 'tool-call' && part.toolCallId === toolCallId)) return false;
+    const nextParts = parts.map((part) => (part.type === 'tool-call' && part.toolCallId === toolCallId
+      ? { ...part, result, status: isError ? 'error' as const : 'complete' as const }
+      : part));
+    if (chatMessagePartsProblem(nextParts) !== undefined) return false;
+    set((state) => ({
+      messages: {
+        ...state.messages,
+        [threadId]: (state.messages[threadId] ?? []).map((candidate) => (candidate.id === messageId ? { ...candidate, parts: nextParts } : candidate)),
+      },
+    }));
+    return true;
+  },
 
   getSummary: (threadId) => get().summaries[threadId] ?? null,
 

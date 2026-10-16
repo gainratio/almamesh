@@ -2,6 +2,8 @@ import { readFileSync } from 'node:fs';
 
 import { expect, type BrowserContext, type Page, type Route } from '@playwright/test';
 import type { EventDatePrecision, LifeEventCategory } from '@almamesh/shared-types';
+import { generalAnswer, toolCallSse } from './stubChatProvider';
+import { passOnboardingAiStep } from '../scripts/onboardingAiStep.mjs';
 
 /**
  * Helpers for the portable-state invariants suite (portable-invariants.spec.ts).
@@ -163,12 +165,9 @@ function completion(content: string) {
   return { choices: [{ message: { role: 'assistant', content } }] };
 }
 
+/** A chat turn's answer (lib/chatTurn.ts): one streamed `answer` tool call carrying the text. */
 function chatStream(text: string): string {
-  const deltas = text.split(/(?<= )/);
-  return (
-    deltas.map((content) => `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`).join('') +
-    'data: [DONE]\n\n'
-  );
+  return toolCallSse({ name: 'answer', args: generalAnswer(text) });
 }
 
 /** One answer per request shape the app sends to an OpenAI-compatible endpoint. */
@@ -198,11 +197,10 @@ async function answerLlm(route: Route, calls: string[]): Promise<void> {
     calls.push('evidence');
     return fulfillJson(route, completion(JSON.stringify({ readings: [], general_guidance: [] })));
   }
-  const parsed = JSON.parse(body || '{}') as { tools?: unknown[]; stream?: boolean };
+  const parsed = JSON.parse(body || '{}') as { tools?: unknown[] };
   if (Array.isArray(parsed.tools)) {
     calls.push('chat');
-    if (parsed.stream) return fulfillJson(route, chatStream(CHAT_ANSWER), 'text/event-stream');
-    return fulfillJson(route, completion(CHAT_ANSWER));
+    return fulfillJson(route, chatStream(CHAT_ANSWER), 'text/event-stream');
   }
   // The Settings → AI test-on-save probe (JSON mode, no section marker).
   calls.push('probe');
@@ -271,7 +269,7 @@ export async function onboard(page: Page, native: Native): Promise<void> {
   } else {
     await page.getByTestId('skip-life-events-button').click();
   }
-  await page.waitForURL('**/dashboard', { timeout: 240_000 });
+  await passOnboardingAiStep(page, { timeout: 240_000 });
   await expectDashboardChart(page, native.name);
   if (native.narrative) {
     // The captured-events feedback auto-advances after 1.5 seconds. Inspect

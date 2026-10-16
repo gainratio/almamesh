@@ -29,6 +29,7 @@ import {
   seedPortableLedger,
 } from './portableState';
 import { CHAT_PERSIST_VERSION } from './chat';
+import { PREDICTIVE_PERSIST_VERSION } from './predictive';
 
 class MemorySqliteStore implements SqliteStateStore {
   readonly name = 'test';
@@ -668,11 +669,12 @@ describe('PortableStateRepository', () => {
     await expect(repository.exportBytes()).rejects.toThrow(expected);
   });
 
-  it('pins the predictive row at the store persist version 5 (corrected contacts export)', () => {
-    expect(PORTABLE_STORE_MAX_VERSIONS['almamesh-predictive']).toBe(5);
+  it('pins the predictive row at the store persist version 6 (period_reading)', () => {
+    expect(PORTABLE_STORE_MAX_VERSIONS['almamesh-predictive']).toBe(6);
+    expect(PORTABLE_STORE_MAX_VERSIONS['almamesh-predictive']).toBe(PREDICTIVE_PERSIST_VERSION);
   });
 
-  it.each([3, 4, 5])('accepts a v%i predictive result keyed by a known chart fallback', async (version) => {
+  it.each([3, 4, 5, 6])('accepts a v%i predictive result keyed by a known chart fallback', async (version) => {
     const sqlite = new MemorySqliteStore();
     const repository = new PortableStateRepository(sqlite, async (bytes) => bytes[0]!, rebuildAtEpoch(sqlite));
     await migrateLegacyState(
@@ -1326,9 +1328,9 @@ describe('time-travel pins in a backup (chat store v3)', () => {
     return { repository, handed };
   }
 
-  it('reads chat store version 3 (the store and the importer agree)', () => {
-    expect(PORTABLE_STORE_MAX_VERSIONS['almamesh-chat-history']).toBe(3);
-    expect(CHAT_PERSIST_VERSION).toBe(3);
+  it('reads chat store version 4 (the store and the importer agree)', () => {
+    expect(PORTABLE_STORE_MAX_VERSIONS['almamesh-chat-history']).toBe(4);
+    expect(CHAT_PERSIST_VERSION).toBe(4);
   });
 
   it('exports a Day pin with its place field for field', async () => {
@@ -1349,7 +1351,8 @@ describe('time-travel pins in a backup (chat store v3)', () => {
     ['latitude 91', { ...DAY_PIN, place: { ...DAY_PIN.place, latitude: 91 } }, 'as_of.place.latitude'],
     ['an extra key', { ...DAY_PIN, birth_place: 'Delhi' }, 'as_of'],
     ['granularity week', { ...DAY_PIN, granularity: 'week' }, 'as_of.granularity'],
-    ['a Month pin with a place', { ...DAY_PIN, start: '2026-06-01', end: '2026-06-30', granularity: 'month' }, 'as_of.place'],
+    // Contract reversed 2026-10-13: a Month pin may carry a place, but only a valid one.
+    ['a Month pin with a malformed place', { ...DAY_PIN, start: '2026-06-01', end: '2026-06-30', granularity: 'month', place: { ...DAY_PIN.place, label: '' } }, 'as_of.place.label'],
   ])('refuses a backup whose pin has %s, naming the row, thread and field', async (_label, asOf, field) => {
     const { repository } = await seedChat({ as_of: asOf });
     await expect(repository.exportBytes()).rejects.toThrow(
@@ -1357,8 +1360,103 @@ describe('time-travel pins in a backup (chat store v3)', () => {
     );
   });
 
-  it('calls a v4 chat row too new', async () => {
-    const { repository } = await seedChat({}, 4);
+  it('calls a v5 chat row too new', async () => {
+    const { repository } = await seedChat({}, 5);
     await expect(repository.exportBytes()).rejects.toBeInstanceOf(PortableStateTooNewError);
+  });
+});
+
+describe('visible tool-call parts in a backup (chat store v4)', () => {
+  const LOOKUP = {
+    type: 'tool-call',
+    toolCallId: 'call_1',
+    toolName: 'get_transits',
+    args: { place: 'Singapore', month: '2019-05' },
+    result: { saturn: 'Sagittarius', dates: ['2019-05-01'] },
+    status: 'complete',
+  };
+
+  function envelope(state: unknown, version: number): string {
+    return JSON.stringify({ state, version, datasetEpoch: 0 });
+  }
+
+  async function seedMessages(messages: readonly unknown[], version = 4) {
+    const sqlite = new MemorySqliteStore();
+    const handed: Array<ReadonlyMap<string, string>> = [];
+    const repository = new PortableStateRepository(
+      sqlite,
+      async (bytes) => bytes[0] ?? -1,
+      async (canonical) => {
+        handed.push(canonical);
+        return new Uint8Array([sqlite.epoch]);
+      },
+    );
+    await migrateLegacyState(repository, { get: async () => null, delete: async () => undefined }, []);
+    await repository.write(
+      'almamesh-profiles',
+      envelope({ profiles: { p1: { id: 'p1' } }, activeProfileId: 'p1' }, 1),
+    );
+    await repository.write(
+      'almamesh-chat-history',
+      envelope(
+        { threads: { t1: { id: 't1', profile_id: 'p1', title: 'a' } }, messages: { t1: messages }, summaries: {} },
+        version,
+      ),
+    );
+    return { repository, handed };
+  }
+
+  const message = (id: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    thread_id: 't1',
+    role: 'assistant',
+    content: 'Saturn was in Sagittarius.',
+    created_at: '2026-10-13T00:00:00.000Z',
+    ...extra,
+  });
+
+  it('exports a message with its parts, field for field', async () => {
+    const parts = [LOOKUP, { type: 'text', text: 'Saturn was in Sagittarius.' }];
+    const { repository, handed } = await seedMessages([message('m1', { parts }), message('m2')]);
+    await repository.exportBytes();
+    const chat = JSON.parse(handed.at(-1)!.get('almamesh-chat-history')!) as {
+      state: { messages: Record<string, Array<Record<string, unknown>>> };
+      version: number;
+    };
+    expect(chat.version).toBe(4);
+    expect(chat.state.messages.t1?.[0]?.parts).toEqual(parts);
+    expect('parts' in chat.state.messages.t1![1]!).toBe(false);
+  });
+
+  it('exports a message whose tool call was skipped, keeping the skipped status', async () => {
+    const skipped = { ...LOOKUP, toolCallId: 'call_7', status: 'skipped', result: { code: 'skipped', message: 'skipped: too many calls this round' } };
+    const parts = [LOOKUP, skipped, { type: 'text', text: 'Saturn was in Sagittarius.' }];
+    const { repository, handed } = await seedMessages([message('m1', { parts })]);
+    await repository.exportBytes();
+    const chat = JSON.parse(handed.at(-1)!.get('almamesh-chat-history')!) as {
+      state: { messages: Record<string, Array<Record<string, unknown>>> };
+    };
+    expect(chat.state.messages.t1?.[0]?.parts).toEqual(parts);
+  });
+
+  it('still accepts a v3 chat row whose messages have no parts', async () => {
+    const { repository, handed } = await seedMessages([message('m1'), message('m2')], 3);
+    await expect(repository.exportBytes()).resolves.toBeDefined();
+    const chat = JSON.parse(handed.at(-1)!.get('almamesh-chat-history')!) as { version: number };
+    expect(chat.version).toBe(3);
+  });
+
+  it.each([
+    ['parts that are not an array', { parts: 'get_transits' }, 'parts'],
+    ['a tool name with a space', { parts: [{ ...LOOKUP, toolName: 'get transits' }] }, 'parts[0].toolName'],
+    ['args that are an array', { parts: [{ ...LOOKUP, args: ['Singapore'] }] }, 'parts[0].args'],
+    ['a status of running', { parts: [{ ...LOOKUP, status: 'running' }] }, 'parts[0].status'],
+    ['an unknown part type', { parts: [{ type: 'image', url: 'x' }] }, 'parts[0].type'],
+    ['33 parts', { parts: Array.from({ length: 33 }, () => ({ type: 'text', text: 'a' })) }, 'parts.length'],
+  ])('refuses a backup whose message has %s, naming the row, message and field', async (_label, extra, field) => {
+    const { repository } = await seedMessages([message('m1', extra)]);
+    await expect(repository.exportBytes()).rejects.toThrow(
+      `Portable state row "almamesh-chat-history" message "m1" has an invalid ${field}.`,
+    );
   });
 });

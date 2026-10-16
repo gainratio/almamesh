@@ -10,7 +10,7 @@ vi.mock('../storeSaved', () => ({
   },
 }));
 
-import { repinThread, startPinnedThread, todayThread } from '../timeTravelThreads';
+import { repinThread, startPinnedThread, todayThread, tripTitle } from '../timeTravelThreads';
 
 const YEAR = { start: '2027-01-01', end: '2027-12-31', granularity: 'year' } as const;
 const JUNE = { start: '2026-06-01', end: '2026-06-30', granularity: 'month' } as const;
@@ -75,5 +75,30 @@ describe('pin changes reach disk before the UI moves on', () => {
     const id = await todayThread('p1', 'c1');
     expect(useChatStore.getState().threads[id]?.as_of).toBeUndefined();
     expect(save.calls).toBe(1);
+  });
+});
+
+const SINGAPORE = { label: 'Singapore', timezone: 'Asia/Singapore', latitude: 1.29, longitude: 103.85 };
+const MAY_2019_SG = { start: '2019-05-01', end: '2019-05-31', granularity: 'month', place: SINGAPORE } as const;
+
+describe('a trip thread is titled from its pin, not its first message', () => {
+  it('names the period and the place', () => {
+    expect(tripTitle(MAY_2019_SG, 'en')).toBe('⏳ May 2019 · Singapore');
+    expect(tripTitle({ start: '2027-01-01', end: '2027-01-31', granularity: 'month' }, 'en')).toBe('⏳ Jan 2027');
+    expect(tripTitle(YEAR, 'en')).toBe('⏳ 2027');
+    expect(tripTitle({ start: '2019-05-04', end: '2019-05-04', granularity: 'day', place: SINGAPORE }, 'en')).toBe('⏳ May 4, 2019 · Singapore');
+  });
+
+  it('Go sets the title at creation and the first question does not replace it', async () => {
+    const id = await startPinnedThread('p1', 'c1', MAY_2019_SG);
+    expect(useChatStore.getState().threads[id]?.title).toBe('⏳ May 2019 · Singapore');
+    useChatStore.getState().appendMessage(id, 'user', 'How was work?');
+    expect(useChatStore.getState().threads[id]?.title).toBe('⏳ May 2019 · Singapore');
+  });
+
+  it('re-pinning an empty trip renames it to the new period', async () => {
+    const id = await startPinnedThread('p1', 'c1', MAY_2019_SG);
+    await repinThread(id, YEAR);
+    expect(useChatStore.getState().threads[id]?.title).toBe('⏳ 2027');
   });
 });

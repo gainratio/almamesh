@@ -71,10 +71,10 @@ def pipelines() -> dict[str, Pipeline]:
 
 
 def _significator_grahas(natal: SiderealContext, recipe: DomainRecipe) -> set[PlanetName]:
-    """Independent re-derivation: house lords + karakas + occupants of the houses."""
+    """Independent re-derivation: house lords + occupants + karakas (unless context-only)."""
     houses = {h.house for h in recipe.houses}
     lords = {natal.houses[h].sign_lord for h in houses}
-    karakas = {k.graha for k in recipe.karakas}
+    karakas = set() if recipe.activation_only else {k.graha for k in recipe.karakas}
     occupants = {p.name for p in natal.planets.values() if p.house in houses}
     return lords | karakas | occupants
 
@@ -82,7 +82,7 @@ def _significator_grahas(natal: SiderealContext, recipe: DomainRecipe) -> set[Pl
 # --- the recipe registry encodes the approved classical map ---
 
 
-def test_registry_covers_all_seven_domains() -> None:
+def test_registry_covers_every_domain() -> None:
     assert set(DOMAIN_RECIPES) == set(LifeDomain)
 
 
@@ -110,7 +110,7 @@ def test_registry_career_karakas_are_sun_saturn_mercury() -> None:
 # --- invariants ---
 
 
-def test_all_seven_domains_always_present(pipelines: dict[str, Pipeline]) -> None:
+def test_every_domain_always_present(pipelines: dict[str, Pipeline]) -> None:
     for *_, domains in pipelines.values():
         assert set(domains.forecasts) == set(LifeDomain)
 

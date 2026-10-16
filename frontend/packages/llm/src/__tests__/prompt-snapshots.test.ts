@@ -156,6 +156,29 @@ describe("prompt golden-snapshots (Spec 062 delta 5)", () => {
     expect(buildChatMessages(CHART, "Where is my Mars?")).toMatchSnapshot();
   });
 
+  // Period reading (2026-10-13): the snapshot was updated for the rewritten hedges; these pin the honesty
+  // lines any later -u must keep, and the removed "do NOT exist" line staying gone.
+  it("buildChatMessages — the chat snapshot keeps its honesty lines", () => {
+    const system = buildChatMessages(CHART, "Where is my Mars?")[0]?.content ?? "";
+    expect(system).toContain("HONESTY: a chart cannot name the concrete event.");
+    expect(system).toContain("Cite the engine factor behind every claim.");
+    expect(system).toContain("never invent a fact");
+    expect(system).toContain("do not derive, infer, or guess it");
+    expect(system).not.toMatch(/do NOT exist/i);
+  });
+
+  // Chat tool layer redesign (2026-10-14): a tool-using trip turn carries NOW, THIS THREAD, the pinned
+  // period and the TOOLS line, plus the natal facts block a trip used to leave out.
+  it("buildChatMessages — trip thread (Vadodara, May 2019)", () => {
+    expect(
+      buildChatMessages(
+        CHART, "What did May 2019 look like for work?", "layman", [], [], undefined, "en", undefined, undefined, undefined,
+        { start: "2019-05-01", end: "2019-05-31", relative: "past", granularity: "month" },
+        { now: "Wednesday 14 October 2026, America/Los_Angeles", trip: { label: "May 2019", place: "Vadodara, India", timezone: "Asia/Kolkata" } },
+      ),
+    ).toMatchSnapshot();
+  });
+
   it("buildChatMessages — fully loaded (history + RAG + reading + rectification)", () => {
     expect(
       buildChatMessages(

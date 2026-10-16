@@ -1,8 +1,7 @@
 // The one OpenAI-compatible SSE parser (`stream: true` responses).
 //
-// Shared by the agent chat (agent.ts) and the streamed JSON sections
-// (json-stream.ts) so both read events, `[DONE]`, and in-band failures the
-// same way. Moved here unchanged from agent.ts (restored in #186).
+// Used by the streamed JSON sections (json-stream.ts), so every streamed read
+// handles events, `[DONE]`, and in-band failures the same way.
 
 import { LlmRequestError } from "./client";
 import { ReasoningTimeoutError } from "./reasoning";
@@ -11,6 +10,8 @@ const MAX_ERROR_BODY_CHARS = 500;
 
 export interface StreamChunk {
   readonly error?: unknown;
+  /** OpenAI-compatible token counts; OpenRouter sends them on the last chunk. */
+  readonly usage?: unknown;
   readonly choices?: ReadonlyArray<{
     readonly delta?: {
       readonly content?: unknown;

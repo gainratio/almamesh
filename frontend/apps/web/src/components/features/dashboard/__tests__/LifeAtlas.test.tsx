@@ -111,11 +111,11 @@ describe('LifeAtlas', () => {
     expect(within(card).getByRole('link').getAttribute('href')).toBe('/settings/profile#birthplace');
   });
 
-  it('renders all seven domain cards in a designed pending state before data arrives', () => {
+  it('renders all eight domain cards in a designed pending state before data arrives', () => {
     renderAtlas();
     for (const domain of LIFE_DOMAINS) {
       const card = screen.getByTestId(`life-atlas-card-${domain}`);
-      expect(card.textContent).toContain('Loading forecast');
+      expect(card.textContent).toContain('Loading themes');
     }
     // Pending cards are NOT links — nothing pretends data exists.
     expect(screen.getByTestId('life-atlas-card-career').getAttribute('href')).toBeNull();
@@ -219,7 +219,7 @@ describe('LifeAtlas', () => {
     expect(screen.getByTestId('life-atlas-gate').textContent).toContain('elapsed');
   });
 
-  it('renders seven linked domain cards with band, emphasis and next window when ready', () => {
+  it('renders eight linked domain cards with band, emphasis and next window when ready', () => {
     usePredictiveStore.setState({
       status: 'ready',
       domainsCtx: DOMAINS_CTX,
@@ -237,9 +237,59 @@ describe('LifeAtlas', () => {
     expect(career.textContent).toContain('Next window');
     // The gate disappears once the data is on screen.
     expect(screen.queryByTestId('life-atlas-gate')).toBeNull();
+    expect(screen.getByTestId('life-atlas').textContent).toContain('Eight domains of your life');
     // The grid is squared with the deterministic "about" cell linking deeper.
     const about = screen.getByTestId('life-atlas-about');
     expect(within(about).getByRole('link').getAttribute('href')).toBe('/predictive');
+  });
+
+  // The engine's 2026-10 obstacles domain (6th/8th/12th). Plain words, framed as a
+  // theme to watch: never a prediction, never fear language. 2026-10-14 review: the
+  // card carries one short subtitle like the others' density; the full sentence is its
+  // tooltip (and the /life/obstacles page header).
+  const OBSTACLES_COPY = {
+    en: { name: 'Obstacles & setbacks', subtitle: 'Rules, legal matters, setbacks, losses', note: 'A theme to reflect on: friction with rules or authorities, legal or administrative matters, unexpected setbacks, losses and expenses (the 6th, 8th and 12th houses).' },
+    es: { name: 'Obstáculos y contratiempos', subtitle: 'Normas, asuntos legales, contratiempos, pérdidas', note: 'Un tema para reflexionar: roces con normas o autoridades, asuntos legales o administrativos, contratiempos inesperados, pérdidas y gastos (casas 6, 8 y 12).' },
+    pt: { name: 'Obstáculos e contratempos', subtitle: 'Regras, questões legais, contratempos, perdas', note: 'Um tema para refletir: atritos com regras ou autoridades, questões legais ou administrativas, contratempos inesperados, perdas e despesas (casas 6, 8 e 12).' },
+  } as const;
+
+  it.each(['en', 'es', 'pt'] as const)('shows the obstacles area as one short subtitle, the full note as its tooltip (%s)', async (language) => {
+    const { default: i18n } = await import('../../../../i18n/config');
+    await i18n.changeLanguage(language);
+    usePredictiveStore.setState({
+      status: 'ready',
+      domainsCtx: DOMAINS_CTX,
+      profileKey: 'chart-1',
+      requestKey: currentRequestKey(),
+    });
+    renderAtlas();
+    const card = screen.getByTestId('life-atlas-card-obstacles');
+    expect(card.getAttribute('href')).toBe('/life/obstacles');
+    expect(within(card).getByRole('heading').textContent).toBe(OBSTACLES_COPY[language].name);
+    const subtitle = within(card).getByTestId('life-atlas-note-obstacles');
+    expect(subtitle.textContent).toBe(OBSTACLES_COPY[language].subtitle);
+    expect(subtitle.getAttribute('title')).toBe(OBSTACLES_COPY[language].note);
+    expect(card.textContent).not.toContain(OBSTACLES_COPY[language].note);
+    // Only the obstacles card carries a subtitle.
+    expect(screen.getAllByTestId(/^life-atlas-note-/)).toHaveLength(1);
+    await i18n.changeLanguage('en');
+  });
+
+  // 2026-10-14 review: a green "Strong" beside "Obstacles & setbacks" read as strong obstacles in a
+  // reassuring colour. That band is natal Saturn's Shadbala, which the engine keeps as context only
+  // for this domain (activation_only), so the card shows no strength badge. Every other card keeps one.
+  it('shows no strength badge on the obstacles card, and one on every other card', () => {
+    usePredictiveStore.setState({
+      status: 'ready',
+      domainsCtx: DOMAINS_CTX,
+      profileKey: 'chart-1',
+      requestKey: currentRequestKey(),
+    });
+    renderAtlas();
+    expect(within(screen.getByTestId('life-atlas-card-obstacles')).queryByTestId(/^band-/)).toBeNull();
+    for (const domain of ['career', 'finances', 'health', 'relationships', 'spiritual', 'education', 'family']) {
+      expect(within(screen.getByTestId(`life-atlas-card-${domain}`)).getByTestId(/^band-/)).toBeTruthy();
+    }
   });
 
   it('offers in-app recovery on error and does NOT auto-loop (retry calls compute)', () => {

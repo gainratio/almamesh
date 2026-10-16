@@ -369,11 +369,14 @@ describe("usePredictiveStore — raw contexts persistence (Spec 062 delta 1)", (
 
   // Older cached slow contacts can contain an opposition mistaken for a
   // conjunction. Recompute calculations while preserving the source profile.
-  it("pins the persist version at 5 (corrected circular contacts invalidate v1-v4 snapshots)", () => {
-    expect(PREDICTIVE_PERSIST_VERSION).toBe(5);
+  // v6 (2026-10-14): a v5 snapshot predates the engine's period_reading. Its request key
+  // (no readingEnd) equals today's, so it short-circuited ensurePredictive and the chat's
+  // get_period_reading answered reading_unavailable for today. Live on ba4430ce.
+  it("pins the persist version at 6 (v1-v5 snapshots predate period_reading)", () => {
+    expect(PREDICTIVE_PERSIST_VERSION).toBe(6);
   });
 
-  it.each([1, 2, 3, 4])(
+  it.each([1, 2, 3, 4, 5])(
     "drops a v%i ready snapshot: rehydrates idle and the same input recomputes",
     async (version) => {
       memMap.set(

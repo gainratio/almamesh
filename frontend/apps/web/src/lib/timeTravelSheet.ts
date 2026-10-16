@@ -55,18 +55,27 @@ function isRealDay(value: string): boolean {
   return !Number.isNaN(time) && new Date(time).toISOString().slice(0, 10) === value;
 }
 
-/** The draft's calendar range, whether or not a Day draft has its place yet. */
+/** The draft's calendar range, whether or not the draft has its place yet. */
 export function rangeOfDraft(draft: SheetDraft): { readonly start: string; readonly end: string } | undefined {
   if (draft.granularity === 'year') return { start: `${draft.year}-01-01`, end: `${draft.year}-12-31` };
   if (draft.granularity === 'month') return { start: `${draft.month}-01`, end: lastDayOf(draft.month) };
   return isRealDay(draft.day) ? { start: draft.day, end: draft.day } : undefined;
 }
 
+/** The sheet's pin: every trip, Day, Month or Year, needs its place (plan 2026-10-13 §2). */
 export function asOfFromDraft(draft: SheetDraft): ChatThreadAsOf | undefined {
   const range = rangeOfDraft(draft);
-  if (!range) return undefined;
-  if (draft.granularity !== 'day') return { ...range, granularity: draft.granularity };
-  return draft.place ? { ...range, granularity: 'day', place: draft.place } : undefined;
+  return range && draft.place ? { ...range, granularity: draft.granularity, place: draft.place } : undefined;
+}
+
+/**
+ * The AI time_travel tool's pin: a Day needs its place; a Month or Year may still go
+ * without one (old shape, kept until the tool binds a place too).
+ */
+export function periodAsOfFromDraft(draft: SheetDraft): ChatThreadAsOf | undefined {
+  if (draft.granularity === 'day' || draft.place) return asOfFromDraft(draft);
+  const range = rangeOfDraft(draft);
+  return range ? { ...range, granularity: draft.granularity } : undefined;
 }
 
 const LABEL_FORMAT: Readonly<Record<PinGranularity, Intl.DateTimeFormatOptions>> = {

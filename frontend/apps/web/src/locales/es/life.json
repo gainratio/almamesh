@@ -17,9 +17,9 @@
   },
   "atlas": {
     "heading": "Atlas de Vida",
-    "subtitle": "Siete dominios de tu vida — fuerza, énfasis actual y ventanas con fecha, calculados de forma determinista en este dispositivo.",
+    "subtitle": "Ocho dominios de tu vida — fuerza, énfasis actual y ventanas con fecha, calculados de forma determinista en este dispositivo.",
     "as_of": "Al {{date}}",
-    "pending_hint": "Cargando pronóstico…",
+    "pending_hint": "Cargando temas…",
     "next_window": "Próxima ventana",
     "no_window": "Sin ventanas con fecha en los próximos doce meses",
     "emphasis_active": "Activado por la daśā en curso ({{levels}})",
@@ -31,14 +31,16 @@
     "error_title": "No se pudo calcular el Atlas de Vida",
     "retry": "Intentar de nuevo",
     "engine_warming": "El motor de cartas aún se está iniciando. El cálculo comenzará en cuanto esté listo.",
-    "about_title": "Sobre estos pronósticos",
-    "about_body": "Una síntesis determinista de tu línea de daśā, tránsitos, cartas divisionales y fuerza planetaria. No interviene ninguna IA.",
-    "about_link": "Abrir Cielo y Tiempos"
+    "about_title": "Sobre estos temas",
+    "about_body": "Una síntesis determinista de tu línea de daśā, tránsitos, cartas divisionales y fuerza planetaria. No interviene ninguna IA. Muestra lo que destaca tu carta, para reflexionar.",
+    "about_link": "Abrir Cielo y Tiempos",
+    "obstacles_note": "Un tema para reflexionar: roces con normas o autoridades, asuntos legales o administrativos, contratiempos inesperados, pérdidas y gastos (casas 6, 8 y 12).",
+    "obstacles_subtitle": "Normas, asuntos legales, contratiempos, pérdidas"
   },
   "domain": {
     "kicker": "Atlas de Vida",
     "back": "Volver al panel",
-    "engine_heading": "Pronóstico del motor",
+    "engine_heading": "Lo que destaca el motor",
     "engine_badge": "Determinista · en el dispositivo",
     "ai_heading": "De tu lectura",
     "ai_badge": "Narración por IA",

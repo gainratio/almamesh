@@ -52,6 +52,15 @@ import { ensurePrivacy, isLocalEndpoint, type ProviderConfig } from "./config";
 import { withLanguage, type PromptLanguage } from "./language";
 import { buildPredictiveFactsBlock, buildReportFactsBlock } from "./predictive-facts";
 import { OUTPUT_DISCIPLINE_RULES, PRIVACY_RULE, type ViewMode } from "./prompt";
+import {
+  jsonReflectionIssues,
+  READING_WITHHELD,
+  REFLECTION_RULE,
+  reflectionGate,
+  reflectionRetry,
+  rewordedOr,
+  withholdFailingValues,
+} from "./reflection";
 import { monthsIn, validateTimelineDates } from "./date-guard";
 import { computeQuarters } from "./quarters";
 import {
@@ -345,6 +354,8 @@ function systemPrompt(timelineNames: string): string {
     "ANTI-REPETITION: do not reuse the same yoga, placement, phrase, or metaphor across",
     "  sections — each section foregrounds different planets/houses and fresh vocabulary.",
     "",
+    REFLECTION_RULE,
+    "",
     PRIVACY_RULE,
     "",
     OUTPUT_DISCIPLINE_RULES,
@@ -403,6 +414,8 @@ function systemPromptLite(timelineNames: string): string {
     "    and they must use only values explicitly present in their input.",
     "  - YOGAS (ZERO TOLERANCE): discuss ONLY yogas that appear in the chart's yoga list.",
     "    If a yoga is not listed it DOES NOT EXIST here — never invent or name one.",
+    "",
+    REFLECTION_RULE,
     "",
     PRIVACY_RULE,
     "",
@@ -543,6 +556,7 @@ const REMEDIAL_TASK = [
   "    MANAGE a challenge gradually over weeks/months; they do not erase it overnight.",
   "  - technical: gemstones and mantras MAY appear here, but ONLY as optional",
   "    alternatives alongside the universal practices, never as the primary solution.",
+  "    Give each mantra in IAST transliteration (Om Śanaiścarāya Namaḥ); Devanagari is optional.",
   "TARGETING (MANDATORY): every technical remedy must address a SPECIFIC named weak",
   "  placement actually present in the data — a planet whose `dignity` is debilitated,",
   "  or that is `is_combust`, or a yoga whose `grade` is weak. Name that placement as",
@@ -575,7 +589,7 @@ const UPCOMING_PERIODS_TASK = [
   "DEBILITY HONESTY: a debilitated, combust, or retrograde lord's window is a",
   "  growth-through-effort chapter — name the condition; never call it plainly easy.",
   "ZERO TOLERANCE: never invent a period, a date, a dignity, or a yoga not in the data.",
-  "When the ENGINE PREDICTIVE CONTEXT block is present, ground this in the domain's",
+  "When the ENGINE TIMING CONTEXT block is present, ground this in the domain's",
   "  current emphasis (active daśā significator, Sade Sati, transit severity) and its",
   "  next month-precision windows; otherwise speak to the natal placements only.",
 ].join("\n");
@@ -585,7 +599,7 @@ const CURRENT_SKY_TASK = [
   '{ "current_sky": [ { "title": string, "layman": string, "technical": string } ] }.',
   "",
   'Write "What\'s active now & next" — the native\'s CURRENT sky + near timing,',
-  "grounded ENTIRELY in the ENGINE PREDICTIVE CONTEXT block. Return 2–4",
+  "grounded ENTIRELY in the ENGINE TIMING CONTEXT block. Return 2–4",
   "TitledPersona entries, most salient first: (1) the running period — the",
   "mahā/antar/pratyantar lords and what they activate; (2) current transits that",
   "matter — planets by house from Lagna and/or Moon, flag Sade Sati phase if",
@@ -593,7 +607,7 @@ const CURRENT_SKY_TASK = [
   "per life area (career/relationships/health/…): what opens or intensifies and",
   'roughly when. Each entry: title = a plain, specific label; content.layman =',
   'jargon-free "what this means for you and when"; content.technical = the',
-  "placement/period named precisely. If the ENGINE PREDICTIVE CONTEXT block is",
+  "placement/period named precisely. If the ENGINE TIMING CONTEXT block is",
   "ABSENT, return an EMPTY array (never invent timing).",
 ].join("\n");
 
@@ -690,6 +704,7 @@ const REMEDIAL_TASK_LITE = [
   "  - technical: name ONE specific weak placement actually in the data (a debilitated or",
   "    combust planet, or a low-strength listed yoga) and a supportive practice for it.",
   "    Gemstones/mantras MAY appear here as optional extras only. Invent no affliction.",
+  "    Give each mantra in IAST transliteration; Devanagari is optional.",
 ].join("\n");
 
 const UPCOMING_PERIODS_TASK_LITE = [
@@ -926,11 +941,11 @@ const TIMELINE_INPUT_HONESTY = [
 // the engine's own current sky + timing rather than merely permitting it.
 const PREDICTIVE_CONTEXT_EXCEPTION = [
   "",
-  "ENGINE PREDICTIVE CONTEXT — USE IT (REQUIRED):",
+  "ENGINE TIMING CONTEXT — USE IT (REQUIRED):",
   "The block below carries THIS chart's CURRENT sky + timing, computed by the",
   "deterministic engine: the running daśā stack (mahā/antar/pratyantar) with dated",
   "windows, current Gochara (transits) by house from Lagna AND the Moon, Sade Sati",
-  "phase + rough end, the daśā-lord × transit fusion, and per-life-area forecast",
+  "phase + rough end, the daśā-lord × transit fusion, and per-life-area theme",
   "windows. Ground EVERY forward-looking or life-area statement in these specifics:",
   "name the running daśā lords and phase; cite transits by house; state Sade Sati",
   "status when active; cite upcoming windows using the engine's MONTH precision",
@@ -1531,12 +1546,14 @@ function requestSection<Section extends AnySectionKey>(
   if (!report && !isReportRequest(section, params.promptSet)) return chatCompletionJson(base);
   const prose = createJsonProseExtractor();
   const thinking = createWordCounter();
-  const snapshot = (): SectionProgressSnapshot => ({
+  // The preview shows only prose the reflection check has passed, a sentence at a time (PR #366).
+  const gate = reflectionGate();
+  const snapshot = (final = false): SectionProgressSnapshot => ({
     words: prose.words(),
-    preview: prose.preview(),
+    preview: gate.release(prose.text(), final).slice(-PROSE_PREVIEW_CHARS),
     thinkingWords: thinking.words(),
   });
-  return streamChatCompletionJson({
+  const streamed = streamChatCompletionJson({
     ...base,
     ...(params.reasoningTimeoutMs === undefined ? {} : { reasoningTimeoutMs: params.reasoningTimeoutMs }),
     onDelta: (delta) => {
@@ -1549,6 +1566,10 @@ function requestSection<Section extends AnySectionKey>(
       thinking.push(delta);
       report?.(section, snapshot());
     },
+  });
+  return streamed.then((raw) => {
+    report?.(section, snapshot(true)); // the last sentence ends with the stream
+    return raw;
   });
 }
 
@@ -1620,6 +1641,24 @@ function requestCapped<Section extends AnySectionKey>(
   );
 }
 
+/**
+ * The section's completion through the reflection check (PR #366): a text that foretells,
+ * narrates the tools or guesses lived experience goes back once with the issues named; a value
+ * that still fails is withheld in the reading's language, the rest of the section kept. A reword
+ * request that fails withholds the first text's failing values instead of failing the section.
+ */
+async function reflectedSection<Section extends AnySectionKey>(
+  section: Section,
+  messages: ChatMessage[],
+  params: SectionRunParams<Section>,
+): Promise<string> {
+  const raw = await requestCapped(section, messages, params);
+  const issues = jsonReflectionIssues(raw);
+  if (issues.length === 0) return raw;
+  const retry = await rewordedOr(raw, params.signal, () => requestCapped(section, [...messages, ...reflectionRetry(raw, issues)], params));
+  return withholdFailingValues(retry, READING_WITHHELD[params.language ?? "en"]);
+}
+
 function runOneSection<Section extends AnySectionKey>(
   section: Section,
   chart: SanitizedChart,
@@ -1634,7 +1673,7 @@ function runOneSection<Section extends AnySectionKey>(
     params.language ?? "en",
     params.promptSet,
   );
-  return requestCapped(section, messages, withGuardedPreview(section, chart, params))
+  return reflectedSection(section, messages, withGuardedPreview(section, chart, params))
     .then((raw): SectionOutcome<Section> => ({ section, ok: true, raw }))
     // Keep the ORIGINAL error (not just its message) so the aggregation can
     // preserve the HTTP status/body of a representative failure — the caller

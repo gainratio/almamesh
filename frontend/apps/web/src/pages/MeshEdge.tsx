@@ -12,12 +12,13 @@
  * reading, and — at the foot — the engine's own integrity note, verbatim.
  */
 
-import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   IDLE_MESH_EDGE,
+  getCurrentPlace,
   pairKeyOf,
   useAnchorProfile,
   useChartLibraryStore,
@@ -25,7 +26,6 @@ import {
   useLanguageStore,
   useMeshStore,
   useProfilesStore,
-  requireBirthTimeZone,
   type MeshEdgeEntry,
   type Profile,
 } from '@almamesh/store';
@@ -33,24 +33,18 @@ import type {
   MemberRelationship,
   MeshEdgeCtx,
   ProcessedBirthData,
-  ChatThreadAsOf,
 } from '@almamesh/shared-types';
 import {
   applyChatSettings,
-  buildChatMessages,
   describeLlmStatus,
   resolveProviderConfig,
-  sanitizeChartForLlm,
   sanitizeMeshEdgeForLlm,
-  streamAgentChat,
-  type AgentStatusEvent,
-  type ChatTurn,
   type LlmEnv,
 } from '@almamesh/llm';
 
 import { Button, Card, Spinner } from '../components/ui';
 import { ContentModeToggle } from '../components/ui/ContentModeToggle';
-import { FloatingChatPanel } from '../components/features/chat/FloatingChatPanel';
+import type { ChatAskInput } from '../components/features/chat/ChatPanel';
 import {
   CompatibilitySection,
   ConnectionSection,
@@ -74,14 +68,14 @@ import {
   type MeshWindowYears,
 } from '../lib/mesh';
 import { predictiveReferenceInstant } from '../lib/predictive';
-import { buildChatToolset } from '../lib/chatToolset';
-import { formatPinLabel } from '../lib/timeTravelSheet';
 import { birthYearOf } from '../lib/periodChart';
-import { RESOLVE_PLACE_TOOL_NAME } from '../lib/placeTool';
-import type { SSEMetaData } from '../lib/streaming';
+import { lazyWithRetry } from '../lib/lazyWithRetry';
+import { chatStatusLabels } from '../lib/chatStatusLabels';
 import type { ViewMode } from '../lib/types';
 import { storedChartAnalysisInstant } from '../lib/analysisInstant';
-import { reportAgentToolFailure } from '../lib/agentToolDiagnostics';
+
+/** The chat panel is its own chunk; the chat turn behind it loads on the first send (lib/chatTurn.ts). */
+const FloatingChatPanel = lazyWithRetry(() => import('../components/features/chat/FloatingChatPanel'), 'FloatingChatPanel');
 
 /** The chat-tuned provider env (mirrors the dashboard's chat wiring): the
  * EXPLICIT chat model via applyChatSettings (replaces the silent swap). */
@@ -296,149 +290,44 @@ function MeshEdgeContent({
   const [discussRequested, setDiscussRequested] = useState(false);
   const anchorChart = profileChartOf(charts, anchor.id);
   const siderealChart = anchorChart?.sidereal_chart;
-
-  const askMeshLlm = async function* (
-    question: string,
-    questionViewMode: ViewMode | undefined,
-    signal: AbortSignal,
-    history: readonly ChatTurn[] = [],
-    retrievedContext: readonly string[] = [],
-    onAgentStatus?: (label: string | null) => void,
-    asOf?: ChatThreadAsOf,
-    onTravel?: import('../lib/timeTravelTool').TravelRecorder,
-  ): AsyncGenerator<string> {
-    if (!siderealChart) {
-      throw new Error(t('errors:needs_regeneration'));
-    }
-    if (!describeLlmStatus().configured) {
-      throw new Error(t('dashboard:chat.not_configured_notice'));
-    }
-    const effectiveViewMode = questionViewMode || viewMode;
-    const chatMode = effectiveViewMode === 'astrologer' ? 'expert' : 'layman';
-    const config = resolveProviderConfig(readMeshChatEnv());
-    const language = useLanguageStore.getState().language;
-    // `now` is ONLY for questions genuinely about today. Everything else
-    // describes the chart as of its own analysis instant.
-    const now = new Date();
-    // No `?? 'UTC'`: the chat's "current time in the chart's zone" tool would
-    // silently answer in UTC. A chart without a zone is refused, visibly.
-    const chartTimeZone = requireBirthTimeZone(
-      anchorChart?.birth_data?.birth_location_details.timezone,
-      'chat',
-    );
-    const toolset = buildChatToolset({
-      chart: siderealChart,
-      chartAsOf: storedChartAnalysisInstant(anchorChart!),
-      chartTimeZone,
-      profileKey: anchorChart?.profile_id ?? anchorChart?.chart_id ?? anchor.id,
-      birth: anchorChart?.birth_data as ProcessedBirthData | undefined,
-      engine: chartEngineContext,
-      onTravel,
-      language,
-      ...(asOf ? { pinned: asOf } : {}),
-    });
-    const prepared = await toolset.prepare(question, {
-      now,
-      signal,
-      onStatus: (label) => onAgentStatus?.(label),
-      pinnedStatus: asOf ? t('chat:time_travel.status_working', { period: formatPinLabel(asOf, language) }) : undefined,
-    });
-
-    let messages = buildChatMessages(
-      sanitizeChartForLlm(prepared.chart, prepared.asOf),
-      question,
-      chatMode,
-      history,
-      retrievedContext,
-      undefined,
-      language,
-      entry.edge ? sanitizeMeshEdgeForLlm(entry.edge) : undefined,
-      undefined,
-      undefined,
-      toolset.tools.some((tool) => tool.name === RESOLVE_PLACE_TOOL_NAME),
-      prepared.pinned,
-    );
-    if (prepared.timingFacts?.length) {
-      const [system, ...rest] = messages;
-      messages = [{
-        ...system,
-        content: `${system.content ?? ''}\n\nVERIFIED LOCAL TIMING: These are local engine facts or an explicit timing clarification status for this question. Use available facts even if no additional tools are called, respecting their periods and availability notes. If clarification is required, ask for it rather than inventing timing or claiming the tools are unavailable. Astrological patterns do not identify a person's life events. Do not guess life events; ask what occurred and offer a grounded interpretation.\n${JSON.stringify(prepared.timingFacts)}`,
-      }, ...rest];
-    }
-    if (prepared.currentContextUnavailable) {
-      const [system, ...rest] = messages;
-      messages = [
-        {
-          ...system,
-          content:
-            `${system.content ?? ''}\n\n` +
-            'CURRENT-CONTEXT SAFETY: The on-device calculation of current transits was unavailable. Say that plainly and do not infer unavailable current transits from natal or relationship facts. Use any verified local dasha facts supplied above.',
-        },
-        ...rest,
-      ];
-    }
-
-    let activeToolLabel: string | null = null;
-    yield* streamAgentChat({
-      config,
-      messages,
-      tools: toolset.tools,
-      now,
-      signal,
-      onToolError: reportAgentToolFailure,
-      onStatus: (event) => {
-        if (event.phase === 'using_tool') {
-          activeToolLabel = event.label;
-        } else if (event.phase === 'deciding' && event.round > 1 && activeToolLabel !== null) {
-          return;
-        } else if (event.phase === 'answering' || event.phase === 'complete') {
-          activeToolLabel = null;
-        }
-        onAgentStatus?.(agentStatusLabel(event));
-      },
-    });
-  };
-
-  function agentStatusLabel(event: AgentStatusEvent): string {
-    switch (event.phase) {
-      case 'deciding':
-        return t('chat:agent.deciding');
-      case 'using_tool':
-        return event.label;
-      case 'answering':
-        return t('chat:agent.answering');
-      case 'complete':
-        return t('chat:agent.complete');
-    }
-  }
-
-  const handleAskQuestionStream = async (
-    question: string,
-    onToken: (token: string) => void,
-    _onMeta: (meta: SSEMetaData) => void,
-    questionViewMode?: ViewMode,
-    history: readonly ChatTurn[] = [],
-    retrievedContext: readonly string[] = [],
-    onAgentStatus?: (label: string | null) => void,
-    asOf?: ChatThreadAsOf,
-    onTravel?: import('../lib/timeTravelTool').TravelRecorder,
-  ): Promise<{ answer: string; timing_guidance?: string | null; remedies?: string[] | null }> => {
-    const controller = new AbortController();
-    let answer = '';
+  const handleAsk = async (ask: ChatAskInput): Promise<string> => {
     try {
-      for await (const delta of askMeshLlm(
-        question,
-        questionViewMode,
-        controller.signal,
-        history,
-        retrievedContext,
-        onAgentStatus,
-        asOf,
-        onTravel,
-      )) {
-        answer += delta;
-        onToken(delta);
+      if (!anchorChart || !siderealChart) {
+        throw new Error(t('errors:needs_regeneration'));
       }
+      if (!describeLlmStatus().configured) {
+        throw new Error(t('dashboard:chat.not_configured_notice'));
+      }
+      const { runChatTurn } = await import('../lib/chatTurn');
+      const currentPlace = getCurrentPlace(useProfilesStore.getState().profiles[anchor.id] ?? anchor);
+      let answer = '';
+      for await (const snapshot of runChatTurn({
+        config: resolveProviderConfig(readMeshChatEnv()),
+        chart: siderealChart,
+        chartAsOf: storedChartAnalysisInstant(anchorChart),
+        profileKey: anchorChart.profile_id ?? anchorChart.chart_id ?? anchor.id,
+        birth: anchorChart.birth_data as ProcessedBirthData | undefined,
+        engine: chartEngineContext,
+        question: ask.question,
+        mode: (ask.viewMode || viewMode) === 'astrologer' ? 'expert' : 'layman',
+        language: useLanguageStore.getState().language,
+        history: ask.history,
+        retrievedContext: ask.retrievedContext,
+        ...(entry.edge ? { meshEdge: sanitizeMeshEdgeForLlm(entry.edge) } : {}),
+        ...(ask.asOf ? { asOf: ask.asOf } : {}),
+        // Where the anchor lives now (Settings): this today thread's place, by label and zone.
+        ...(currentPlace ? { currentPlace } : {}),
+        signal: ask.signal,
+        labels: chatStatusLabels(t),
+        onStatus: ask.onStatus,
+        ...(ask.onTravel ? { onTravel: ask.onTravel } : {}),
+        ...(ask.pendingTravel ? { pendingTravel: ask.pendingTravel } : {}),
+        ...(ask.onToolCall ? { onToolCall: ask.onToolCall } : {}),
+      })) {
+        answer = snapshot;
+        ask.onSnapshot(snapshot);
+      }
+      return answer;
     } catch (err) {
       // Typed @almamesh/llm causes (on-device, privacy fence, request/endpoint
       // failures) must reach useChatThread intact so `describeChatStreamError`
@@ -453,7 +342,6 @@ function MeshEdgeContent({
         { cause: err },
       );
     }
-    return { answer, timing_guidance: null, remedies: null as string[] | null };
   };
 
   /** Established flow: switch to the chart-less person and onboard them. */
@@ -548,16 +436,18 @@ function MeshEdgeContent({
       {body}
 
       {siderealChart && (
-        <FloatingChatPanel
-          key={discussRequested ? 'mesh-chat-open' : 'mesh-chat-closed'}
-          personName={anchor.name}
-          profileId={anchor.id}
-          chartId={anchorChart?.chart_id ?? null}
-          viewMode={viewMode}
-          onAskQuestionStream={handleAskQuestionStream}
-          birthYear={birthYearOf(anchorChart?.birth_data as ProcessedBirthData | undefined)}
-          initialOpen={discussRequested}
-        />
+        <Suspense fallback={null}>
+          <FloatingChatPanel
+            key={discussRequested ? 'mesh-chat-open' : 'mesh-chat-closed'}
+            personName={anchor.name}
+            profileId={anchor.id}
+            chartId={anchorChart?.chart_id ?? null}
+            viewMode={viewMode}
+            onAskQuestionStream={handleAsk}
+            birthYear={birthYearOf(anchorChart?.birth_data as ProcessedBirthData | undefined)}
+            initialOpen={discussRequested}
+          />
+        </Suspense>
       )}
     </div>
   );

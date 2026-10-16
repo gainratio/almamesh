@@ -515,6 +515,142 @@
             "vargottama": false
           }
         },
+        "obstacles": {
+          "current_emphasis": {
+            "active_dasha_significator": true,
+            "approximated": true,
+            "dasha_levels": [
+              "maha"
+            ],
+            "matched_dasha_lords": [
+              "rahu"
+            ],
+            "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+            "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+            "transit_severity": "neutral",
+            "under_sade_sati": false
+          },
+          "domain": "obstacles",
+          "houses": [
+            {
+              "house": 6,
+              "lord": "mars",
+              "lord_dignity": "own",
+              "lord_house": 6,
+              "lord_sign": "Scorpio",
+              "rule": "obstacles: 6th house of disputes, litigation, friction with rules or authorities",
+              "sign": "Scorpio"
+            },
+            {
+              "house": 8,
+              "lord": "saturn",
+              "lord_dignity": "neutral",
+              "lord_house": 7,
+              "lord_sign": "Sagittarius",
+              "rule": "obstacles: 8th house of sudden setbacks and reversals",
+              "sign": "Capricorn"
+            },
+            {
+              "house": 12,
+              "lord": "venus",
+              "lord_dignity": "neutral",
+              "lord_house": 8,
+              "lord_sign": "Capricorn",
+              "rule": "obstacles: 12th house of losses, expenses and confinement",
+              "sign": "Taurus"
+            }
+          ],
+          "karakas": [
+            {
+              "dignity": "neutral",
+              "graha": "saturn",
+              "house": 7,
+              "is_retrograde": false,
+              "rule": "Saturn = karaka of delay, hardship & restriction (context only)",
+              "sign": "Sagittarius"
+            },
+            {
+              "dignity": "own",
+              "graha": "mars",
+              "house": 6,
+              "is_retrograde": false,
+              "rule": "Mars = karaka of conflict, accidents & disputes (context only)",
+              "sign": "Scorpio"
+            },
+            {
+              "dignity": "neutral",
+              "graha": "rahu",
+              "house": 8,
+              "is_retrograde": true,
+              "rule": "Rahu = karaka of upheaval & the unexpected (context only)",
+              "sign": "Capricorn"
+            }
+          ],
+          "strength_summary": {
+            "approximated": true,
+            "band": "moderate",
+            "key_graha": "saturn",
+            "key_graha_meets_minimum": true,
+            "key_graha_rupas": 6.903508,
+            "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+            "sav_bindus": 82,
+            "sav_pct": 48.809524,
+            "shadbala_pct": 75.228064,
+            "strength_pct": 48.809524,
+            "strength_tier": "model"
+          },
+          "upcoming_windows": [
+            {
+              "date": "2026-06-20T18:23:59.722851Z",
+              "descriptor": "obstacles.transit.mars.ingress.taurus",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2026-08-02T17:14:30.855989Z",
+              "descriptor": "obstacles.transit.mars.ingress.gemini",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2026-11-12T14:39:26.243363Z",
+              "descriptor": "obstacles.transit.mars.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2027-04-26T05:56:16.426381Z",
+              "descriptor": "obstacles.transit.mars.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2027-06-02T23:04:25.266583Z",
+              "descriptor": "obstacles.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            }
+          ],
+          "varga": {
+            "chart": "D30",
+            "graha": "saturn",
+            "rule": "D30 Trimsamsa governs misfortunes & evils",
+            "same_sign_as_d1": false,
+            "sign": "Gemini",
+            "sign_lord": "mercury",
+            "vargottama": false
+          }
+        },
         "relationships": {
           "current_emphasis": {
             "active_dasha_significator": true,
@@ -719,6 +855,494 @@
         }
       },
       "instant": "2026-06-09T12:00:00Z"
+    },
+    "period_reading": {
+      "dasha_spans": [
+        {
+          "end": "2026-06-10",
+          "level": "maha",
+          "lord": "rahu",
+          "start": "2026-06-09"
+        },
+        {
+          "end": "2026-06-10",
+          "level": "antar",
+          "lord": "mercury",
+          "start": "2026-06-09"
+        },
+        {
+          "end": "2026-06-10",
+          "level": "pratyantar",
+          "lord": "moon",
+          "start": "2026-06-09"
+        }
+      ],
+      "double_transit": [
+        10
+      ],
+      "natal_lords": {
+        "jupiter": {
+          "combust": false,
+          "d10_sign": "virgo",
+          "d9_sign": "sagittarius",
+          "dignity": "neutral",
+          "functional": "maraka",
+          "house": 1,
+          "retro": true,
+          "rules": [
+            7,
+            10
+          ],
+          "sign": "gemini",
+          "vargottama": false,
+          "yogas": [
+            "Parivartana Yoga",
+            "Raja Yoga"
+          ]
+        },
+        "ketu": {
+          "combust": false,
+          "d10_sign": "libra",
+          "d9_sign": "aquarius",
+          "dignity": "neutral",
+          "functional": "neutral",
+          "house": 2,
+          "retro": true,
+          "rules": [],
+          "sign": "cancer",
+          "vargottama": false,
+          "yogas": []
+        },
+        "mars": {
+          "combust": false,
+          "d10_sign": "pisces",
+          "d9_sign": "aquarius",
+          "dignity": "own",
+          "functional": "malefic",
+          "house": 6,
+          "retro": false,
+          "rules": [
+            6,
+            11
+          ],
+          "sign": "scorpio",
+          "vargottama": false,
+          "yogas": [
+            "Vipareeta Raja Yoga"
+          ]
+        },
+        "mercury": {
+          "combust": false,
+          "d10_sign": "taurus",
+          "d9_sign": "virgo",
+          "dignity": "neutral",
+          "functional": "benefic",
+          "house": 7,
+          "retro": true,
+          "rules": [
+            1,
+            4
+          ],
+          "sign": "sagittarius",
+          "vargottama": false,
+          "yogas": [
+            "Parivartana Yoga",
+            "Raja Yoga",
+            "Vasi Yoga"
+          ]
+        },
+        "moon": {
+          "combust": false,
+          "d10_sign": "pisces",
+          "d9_sign": "scorpio",
+          "dignity": "neutral",
+          "functional": "maraka",
+          "house": 3,
+          "retro": false,
+          "rules": [
+            2
+          ],
+          "sign": "leo",
+          "vargottama": false,
+          "yogas": [
+            "Kemadruma Yoga"
+          ]
+        },
+        "rahu": {
+          "combust": false,
+          "d10_sign": "aries",
+          "d9_sign": "leo",
+          "dignity": "neutral",
+          "functional": "neutral",
+          "house": 8,
+          "retro": true,
+          "rules": [],
+          "sign": "capricorn",
+          "vargottama": false,
+          "yogas": []
+        },
+        "saturn": {
+          "combust": true,
+          "d10_sign": "cancer",
+          "d9_sign": "scorpio",
+          "dignity": "neutral",
+          "functional": "benefic",
+          "house": 7,
+          "retro": false,
+          "rules": [
+            8,
+            9
+          ],
+          "sign": "sagittarius",
+          "vargottama": false,
+          "yogas": [
+            "Raja Yoga",
+            "Vasi Yoga"
+          ]
+        },
+        "sun": {
+          "combust": false,
+          "d10_sign": "virgo",
+          "d9_sign": "capricorn",
+          "dignity": "neutral",
+          "functional": "malefic",
+          "house": 8,
+          "retro": false,
+          "rules": [
+            3
+          ],
+          "sign": "capricorn",
+          "vargottama": true,
+          "yogas": [
+            "Vasi Yoga"
+          ]
+        },
+        "venus": {
+          "combust": true,
+          "d10_sign": "scorpio",
+          "d9_sign": "pisces",
+          "dignity": "neutral",
+          "functional": "benefic",
+          "house": 8,
+          "retro": true,
+          "rules": [
+            5,
+            12
+          ],
+          "sign": "capricorn",
+          "vargottama": false,
+          "yogas": [
+            "Vipareeta Raja Yoga"
+          ]
+        }
+      },
+      "panchang": {
+        "instant": "2026-06-09T12:00:00Z",
+        "karana": "Gara",
+        "nakshatra": "Uttara Bhadrapada",
+        "paksha": "krishna",
+        "tithi": 24,
+        "tithi_name": "Navami",
+        "vara": "Tuesday",
+        "yoga": "Ayushman"
+      },
+      "rules": [
+        "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral. A 12th lord takes its other house's nature, alone neutral",
+        "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
+        "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
+        "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
+        "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
+        "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
+        "rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (rahu_from_moon_6); obstacles windows date Mars entering a 6th/8th/12th or the natal Moon/lagna sign",
+        "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
+        "sookshma and panchang are for the reference instant; vara is the UTC weekday"
+      ],
+      "sandhi": null,
+      "segments": [
+        {
+          "antar": "mercury",
+          "end": "2026-06-10",
+          "events": [],
+          "maha": "rahu",
+          "pratyantar": "moon",
+          "start": "2026-06-09"
+        }
+      ],
+      "sky": [
+        {
+          "bav": 3,
+          "end": "2026-06-10",
+          "from_lagna": 2,
+          "from_moon": 12,
+          "graha": "jupiter",
+          "retro": false,
+          "sav": 21,
+          "sign": "cancer",
+          "start": "2026-06-09",
+          "tags": [
+            "jupiter_from_moon_12"
+          ]
+        },
+        {
+          "bav": 2,
+          "end": "2026-06-10",
+          "from_lagna": 10,
+          "from_moon": 8,
+          "graha": "saturn",
+          "retro": false,
+          "sav": 27,
+          "sign": "pisces",
+          "start": "2026-06-09",
+          "tags": [
+            "ashtama_shani"
+          ]
+        },
+        {
+          "bav": null,
+          "end": "2026-06-10",
+          "from_lagna": 9,
+          "from_moon": 7,
+          "graha": "rahu",
+          "retro": true,
+          "sav": 25,
+          "sign": "aquarius",
+          "start": "2026-06-09",
+          "tags": []
+        },
+        {
+          "bav": null,
+          "end": "2026-06-10",
+          "from_lagna": 3,
+          "from_moon": 1,
+          "graha": "ketu",
+          "retro": true,
+          "sav": 31,
+          "sign": "leo",
+          "start": "2026-06-09",
+          "tags": []
+        }
+      ],
+      "sookshma": {
+        "end": "2026-06-10",
+        "lord": "rahu",
+        "start": "2026-05-29"
+      },
+      "themes": [
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "high",
+          "direction": "mixed",
+          "domain": "obstacles",
+          "factors": [
+            "Rahu (maha) occupies the 8th: unexpected setbacks",
+            "Jupiter transits the 12th from the Moon",
+            "Yogini Ulka (Saturn) rules the 8th: unexpected setbacks"
+          ],
+          "houses": [
+            6,
+            8,
+            12
+          ],
+          "strength": "moderate",
+          "strength_pct": 75,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "high",
+          "direction": "supportive",
+          "domain": "family",
+          "factors": [
+            "Mercury (antar) rules the 4th",
+            "Jupiter transits the 2nd from the lagna",
+            "Moon (pratyantar) rules the 2nd"
+          ],
+          "houses": [
+            2,
+            4,
+            5,
+            9
+          ],
+          "strength": "strong",
+          "strength_pct": 50,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "high",
+          "direction": "challenging",
+          "domain": "career",
+          "factors": [
+            "Mercury (antar) is a karaka of career",
+            "Saturn transits the 10th from the lagna (ashtama_shani)",
+            "Yogini Ulka (Saturn) is a karaka of career"
+          ],
+          "houses": [
+            10
+          ],
+          "strength": "moderate",
+          "strength_pct": 48,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "high",
+          "direction": "challenging",
+          "domain": "health",
+          "factors": [
+            "Rahu (maha) occupies the 8th",
+            "Saturn transits the 8th from the Moon (ashtama_shani)",
+            "Mercury (antar) rules the 1st"
+          ],
+          "houses": [
+            1,
+            6,
+            8
+          ],
+          "strength": "moderate",
+          "strength_pct": 45,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": false,
+            "yogini": true
+          },
+          "confidence": "medium",
+          "direction": "challenging",
+          "domain": "spiritual",
+          "factors": [
+            "Jupiter transits the 12th from the Moon",
+            "Yogini Ulka (Saturn) rules the 9th",
+            "Jupiter's SAV in Cancer is 21"
+          ],
+          "houses": [
+            9,
+            12,
+            5
+          ],
+          "strength": "strong",
+          "strength_pct": 51,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": true,
+            "yogini": false
+          },
+          "confidence": "medium",
+          "direction": "supportive",
+          "domain": "finances",
+          "factors": [
+            "Moon (pratyantar) rules the 2nd",
+            "Jupiter transits the 2nd from the lagna",
+            "Jupiter's SAV in Cancer is 21"
+          ],
+          "houses": [
+            2,
+            11
+          ],
+          "strength": "strong",
+          "strength_pct": 50,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": false,
+            "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "medium",
+          "direction": "mixed",
+          "domain": "relationships",
+          "factors": [
+            "Mercury (antar) occupies the 7th",
+            "Yogini Ulka (Saturn) occupies the 7th",
+            "Venus strength is 38% (moderate)"
+          ],
+          "houses": [
+            7
+          ],
+          "strength": "moderate",
+          "strength_pct": 38,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": false,
+            "vimshottari": true,
+            "yogini": false
+          },
+          "confidence": "low",
+          "direction": "mixed",
+          "domain": "education",
+          "factors": [
+            "Mercury (antar) rules the 4th",
+            "Mercury strength is 59% (strong)"
+          ],
+          "houses": [
+            4,
+            5
+          ],
+          "strength": "strong",
+          "strength_pct": 59,
+          "windows": []
+        }
+      ],
+      "transit_lords": {
+        "mercury": {
+          "bav": 5,
+          "from_lagna": 1,
+          "from_moon": 11,
+          "retro": false,
+          "sav": 29,
+          "sign": "gemini"
+        },
+        "moon": {
+          "bav": 6,
+          "from_lagna": 10,
+          "from_moon": 8,
+          "retro": false,
+          "sav": 27,
+          "sign": "pisces"
+        },
+        "rahu": {
+          "bav": null,
+          "from_lagna": 9,
+          "from_moon": 7,
+          "retro": true,
+          "sav": 25,
+          "sign": "aquarius"
+        }
+      },
+      "window": {
+        "end": "2026-06-10",
+        "start": "2026-06-09"
+      },
+      "yogini": {
+        "end": "2027-05-04",
+        "lord": "saturn",
+        "name": "ulka",
+        "start": "2021-05-03"
+      }
     },
     "strength_context": {
       "ashtakavarga": {
@@ -3928,6 +4552,182 @@
             "vargottama": false
           }
         },
+        "obstacles": {
+          "current_emphasis": {
+            "active_dasha_significator": true,
+            "approximated": true,
+            "dasha_levels": [
+              "maha"
+            ],
+            "matched_dasha_lords": [
+              "rahu"
+            ],
+            "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+            "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+            "transit_severity": "neutral",
+            "under_sade_sati": false
+          },
+          "domain": "obstacles",
+          "houses": [
+            {
+              "house": 6,
+              "lord": "mars",
+              "lord_dignity": "own",
+              "lord_house": 6,
+              "lord_sign": "Scorpio",
+              "rule": "obstacles: 6th house of disputes, litigation, friction with rules or authorities",
+              "sign": "Scorpio"
+            },
+            {
+              "house": 8,
+              "lord": "saturn",
+              "lord_dignity": "neutral",
+              "lord_house": 7,
+              "lord_sign": "Sagittarius",
+              "rule": "obstacles: 8th house of sudden setbacks and reversals",
+              "sign": "Capricorn"
+            },
+            {
+              "house": 12,
+              "lord": "venus",
+              "lord_dignity": "neutral",
+              "lord_house": 8,
+              "lord_sign": "Capricorn",
+              "rule": "obstacles: 12th house of losses, expenses and confinement",
+              "sign": "Taurus"
+            }
+          ],
+          "karakas": [
+            {
+              "dignity": "neutral",
+              "graha": "saturn",
+              "house": 7,
+              "is_retrograde": false,
+              "rule": "Saturn = karaka of delay, hardship & restriction (context only)",
+              "sign": "Sagittarius"
+            },
+            {
+              "dignity": "own",
+              "graha": "mars",
+              "house": 6,
+              "is_retrograde": false,
+              "rule": "Mars = karaka of conflict, accidents & disputes (context only)",
+              "sign": "Scorpio"
+            },
+            {
+              "dignity": "neutral",
+              "graha": "rahu",
+              "house": 8,
+              "is_retrograde": true,
+              "rule": "Rahu = karaka of upheaval & the unexpected (context only)",
+              "sign": "Capricorn"
+            }
+          ],
+          "strength_summary": {
+            "approximated": true,
+            "band": "moderate",
+            "key_graha": "saturn",
+            "key_graha_meets_minimum": true,
+            "key_graha_rupas": 6.903508,
+            "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+            "sav_bindus": 82,
+            "sav_pct": 48.809524,
+            "shadbala_pct": 75.228064,
+            "strength_pct": 48.809524,
+            "strength_tier": "model"
+          },
+          "upcoming_windows": [
+            {
+              "date": "2026-06-20T18:23:59.722851Z",
+              "descriptor": "obstacles.transit.mars.ingress.taurus",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2026-08-02T17:14:30.855989Z",
+              "descriptor": "obstacles.transit.mars.ingress.gemini",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2026-11-12T14:39:26.243363Z",
+              "descriptor": "obstacles.transit.mars.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2027-04-26T05:56:16.426381Z",
+              "descriptor": "obstacles.transit.mars.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2027-06-02T23:04:25.266583Z",
+              "descriptor": "obstacles.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2027-10-07T19:50:14.279792Z",
+              "descriptor": "obstacles.transit.mars.ingress.scorpio",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2027-10-20T02:54:57.331732Z",
+              "descriptor": "obstacles.transit.saturn.ingress.pisces",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2027-12-27T07:26:28.019130Z",
+              "descriptor": "obstacles.transit.mars.ingress.capricorn",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2028-02-23T12:37:39.735091Z",
+              "descriptor": "obstacles.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            },
+            {
+              "date": "2028-05-30T18:44:32.924478Z",
+              "descriptor": "obstacles.transit.mars.ingress.taurus",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            }
+          ],
+          "varga": {
+            "chart": "D30",
+            "graha": "saturn",
+            "rule": "D30 Trimsamsa governs misfortunes & evils",
+            "same_sign_as_d1": false,
+            "sign": "Gemini",
+            "sign_lord": "mercury",
+            "vargottama": false
+          }
+        },
         "relationships": {
           "current_emphasis": {
             "active_dasha_significator": true,
@@ -4220,6 +5020,494 @@
         }
       },
       "instant": "2026-06-09T12:00:00Z"
+    },
+    "period_reading": {
+      "dasha_spans": [
+        {
+          "end": "2026-06-10",
+          "level": "maha",
+          "lord": "rahu",
+          "start": "2026-06-09"
+        },
+        {
+          "end": "2026-06-10",
+          "level": "antar",
+          "lord": "mercury",
+          "start": "2026-06-09"
+        },
+        {
+          "end": "2026-06-10",
+          "level": "pratyantar",
+          "lord": "moon",
+          "start": "2026-06-09"
+        }
+      ],
+      "double_transit": [
+        10
+      ],
+      "natal_lords": {
+        "jupiter": {
+          "combust": false,
+          "d10_sign": "virgo",
+          "d9_sign": "sagittarius",
+          "dignity": "neutral",
+          "functional": "maraka",
+          "house": 1,
+          "retro": true,
+          "rules": [
+            7,
+            10
+          ],
+          "sign": "gemini",
+          "vargottama": false,
+          "yogas": [
+            "Parivartana Yoga",
+            "Raja Yoga"
+          ]
+        },
+        "ketu": {
+          "combust": false,
+          "d10_sign": "libra",
+          "d9_sign": "aquarius",
+          "dignity": "neutral",
+          "functional": "neutral",
+          "house": 2,
+          "retro": true,
+          "rules": [],
+          "sign": "cancer",
+          "vargottama": false,
+          "yogas": []
+        },
+        "mars": {
+          "combust": false,
+          "d10_sign": "pisces",
+          "d9_sign": "aquarius",
+          "dignity": "own",
+          "functional": "malefic",
+          "house": 6,
+          "retro": false,
+          "rules": [
+            6,
+            11
+          ],
+          "sign": "scorpio",
+          "vargottama": false,
+          "yogas": [
+            "Vipareeta Raja Yoga"
+          ]
+        },
+        "mercury": {
+          "combust": false,
+          "d10_sign": "taurus",
+          "d9_sign": "virgo",
+          "dignity": "neutral",
+          "functional": "benefic",
+          "house": 7,
+          "retro": true,
+          "rules": [
+            1,
+            4
+          ],
+          "sign": "sagittarius",
+          "vargottama": false,
+          "yogas": [
+            "Parivartana Yoga",
+            "Raja Yoga",
+            "Vasi Yoga"
+          ]
+        },
+        "moon": {
+          "combust": false,
+          "d10_sign": "pisces",
+          "d9_sign": "scorpio",
+          "dignity": "neutral",
+          "functional": "maraka",
+          "house": 3,
+          "retro": false,
+          "rules": [
+            2
+          ],
+          "sign": "leo",
+          "vargottama": false,
+          "yogas": [
+            "Kemadruma Yoga"
+          ]
+        },
+        "rahu": {
+          "combust": false,
+          "d10_sign": "aries",
+          "d9_sign": "leo",
+          "dignity": "neutral",
+          "functional": "neutral",
+          "house": 8,
+          "retro": true,
+          "rules": [],
+          "sign": "capricorn",
+          "vargottama": false,
+          "yogas": []
+        },
+        "saturn": {
+          "combust": true,
+          "d10_sign": "cancer",
+          "d9_sign": "scorpio",
+          "dignity": "neutral",
+          "functional": "benefic",
+          "house": 7,
+          "retro": false,
+          "rules": [
+            8,
+            9
+          ],
+          "sign": "sagittarius",
+          "vargottama": false,
+          "yogas": [
+            "Raja Yoga",
+            "Vasi Yoga"
+          ]
+        },
+        "sun": {
+          "combust": false,
+          "d10_sign": "virgo",
+          "d9_sign": "capricorn",
+          "dignity": "neutral",
+          "functional": "malefic",
+          "house": 8,
+          "retro": false,
+          "rules": [
+            3
+          ],
+          "sign": "capricorn",
+          "vargottama": true,
+          "yogas": [
+            "Vasi Yoga"
+          ]
+        },
+        "venus": {
+          "combust": true,
+          "d10_sign": "scorpio",
+          "d9_sign": "pisces",
+          "dignity": "neutral",
+          "functional": "benefic",
+          "house": 8,
+          "retro": true,
+          "rules": [
+            5,
+            12
+          ],
+          "sign": "capricorn",
+          "vargottama": false,
+          "yogas": [
+            "Vipareeta Raja Yoga"
+          ]
+        }
+      },
+      "panchang": {
+        "instant": "2026-06-09T12:00:00Z",
+        "karana": "Gara",
+        "nakshatra": "Uttara Bhadrapada",
+        "paksha": "krishna",
+        "tithi": 24,
+        "tithi_name": "Navami",
+        "vara": "Tuesday",
+        "yoga": "Ayushman"
+      },
+      "rules": [
+        "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral. A 12th lord takes its other house's nature, alone neutral",
+        "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
+        "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
+        "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
+        "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
+        "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
+        "rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (rahu_from_moon_6); obstacles windows date Mars entering a 6th/8th/12th or the natal Moon/lagna sign",
+        "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
+        "sookshma and panchang are for the reference instant; vara is the UTC weekday"
+      ],
+      "sandhi": null,
+      "segments": [
+        {
+          "antar": "mercury",
+          "end": "2026-06-10",
+          "events": [],
+          "maha": "rahu",
+          "pratyantar": "moon",
+          "start": "2026-06-09"
+        }
+      ],
+      "sky": [
+        {
+          "bav": 3,
+          "end": "2026-06-10",
+          "from_lagna": 2,
+          "from_moon": 12,
+          "graha": "jupiter",
+          "retro": false,
+          "sav": 21,
+          "sign": "cancer",
+          "start": "2026-06-09",
+          "tags": [
+            "jupiter_from_moon_12"
+          ]
+        },
+        {
+          "bav": 2,
+          "end": "2026-06-10",
+          "from_lagna": 10,
+          "from_moon": 8,
+          "graha": "saturn",
+          "retro": false,
+          "sav": 27,
+          "sign": "pisces",
+          "start": "2026-06-09",
+          "tags": [
+            "ashtama_shani"
+          ]
+        },
+        {
+          "bav": null,
+          "end": "2026-06-10",
+          "from_lagna": 9,
+          "from_moon": 7,
+          "graha": "rahu",
+          "retro": true,
+          "sav": 25,
+          "sign": "aquarius",
+          "start": "2026-06-09",
+          "tags": []
+        },
+        {
+          "bav": null,
+          "end": "2026-06-10",
+          "from_lagna": 3,
+          "from_moon": 1,
+          "graha": "ketu",
+          "retro": true,
+          "sav": 31,
+          "sign": "leo",
+          "start": "2026-06-09",
+          "tags": []
+        }
+      ],
+      "sookshma": {
+        "end": "2026-06-10",
+        "lord": "rahu",
+        "start": "2026-05-29"
+      },
+      "themes": [
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "high",
+          "direction": "mixed",
+          "domain": "obstacles",
+          "factors": [
+            "Rahu (maha) occupies the 8th: unexpected setbacks",
+            "Jupiter transits the 12th from the Moon",
+            "Yogini Ulka (Saturn) rules the 8th: unexpected setbacks"
+          ],
+          "houses": [
+            6,
+            8,
+            12
+          ],
+          "strength": "moderate",
+          "strength_pct": 75,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "high",
+          "direction": "supportive",
+          "domain": "family",
+          "factors": [
+            "Mercury (antar) rules the 4th",
+            "Jupiter transits the 2nd from the lagna",
+            "Moon (pratyantar) rules the 2nd"
+          ],
+          "houses": [
+            2,
+            4,
+            5,
+            9
+          ],
+          "strength": "strong",
+          "strength_pct": 50,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "high",
+          "direction": "challenging",
+          "domain": "career",
+          "factors": [
+            "Mercury (antar) is a karaka of career",
+            "Saturn transits the 10th from the lagna (ashtama_shani)",
+            "Yogini Ulka (Saturn) is a karaka of career"
+          ],
+          "houses": [
+            10
+          ],
+          "strength": "moderate",
+          "strength_pct": 48,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "high",
+          "direction": "challenging",
+          "domain": "health",
+          "factors": [
+            "Rahu (maha) occupies the 8th",
+            "Saturn transits the 8th from the Moon (ashtama_shani)",
+            "Mercury (antar) rules the 1st"
+          ],
+          "houses": [
+            1,
+            6,
+            8
+          ],
+          "strength": "moderate",
+          "strength_pct": 45,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": false,
+            "yogini": true
+          },
+          "confidence": "medium",
+          "direction": "challenging",
+          "domain": "spiritual",
+          "factors": [
+            "Jupiter transits the 12th from the Moon",
+            "Yogini Ulka (Saturn) rules the 9th",
+            "Jupiter's SAV in Cancer is 21"
+          ],
+          "houses": [
+            9,
+            12,
+            5
+          ],
+          "strength": "strong",
+          "strength_pct": 51,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": true,
+            "yogini": false
+          },
+          "confidence": "medium",
+          "direction": "supportive",
+          "domain": "finances",
+          "factors": [
+            "Moon (pratyantar) rules the 2nd",
+            "Jupiter transits the 2nd from the lagna",
+            "Jupiter's SAV in Cancer is 21"
+          ],
+          "houses": [
+            2,
+            11
+          ],
+          "strength": "strong",
+          "strength_pct": 50,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": false,
+            "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "medium",
+          "direction": "mixed",
+          "domain": "relationships",
+          "factors": [
+            "Mercury (antar) occupies the 7th",
+            "Yogini Ulka (Saturn) occupies the 7th",
+            "Venus strength is 38% (moderate)"
+          ],
+          "houses": [
+            7
+          ],
+          "strength": "moderate",
+          "strength_pct": 38,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": false,
+            "vimshottari": true,
+            "yogini": false
+          },
+          "confidence": "low",
+          "direction": "mixed",
+          "domain": "education",
+          "factors": [
+            "Mercury (antar) rules the 4th",
+            "Mercury strength is 59% (strong)"
+          ],
+          "houses": [
+            4,
+            5
+          ],
+          "strength": "strong",
+          "strength_pct": 59,
+          "windows": []
+        }
+      ],
+      "transit_lords": {
+        "mercury": {
+          "bav": 5,
+          "from_lagna": 1,
+          "from_moon": 11,
+          "retro": false,
+          "sav": 29,
+          "sign": "gemini"
+        },
+        "moon": {
+          "bav": 6,
+          "from_lagna": 10,
+          "from_moon": 8,
+          "retro": false,
+          "sav": 27,
+          "sign": "pisces"
+        },
+        "rahu": {
+          "bav": null,
+          "from_lagna": 9,
+          "from_moon": 7,
+          "retro": true,
+          "sav": 25,
+          "sign": "aquarius"
+        }
+      },
+      "window": {
+        "end": "2026-06-10",
+        "start": "2026-06-09"
+      },
+      "yogini": {
+        "end": "2027-05-04",
+        "lord": "saturn",
+        "name": "ulka",
+        "start": "2021-05-03"
+      }
     },
     "strength_context": {
       "ashtakavarga": {
@@ -7475,6 +8763,154 @@
             "vargottama": false
           }
         },
+        "obstacles": {
+          "current_emphasis": {
+            "active_dasha_significator": true,
+            "approximated": true,
+            "dasha_levels": [
+              "maha",
+              "antar",
+              "pratyantar"
+            ],
+            "matched_dasha_lords": [
+              "saturn",
+              "rahu",
+              "mercury"
+            ],
+            "note": "transit_severity = sign of a coarse vote-sum over domain-relevant transit signals; the signals are exact, the netting is an AlmaMesh heuristic (not a BPHS quantity).",
+            "rule": "dasha-lord karakatva (maha/antar/pratyantar) + slow-graha gochara over the domain bhavas (whole-sign from lagna) + Sade Sati relevance",
+            "transit_severity": "challenging",
+            "under_sade_sati": true
+          },
+          "domain": "obstacles",
+          "houses": [
+            {
+              "house": 6,
+              "lord": "jupiter",
+              "lord_dignity": "neutral",
+              "lord_house": 11,
+              "lord_sign": "Taurus",
+              "rule": "obstacles: 6th house of disputes, litigation, friction with rules or authorities",
+              "sign": "Sagittarius"
+            },
+            {
+              "house": 8,
+              "lord": "saturn",
+              "lord_dignity": "neutral",
+              "lord_house": 11,
+              "lord_sign": "Taurus",
+              "rule": "obstacles: 8th house of sudden setbacks and reversals",
+              "sign": "Aquarius"
+            },
+            {
+              "house": 12,
+              "lord": "mercury",
+              "lord_dignity": "neutral",
+              "lord_house": 6,
+              "lord_sign": "Sagittarius",
+              "rule": "obstacles: 12th house of losses, expenses and confinement",
+              "sign": "Gemini"
+            }
+          ],
+          "karakas": [
+            {
+              "dignity": "neutral",
+              "graha": "saturn",
+              "house": 11,
+              "is_retrograde": true,
+              "rule": "Saturn = karaka of delay, hardship & restriction (context only)",
+              "sign": "Taurus"
+            },
+            {
+              "dignity": "neutral",
+              "graha": "mars",
+              "house": 4,
+              "is_retrograde": false,
+              "rule": "Mars = karaka of conflict, accidents & disputes (context only)",
+              "sign": "Libra"
+            },
+            {
+              "dignity": "neutral",
+              "graha": "rahu",
+              "house": 12,
+              "is_retrograde": true,
+              "rule": "Rahu = karaka of upheaval & the unexpected (context only)",
+              "sign": "Gemini"
+            }
+          ],
+          "strength_summary": {
+            "approximated": true,
+            "band": "moderate",
+            "key_graha": "saturn",
+            "key_graha_meets_minimum": true,
+            "key_graha_rupas": 6.282915,
+            "note": "band = AlmaMesh heuristic over exact Shadbala Rupas + SAV bindus; inputs are BPHS-rigorous, the threshold mapping is a coarse synthesis.",
+            "sav_bindus": 80,
+            "sav_pct": 47.619048,
+            "shadbala_pct": 70.263318,
+            "strength_pct": 47.619048,
+            "strength_tier": "model"
+          },
+          "upcoming_windows": [
+            {
+              "date": "2026-08-02T17:14:30.855989Z",
+              "descriptor": "obstacles.transit.mars.ingress.gemini",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2026-09-18T10:58:12.766566Z",
+              "descriptor": "obstacles.transit.mars.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2026-10-31T05:58:13.713998Z",
+              "descriptor": "obstacles.transit.jupiter.ingress.leo",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-01-24T20:50:25.344201Z",
+              "descriptor": "obstacles.transit.jupiter.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "jupiter"
+            },
+            {
+              "date": "2027-03-09T19:02:48.069351Z",
+              "descriptor": "obstacles.transit.mars.ingress.cancer",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "mars"
+            },
+            {
+              "date": "2027-06-02T23:04:25.266583Z",
+              "descriptor": "obstacles.transit.saturn.ingress.aries",
+              "kind": "sign_ingress",
+              "severity": "neutral",
+              "source": "transit",
+              "trigger": "saturn"
+            }
+          ],
+          "varga": {
+            "chart": "D30",
+            "graha": "saturn",
+            "rule": "D30 Trimsamsa governs misfortunes & evils",
+            "same_sign_as_d1": true,
+            "sign": "Taurus",
+            "sign_lord": "venus",
+            "vargottama": false
+          }
+        },
         "relationships": {
           "current_emphasis": {
             "active_dasha_significator": true,
@@ -7677,6 +9113,498 @@
         }
       },
       "instant": "2026-06-09T12:00:00Z"
+    },
+    "period_reading": {
+      "dasha_spans": [
+        {
+          "end": "2026-06-10",
+          "level": "maha",
+          "lord": "saturn",
+          "start": "2026-06-09"
+        },
+        {
+          "end": "2026-06-10",
+          "level": "antar",
+          "lord": "rahu",
+          "start": "2026-06-09"
+        },
+        {
+          "end": "2026-06-10",
+          "level": "pratyantar",
+          "lord": "mercury",
+          "start": "2026-06-09"
+        }
+      ],
+      "double_transit": [
+        9
+      ],
+      "natal_lords": {
+        "jupiter": {
+          "combust": false,
+          "d10_sign": "pisces",
+          "d9_sign": "pisces",
+          "dignity": "neutral",
+          "functional": "benefic",
+          "house": 11,
+          "retro": true,
+          "rules": [
+            6,
+            9
+          ],
+          "sign": "taurus",
+          "vargottama": false,
+          "yogas": [
+            "Dhana Yoga",
+            "Gajakesari Yoga",
+            "Raja Yoga"
+          ]
+        },
+        "ketu": {
+          "combust": false,
+          "d10_sign": "cancer",
+          "d9_sign": "libra",
+          "dignity": "neutral",
+          "functional": "neutral",
+          "house": 6,
+          "retro": true,
+          "rules": [],
+          "sign": "sagittarius",
+          "vargottama": false,
+          "yogas": []
+        },
+        "mars": {
+          "combust": false,
+          "d10_sign": "capricorn",
+          "d9_sign": "capricorn",
+          "dignity": "neutral",
+          "functional": "yogakaraka",
+          "house": 4,
+          "retro": false,
+          "rules": [
+            5,
+            10
+          ],
+          "sign": "libra",
+          "vargottama": false,
+          "yogas": [
+            "Yogakaraka"
+          ]
+        },
+        "mercury": {
+          "combust": true,
+          "d10_sign": "gemini",
+          "d9_sign": "libra",
+          "dignity": "neutral",
+          "functional": "malefic",
+          "house": 6,
+          "retro": false,
+          "rules": [
+            3,
+            12
+          ],
+          "sign": "sagittarius",
+          "vargottama": false,
+          "yogas": [
+            "Budha-Aditya Yoga",
+            "Vipareeta Raja Yoga"
+          ]
+        },
+        "moon": {
+          "combust": false,
+          "d10_sign": "libra",
+          "d9_sign": "taurus",
+          "dignity": "neutral",
+          "functional": "benefic",
+          "house": 8,
+          "retro": false,
+          "rules": [
+            1
+          ],
+          "sign": "aquarius",
+          "vargottama": false,
+          "yogas": [
+            "Gajakesari Yoga",
+            "Kemadruma Yoga",
+            "Raja Yoga"
+          ]
+        },
+        "rahu": {
+          "combust": false,
+          "d10_sign": "capricorn",
+          "d9_sign": "aries",
+          "dignity": "neutral",
+          "functional": "neutral",
+          "house": 12,
+          "retro": true,
+          "rules": [],
+          "sign": "gemini",
+          "vargottama": false,
+          "yogas": []
+        },
+        "saturn": {
+          "combust": false,
+          "d10_sign": "capricorn",
+          "d9_sign": "capricorn",
+          "dignity": "neutral",
+          "functional": "malefic",
+          "house": 11,
+          "retro": true,
+          "rules": [
+            7,
+            8
+          ],
+          "sign": "taurus",
+          "vargottama": false,
+          "yogas": [
+            "Parivartana Yoga",
+            "Raja Yoga"
+          ]
+        },
+        "sun": {
+          "combust": false,
+          "d10_sign": "taurus",
+          "d9_sign": "virgo",
+          "dignity": "neutral",
+          "functional": "maraka",
+          "house": 6,
+          "retro": false,
+          "rules": [
+            2
+          ],
+          "sign": "sagittarius",
+          "vargottama": false,
+          "yogas": [
+            "Budha-Aditya Yoga"
+          ]
+        },
+        "venus": {
+          "combust": false,
+          "d10_sign": "pisces",
+          "d9_sign": "libra",
+          "dignity": "neutral",
+          "functional": "malefic",
+          "house": 8,
+          "retro": false,
+          "rules": [
+            4,
+            11
+          ],
+          "sign": "aquarius",
+          "vargottama": false,
+          "yogas": [
+            "Parivartana Yoga",
+            "Raja Yoga"
+          ]
+        }
+      },
+      "panchang": {
+        "instant": "2026-06-09T12:00:00Z",
+        "karana": "Gara",
+        "nakshatra": "Uttara Bhadrapada",
+        "paksha": "krishna",
+        "tithi": 24,
+        "tithi_name": "Navami",
+        "vara": "Tuesday",
+        "yoga": "Ayushman"
+      },
+      "rules": [
+        "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral. A 12th lord takes its other house's nature, alone neutral",
+        "agreement: vimshottari = a running dasha lord, yogini = the Yogini lord, rules or occupies a domain house or is its karaka; transit = Jupiter/Saturn in a domain house from lagna/Moon",
+        "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
+        "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
+        "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
+        "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
+        "rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (rahu_from_moon_6); obstacles windows date Mars entering a 6th/8th/12th or the natal Moon/lagna sign",
+        "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
+        "sookshma and panchang are for the reference instant; vara is the UTC weekday"
+      ],
+      "sandhi": null,
+      "segments": [
+        {
+          "antar": "rahu",
+          "end": "2026-06-10",
+          "events": [],
+          "maha": "saturn",
+          "pratyantar": "mercury",
+          "start": "2026-06-09"
+        }
+      ],
+      "sky": [
+        {
+          "bav": 6,
+          "end": "2026-06-10",
+          "from_lagna": 1,
+          "from_moon": 6,
+          "graha": "jupiter",
+          "retro": false,
+          "sav": 32,
+          "sign": "cancer",
+          "start": "2026-06-09",
+          "tags": [
+            "jupiter_from_moon_6"
+          ]
+        },
+        {
+          "bav": 4,
+          "end": "2026-06-10",
+          "from_lagna": 9,
+          "from_moon": 2,
+          "graha": "saturn",
+          "retro": false,
+          "sav": 29,
+          "sign": "pisces",
+          "start": "2026-06-09",
+          "tags": [
+            "sade_sati_phase_3"
+          ]
+        },
+        {
+          "bav": null,
+          "end": "2026-06-10",
+          "from_lagna": 8,
+          "from_moon": 1,
+          "graha": "rahu",
+          "retro": true,
+          "sav": 25,
+          "sign": "aquarius",
+          "start": "2026-06-09",
+          "tags": [
+            "rahu_from_lagna_8"
+          ]
+        },
+        {
+          "bav": null,
+          "end": "2026-06-10",
+          "from_lagna": 2,
+          "from_moon": 7,
+          "graha": "ketu",
+          "retro": true,
+          "sav": 28,
+          "sign": "leo",
+          "start": "2026-06-09",
+          "tags": []
+        }
+      ],
+      "sookshma": {
+        "end": "2026-06-28",
+        "lord": "saturn",
+        "start": "2026-06-04"
+      },
+      "themes": [
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "high",
+          "direction": "challenging",
+          "domain": "obstacles",
+          "factors": [
+            "Saturn (maha) rules the 8th: unexpected setbacks",
+            "Jupiter transits the 6th from the Moon",
+            "Rahu (antar) occupies the 12th: losses and expenses"
+          ],
+          "houses": [
+            6,
+            8,
+            12
+          ],
+          "strength": "moderate",
+          "strength_pct": 75,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": true,
+            "yogini": true
+          },
+          "confidence": "high",
+          "direction": "challenging",
+          "domain": "spiritual",
+          "factors": [
+            "Rahu (antar) occupies the 12th",
+            "Saturn transits the 9th from the lagna (sade_sati_phase_3)",
+            "Mercury (pratyantar) rules the 12th"
+          ],
+          "houses": [
+            9,
+            12,
+            5
+          ],
+          "strength": "moderate",
+          "strength_pct": 42,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": true,
+            "yogini": false
+          },
+          "confidence": "medium",
+          "direction": "challenging",
+          "domain": "health",
+          "factors": [
+            "Saturn (maha) rules the 8th",
+            "Jupiter transits the 6th from the Moon",
+            "Mercury (pratyantar) occupies the 6th"
+          ],
+          "houses": [
+            1,
+            6,
+            8
+          ],
+          "strength": "moderate",
+          "strength_pct": 55,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": true,
+            "yogini": false
+          },
+          "confidence": "medium",
+          "direction": "challenging",
+          "domain": "finances",
+          "factors": [
+            "Saturn (maha) occupies the 11th",
+            "Saturn transits the 2nd from the Moon (sade_sati_phase_3)",
+            "Saturn's SAV in Pisces is 29"
+          ],
+          "houses": [
+            2,
+            11
+          ],
+          "strength": "strong",
+          "strength_pct": 52,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": false,
+            "vimshottari": true,
+            "yogini": false
+          },
+          "confidence": "low",
+          "direction": "mixed",
+          "domain": "career",
+          "factors": [
+            "Saturn (maha) is a karaka of career",
+            "Mercury (pratyantar) is a karaka of career",
+            "Saturn strength is 55% (strong)"
+          ],
+          "houses": [
+            10
+          ],
+          "strength": "strong",
+          "strength_pct": 55,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": false,
+            "vimshottari": true,
+            "yogini": false
+          },
+          "confidence": "low",
+          "direction": "mixed",
+          "domain": "education",
+          "factors": [
+            "Mercury (pratyantar) is a karaka of education",
+            "Mercury strength is 52% (moderate)"
+          ],
+          "houses": [
+            4,
+            5
+          ],
+          "strength": "moderate",
+          "strength_pct": 52,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": true,
+            "vimshottari": false,
+            "yogini": false
+          },
+          "confidence": "low",
+          "direction": "challenging",
+          "domain": "family",
+          "factors": [
+            "Saturn transits the 2nd from the Moon (sade_sati_phase_3)",
+            "Saturn's SAV in Pisces is 29",
+            "Jupiter strength is 52% (strong)"
+          ],
+          "houses": [
+            2,
+            4,
+            5,
+            9
+          ],
+          "strength": "strong",
+          "strength_pct": 52,
+          "windows": []
+        },
+        {
+          "agreement": {
+            "transit": false,
+            "vimshottari": true,
+            "yogini": false
+          },
+          "confidence": "low",
+          "direction": "mixed",
+          "domain": "relationships",
+          "factors": [
+            "Saturn (maha) rules the 7th",
+            "Venus strength is 34% (moderate)"
+          ],
+          "houses": [
+            7
+          ],
+          "strength": "moderate",
+          "strength_pct": 34,
+          "windows": []
+        }
+      ],
+      "transit_lords": {
+        "mercury": {
+          "bav": 3,
+          "from_lagna": 12,
+          "from_moon": 5,
+          "retro": false,
+          "sav": 19,
+          "sign": "gemini"
+        },
+        "rahu": {
+          "bav": null,
+          "from_lagna": 8,
+          "from_moon": 1,
+          "retro": true,
+          "sav": 25,
+          "sign": "aquarius"
+        },
+        "saturn": {
+          "bav": 4,
+          "from_lagna": 9,
+          "from_moon": 2,
+          "retro": false,
+          "sav": 29,
+          "sign": "pisces"
+        }
+      },
+      "window": {
+        "end": "2026-06-10",
+        "start": "2026-06-09"
+      },
+      "yogini": {
+        "end": "2029-07-21",
+        "lord": "rahu",
+        "name": "sankata",
+        "start": "2021-07-21"
+      }
     },
     "strength_context": {
       "ashtakavarga": {

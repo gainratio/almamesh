@@ -86,7 +86,7 @@ describe('Onboarding — in-app bootstrap recovery', () => {
     useOnboardingStore.getState().reset();
   });
 
-  it('on a failed bootstrap, Generate reboots (re-syncs) and lands on the dashboard', async () => {
+  it('on a failed bootstrap, Generate reboots (re-syncs) and moves on to the AI step', async () => {
     const reboot = vi.fn().mockResolvedValue(fakeEngine);
     const whenReady = vi.fn();
     engineValue = {
@@ -107,7 +107,7 @@ describe('Onboarding — in-app bootstrap recovery', () => {
     fireEvent.click(screen.getByTestId('skip-life-events-button'));
 
     await waitFor(() => expect(reboot).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/dashboard'));
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/onboarding/ai'));
     expect(whenReady).not.toHaveBeenCalled();
   });
 
@@ -129,7 +129,7 @@ describe('Onboarding — in-app bootstrap recovery', () => {
     fireEvent.click(screen.getByTestId('skip-life-events-button'));
 
     await waitFor(() => expect(whenReady).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/dashboard'));
+    await waitFor(() => expect(navigateSpy).toHaveBeenCalledWith('/onboarding/ai'));
     expect(reboot).not.toHaveBeenCalled();
   });
 

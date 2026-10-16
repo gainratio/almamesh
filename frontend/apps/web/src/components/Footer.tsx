@@ -20,6 +20,9 @@ export function Footer({ className = '' }: FooterProps) {
           <Link to="/data-deletion" className="hover:text-text-secondary transition-colors">
             {t('footer.data_deletion')}
           </Link>
+          <Link to="/how-we-test" className="hover:text-text-secondary transition-colors">
+            {t('footer.how_we_test')}
+          </Link>
         </div>
         <span>&copy; {new Date().getFullYear()} AlmaMesh</span>
       </div>

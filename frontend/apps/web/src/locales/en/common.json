@@ -140,12 +140,14 @@
     "finishing_previous": "Finishing the previous download… updating when it's done.",
     "activating": "Updating…",
     "stalled": "The update couldn't finish. Close other AlmaMesh tabs, then reload.",
-    "reload_now": "Reload now"
+    "reload_now": "Reload now",
+    "stale": "AlmaMesh was updated. Reload to continue."
   },
   "footer": {
     "privacy": "Privacy Policy",
     "terms": "Terms of Service",
-    "data_deletion": "Data Deletion"
+    "data_deletion": "Data Deletion",
+    "how_we_test": "How we test"
   },
   "provenance": {
     "aria": "Calculation provenance"
@@ -212,5 +214,8 @@
     "reload": "Reload",
     "discard_failed_body": "A person you cancelled couldn't be removed from this device, so they may come back after a reload.",
     "try_again": "Try again"
+  },
+  "ai_setup": {
+    "dialog_title": "Connect AI"
   }
 }

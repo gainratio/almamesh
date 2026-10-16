@@ -151,7 +151,7 @@
     "badge": "opcional · apenas narra",
     "cta_title": "Conecte um modelo para narrar este vínculo",
     "cta_body": "Tudo acima é calculado no seu dispositivo e se sustenta por si só. Um modelo de IA opcional pode narrá-lo em linguagem simples — ele nunca calcula nem altera um único número.",
-    "cta_link": "Abrir configurações de IA",
+    "cta_link": "Conectar IA",
     "generate": "Gerar leitura",
     "regenerate": "Regenerar",
     "generating": "Narrando este vínculo — {{elapsed}} até agora.",

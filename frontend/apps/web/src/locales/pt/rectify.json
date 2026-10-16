@@ -59,7 +59,7 @@
     "d9_lord_in_d9_h7": "O senhor do período ativo está na casa das parcerias (a 7.ª) do mapa navamsa (D9)",
     "d9_lord_is_d9_lagna_lord": "O senhor do período ativo rege o próprio signo ascendente do navamsa (D9)",
     "miss_unexplained": "Nenhum período ativo explica este evento — ele conta contra este candidato",
-    "miss_silent": "Previu uma janela forte de {{category}} sem nada relatado",
+    "miss_silent": "Mostrou uma janela forte de {{category}} sem nada relatado",
     "prior_anchor": "O mais próximo do horário registrado — um empurrão suave, nunca um substituto para os eventos",
     "qualifier_afflicted": "o estado enfraquecido (aflito) do senhor combina com este evento difícil",
     "qualifier_dignified": "a força dignificada do senhor combina com este evento afortunado",
@@ -173,7 +173,7 @@
     "reading": "Lendo sua mensagem…"
   },
   "summary": {
-    "label": "O que aconteceu",
+    "label": "Sua nota",
     "placeholder": "ex.: Mudei-me para outra cidade por trabalho"
   },
   "tray": {

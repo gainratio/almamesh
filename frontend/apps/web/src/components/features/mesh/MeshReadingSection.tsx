@@ -10,9 +10,8 @@
  */
 
 import type { ReactElement } from 'react';
-import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { describeLlmStatus, type MeshReadingSectionKey } from '@almamesh/llm';
+import type { MeshReadingSectionKey } from '@almamesh/llm';
 import type { MeshEdgeCtx, TitledPersona } from '@almamesh/shared-types';
 
 import { Badge, Button, Card, Spinner } from '../../ui';
@@ -22,6 +21,8 @@ import {
   useMeshReading,
   type MeshReadingContext,
 } from '../../../hooks/useMeshReading';
+import { ConnectAiButton } from '../ai/AiSetupDialog';
+import { useLlmStatus } from '../../../hooks/useLlmStatus';
 
 export interface MeshReadingSectionProps {
   readonly edge: MeshEdgeCtx;
@@ -66,12 +67,11 @@ function ConnectModelCta(): ReactElement {
       <p className="max-w-prose text-sm leading-relaxed text-text-secondary">
         {t('reading.cta_body')}
       </p>
-      <Link
-        to="/settings/ai"
-        className="inline-flex items-center gap-1.5 text-sm font-medium text-accent-gold transition-colors hover:text-accent-gold-bright"
-      >
-        {t('reading.cta_link')}
-      </Link>
+      <ConnectAiButton
+        label={t('reading.cta_link')}
+        testId="mesh-reading-connect"
+        className="inline-flex items-center gap-1.5 rounded text-sm font-medium text-accent-gold transition-colors hover:text-accent-gold-bright focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60"
+      />
     </div>
   );
 }
@@ -82,7 +82,8 @@ export function MeshReadingSection({
   onDiscuss,
 }: MeshReadingSectionProps): ReactElement {
   const { t } = useTranslation('mesh');
-  const aiConfigured = describeLlmStatus().configured;
+  // Live: connecting from the CTA's dialog swaps the CTA for the reading at once.
+  const aiConfigured = useLlmStatus().configured;
   const { status, reading, error, completed, generate } = useMeshReading(edge, readingContext);
   const elapsed = useElapsedSeconds(status === 'streaming');
 

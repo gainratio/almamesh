@@ -1,16 +1,20 @@
 /**
  * The Time travel sheet (spec Part 3). When? is Day / Month / Year (Month,
- * current month, by default). Where? shows on Day only, starts empty, and is
- * required. Go waits for the pin to be saved (plan Ruling 12).
+ * current month, by default). Where? shows for every granularity and is required
+ * (plan 2026-10-13 §2): it starts on the place of the pin nearest the chosen date,
+ * else the birth place, and follows the date until the user edits it. Go waits
+ * for the pin to be saved (plan Ruling 12).
  */
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { devicePolicy } from '@almamesh/browser';
 import { endsBeforeBirthYear } from '@almamesh/llm';
-import type { ChatThreadAsOf } from '@almamesh/shared-types';
+import type { ChatThreadAsOf, LocationDetails } from '@almamesh/shared-types';
 
 import type { PlaceLookup } from '../../../lib/geo/placeLookup';
 import { asOfFromDraft, rangeOfDraft, sheetDefaults, sheetYears, type PinGranularity, type SheetDraft } from '../../../lib/timeTravelSheet';
+import { birthPlaceOf, prefillTripPlace, type TripPin } from '../../../lib/tripPlacePrefill';
+import { useCurrentPlace } from '../../../hooks/useCurrentPlace';
 import { PlacePicker, lookupPlaceLazily } from './PlacePicker';
 
 interface TimeTravelSheetProps {
@@ -24,6 +28,10 @@ interface TimeTravelSheetProps {
   readonly dayAllowed?: boolean;
   /** Test seam. Default: the offline city list, loaded on first use. */
   readonly lookupPlace?: (query: string) => Promise<PlaceLookup>;
+  /** The profile's threads (their pins): "Where?" starts on the place of the pin nearest the chosen date. */
+  readonly pins?: readonly TripPin[];
+  /** The chart's `birth_data.birth_location_details`: "Where?" falls back to it. */
+  readonly birthLocation?: LocationDetails;
   readonly onGo: (asOf: ChatThreadAsOf) => Promise<void>;
   readonly onClose: () => void;
 }
@@ -37,7 +45,7 @@ const FOCUSABLE = [
 ].join(', ');
 
 /** Keep Tab / Shift+Tab inside the open sheet (aria-modal does not do this by itself). */
-function trapFocus(event: KeyboardEvent<HTMLDivElement>, root: HTMLElement | null): void {
+export function trapFocus(event: KeyboardEvent<HTMLDivElement>, root: HTMLElement | null): void {
   const items = Array.from(root?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []);
   const first = items[0];
   const last = items.at(-1);
@@ -60,24 +68,37 @@ function moveTab(event: KeyboardEvent<HTMLElement>, tabs: readonly PinGranularit
   queueMicrotask(() => document.querySelector<HTMLElement>(`[data-testid="time-travel-tab-${next}"]`)?.focus());
 }
 
+const NO_PINS: readonly TripPin[] = [];
+
+/** Until the user edits "Where?", the place follows the date: the nearest earlier trip's place, or nothing. */
+function withPrefilledPlace(draft: SheetDraft, placeEdited: boolean, pins: readonly TripPin[]): SheetDraft {
+  if (placeEdited) return draft;
+  const place = prefillTripPlace(rangeOfDraft(draft), pins);
+  return place ? { ...draft, place } : draft;
+}
+
 const MONTHS = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0'));
 
 export function TimeTravelSheet(props: TimeTravelSheetProps) {
   const { t, i18n } = useTranslation('chat');
   const dayAllowed = props.dayAllowed ?? devicePolicy().periodSkyComputeAllowed;
   const [draft, setDraft] = useState<SheetDraft>(() => sheetDefaults(props.today, props.current, dayAllowed, props.birthYear));
+  const [placeEdited, setPlaceEdited] = useState(false);
   const [saveFailed, setSaveFailed] = useState(false);
   const [saving, setSaving] = useState(false);
   const { open, today, current } = props;
   const dialogRef = useRef<HTMLDivElement>(null);
   const { birthYear } = props;
   const wasOpen = useRef(false);
+  // Where they live now (Settings): the picker offers it beside the birth place, never assumes it.
+  const homePlace = useCurrentPlace();
   // Resets only when the sheet opens, so a failed save (which flips the pin and rolls it back) keeps what the user picked.
   useEffect(() => {
     const opening = open && !wasOpen.current;
     wasOpen.current = open;
     if (!opening) return;
     setDraft(sheetDefaults(today, current, dayAllowed, birthYear));
+    setPlaceEdited(false);
     setSaveFailed(false);
   }, [open, today, current, dayAllowed, birthYear]);
   useEffect(() => {
@@ -88,8 +109,11 @@ export function TimeTravelSheet(props: TimeTravelSheetProps) {
   }, [open]);
   if (!props.open) return null;
 
-  const asOf = asOfFromDraft(draft);
-  const range = rangeOfDraft(draft);
+  const trip = withPrefilledPlace(draft, placeEdited, current ? [...(props.pins ?? NO_PINS), { as_of: current }] : (props.pins ?? NO_PINS));
+  // The birth place is offered, never assumed: the user confirms it with one tap.
+  const suggestion = trip.place ? undefined : birthPlaceOf(props.birthLocation);
+  const asOf = asOfFromDraft(trip);
+  const range = rangeOfDraft(trip);
   const beforeBirth = range !== undefined && endsBeforeBirthYear(range, props.birthYear);
   const tabs: readonly PinGranularity[] = dayAllowed ? ['day', 'month', 'year'] : ['month', 'year'];
   const years = sheetYears(props.birthYear);
@@ -134,14 +158,10 @@ export function TimeTravelSheet(props: TimeTravelSheetProps) {
       </div>
       <div role="tabpanel" id="time-travel-panel" aria-labelledby={`time-travel-tab-id-${draft.granularity}`}>
       {draft.granularity === 'day' && (
-        <>
-          <input type="date" aria-label={t('time_travel.sheet.day_label')} data-testid="time-travel-day" value={draft.day}
-            min={`${years[0]}-01-01`} max={`${years.at(-1)}-12-31`}
-            onChange={(event) => setDraft({ ...draft, day: event.target.value })}
-            className="mt-2 rounded-lg border border-ui-border bg-background-primary px-3 py-2 text-sm text-text-primary" />
-          <PlacePicker place={draft.place} lookup={props.lookupPlace ?? lookupPlaceLazily}
-            onPick={(place) => setDraft({ ...draft, place })} />
-        </>
+        <input type="date" aria-label={t('time_travel.sheet.day_label')} data-testid="time-travel-day" value={draft.day}
+          min={`${years[0]}-01-01`} max={`${years.at(-1)}-12-31`}
+          onChange={(event) => setDraft({ ...draft, day: event.target.value })}
+          className="mt-2 rounded-lg border border-ui-border bg-background-primary px-3 py-2 text-sm text-text-primary" />
       )}
       {draft.granularity === 'month' && (
         <div className="mt-2 flex gap-2">
@@ -164,6 +184,13 @@ export function TimeTravelSheet(props: TimeTravelSheetProps) {
           {years.map((year) => <option key={year} value={year}>{year}</option>)}
         </select>
       )}
+      <PlacePicker place={trip.place} lookup={props.lookupPlace ?? lookupPlaceLazily} prefilled={!placeEdited} forDay={draft.granularity === 'day'}
+        {...(suggestion ? { suggestion } : {})}
+        {...(homePlace ? { home: homePlace } : {})}
+        onPick={(place) => {
+          setPlaceEdited(true);
+          setDraft({ ...draft, place });
+        }} />
       </div>
       {beforeBirth && <p data-testid="time-travel-before-birth" role="alert" className="mt-2 text-xs text-status-error">{t('time_travel.sheet.before_birth')}</p>}
       {saveFailed && <p data-testid="time-travel-save-failed" role="alert" className="mt-2 text-xs text-status-error">{t('time_travel.sheet.save_failed')}</p>}

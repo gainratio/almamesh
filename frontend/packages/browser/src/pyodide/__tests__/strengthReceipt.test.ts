@@ -21,7 +21,7 @@ import {
   verifyDomainStrengthClaim,
   type DomainStrengthSubject,
 } from "../strengthReceipt";
-import { composeDomainStrength } from "../strengthAssay";
+import { composeDomainStrength, composeDomainStrengths } from "../strengthAssay";
 import type { LifeDomainsContext, StrengthSummary } from "../predictive";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -257,6 +257,32 @@ describe("sealDomainStrengths", () => {
     const second = await sealDomainStrengths(ctx, seed);
 
     expect(first.career.signature).toBe(second.career.signature);
+  });
+});
+
+/**
+ * The Worker's predictive path (chartWorker `computeSealedPredictive`) runs
+ * `composeDomainStrengths` + `sealDomainStrengths` over the engine's
+ * `domains_context`. Driven here by the ENGINE's own committed golden, so a new
+ * engine domain (2026-10: obstacles, the 6th/8th/12th) can never ship unsealed.
+ */
+describe("the Worker seals every engine domain from the predictive golden", () => {
+  const GOLDEN = resolve(HERE, "../../../../../../backend/tests/fixtures/predictive_golden_de421.json");
+  const golden = JSON.parse(readFileSync(GOLDEN, "utf8")) as Record<string, { domains_context: LifeDomainsContext }>;
+  const domains = golden["1990-01-15T12:00:00+00:00"]!.domains_context;
+
+  it("signs 8 receipts, obstacles among them, and each verifies under the signer", async () => {
+    const seed = generateSeedHex();
+    const receipts = await sealDomainStrengths(domains, seed);
+    const assays = composeDomainStrengths(domains);
+
+    expect(Object.keys(receipts)).toHaveLength(8);
+    expect(Object.keys(receipts)).toContain("obstacles");
+    expect(Object.keys(assays).sort()).toEqual(Object.keys(receipts).sort());
+    expect(receipts.obstacles!.payload).toEqual({ domain: "obstacles", summary: domains.forecasts.obstacles!.strength_summary });
+    await expect(
+      verifyDomainStrengthClaim(receipts.obstacles!, await publicKeyHex(seed), "obstacles", domains.forecasts.obstacles!.strength_summary, assays.obstacles),
+    ).resolves.toBeUndefined();
   });
 });
 

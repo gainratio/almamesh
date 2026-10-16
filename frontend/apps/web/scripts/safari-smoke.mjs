@@ -249,10 +249,15 @@ function stages(driver, baseUrl, record) {
           recovery: document.querySelector('[data-testid="retry-generation-button"]') !== null,
         }`)
         if (state.path.endsWith('/dashboard')) return 'dashboard'
+        // A fresh chart with no AI stops at the onboarding AI step first.
+        if (state.path.endsWith('/onboarding/ai')) return 'ai-step'
         if (state.error || state.recovery) return `engine error: ${state.error ?? 'recovery card shown'}`
         return false
       }, 300 * SECONDS)
-      if (outcome !== 'dashboard') throw new Error(outcome)
+      if (outcome === 'ai-step') {
+        await clickTestId(driver, 'onboarding-ai-not-now')
+        await driver.wait(async () => (await driver.executeScript('return location.pathname')).endsWith('/dashboard'), 30 * SECONDS)
+      } else if (outcome !== 'dashboard') throw new Error(outcome)
     }],
     ['dashboard-chart', 60, async () => {
       await driver.wait(until.elementLocated(By.css('[data-testid="chart-visualization"]')), 60 * SECONDS)

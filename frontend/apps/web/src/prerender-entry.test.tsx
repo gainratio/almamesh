@@ -42,6 +42,7 @@ describe('prerender-entry (Node renderToString of the public shells)', () => {
       ['/privacy', enLegal.privacy.title],
       ['/terms', enLegal.terms.title],
       ['/data-deletion', enLegal.data_deletion.title],
+      ['/how-we-test', enLegal.how_we_test.title],
     ];
     for (const [path, title] of cases) {
       const result = await prerender({ url: path });

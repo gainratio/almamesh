@@ -41,6 +41,10 @@ export type {
   ChatThread,
   ChatThreadAsOf,
   ChatMessage,
+  ChatMessagePart,
+  ChatTextPart,
+  ChatToolCallPart,
+  ChatToolCallStatus,
   ChatSummaryDraft,
   ChatSummaryGenerator,
   ChatSummaryItem,
@@ -268,7 +272,9 @@ export type LifeDomain =
   | 'relationships'
   | 'spiritual'
   | 'education'
-  | 'family';
+  | 'family'
+  /** 6th/8th/12th: friction with rules or authorities, legal or administrative matters, setbacks, losses. */
+  | 'obstacles';
 
 export type StrengthBand = 'strong' | 'moderate' | 'weak';
 
@@ -604,7 +610,7 @@ export interface LifeDomainForecastData {
   upcoming_windows: DomainWindowData[];
 }
 
-/** All seven life-domain forecasts for one chart + instant. */
+/** Every life-domain forecast (one per `LifeDomain`) for one chart + instant. */
 export interface DomainsCtx {
   instant: string;
   forecasts: Record<LifeDomain, LifeDomainForecastData>;

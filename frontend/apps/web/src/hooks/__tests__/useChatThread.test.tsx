@@ -10,6 +10,7 @@ import {
 import {
   LlmRequestError,
   PrivacyViolationError,
+  ReasoningTimeoutError,
 } from '@almamesh/llm';
 import { useChartLibraryStore, useChatStore, type StoredChart } from '@almamesh/store';
 import i18n from '../../i18n/config';
@@ -45,17 +46,17 @@ function fakeMemory(): { memory: ChatMemoryFacade; index: ReturnType<typeof vi.f
   };
 }
 
-/** A stream function that yields a fixed answer token-by-token via onToken. */
+/** A stream function that streams a fixed answer as growing snapshots via onSnapshot. */
 function makeStreamFn(answer: string) {
   return vi.fn(
     async (input: {
       question: string;
       history: readonly { role: string; content: string }[];
       retrievedContext: readonly string[];
-      onToken: (t: string) => void;
+      onSnapshot: (text: string) => void;
     }): Promise<string> => {
-      for (const ch of answer) {
-        input.onToken(ch);
+      for (let end = 1; end <= answer.length; end += 1) {
+        input.onSnapshot(answer.slice(0, end));
       }
       return answer;
     },
@@ -681,9 +682,11 @@ describe('isMappedChatStreamError — the page-catch rethrow contract', () => {
 
 describe('the chat error mapping derives from ONE map (rethrow contract and copy cannot drift)', () => {
   it('covers exactly the typed causes the mapper is contracted to handle', () => {
+    // Contract extended 2026-10-15: ReasoningTimeoutError (the stall watchdog) has its own copy.
     expect(Object.keys(CHAT_STREAM_ERROR_COPY).sort()).toEqual([
       'LlmRequestError',
       'PrivacyViolationError',
+      'ReasoningTimeoutError',
       'TypeError',
     ]);
   });
@@ -742,6 +745,15 @@ describe('describeChatStreamError — coded messages per HTTP status (live-bug f
         new LlmRequestError('LLM endpoint returned 404: No endpoints found for x/y', { status: 404 }),
       ),
     ).toBe(i18n.t('chat:errors.model_unavailable'));
+  });
+
+  // Real drive 2026-10-15 (deepseek-v4-pro, an 18-month answer): the turn hit the 180 s reasoning
+  // cap and the chat showed the generic "Error: QA_001": the copy map is keyed by error name, and
+  // ReasoningTimeoutError was not in it, though its "thought for over 3 minutes" copy exists.
+  it('a reasoning timeout shows the thought-too-long copy, not the generic QA_001', () => {
+    const capped = new ReasoningTimeoutError(180_000);
+    expect(isMappedChatStreamError(capped)).toBe(true);
+    expect(describeChatStreamError(capped)).toBe(i18n.t('chat:errors.reasoning_timeout'));
   });
 
   it('a 500 shows the server-error copy', () => {

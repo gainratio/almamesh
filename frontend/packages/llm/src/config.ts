@@ -194,21 +194,22 @@ export function resolveProviderConfig(env: LlmEnv = {}): ProviderConfig {
  * one-click preset, the settings UI default, and the "switch to recommended"
  * self-heal. A real OpenRouter slug (verified against the live models catalog).
  *
- * deepseek-v4.1-flash since 2026-10-01: in the live timeline benchmark (3 runs
- * each) it finished all 3 in 49-65 s, vs 111-170 s for deepseek-v4-pro and 1 of
- * 3 for z-ai/glm-5.3-flash. It is the default of the LEGACY live reading
- * (`streamNatalInterpretation` / `streamCurrentTimeline`), the only path it was
- * driven and measured on. Changing this never rewrites a model a user saved.
+ * `openai/gpt-6-luna` since 2026-10-15 (was deepseek-v4.1-flash from 2026-10-01; the deepseek
+ * models overloaded easily). OpenRouter price that day: $0.10 in / $0.50 out per million tokens,
+ * with tools and reasoning. On the legacy live timeline (e2e/timeline.real.spec.ts, 3 runs, through
+ * the `~openai/gpt-luna-latest` alias at the same price) it wrote both sections in 39-49 s for about
+ * half a cent each; chat is driven on it by dashboard.agentic.real and the real-model drive. Pinned,
+ * never the moving alias, so quality, latency and cost cannot move without a code change (Harish).
+ * Changing this never rewrites a model a user saved.
  */
-export const RECOMMENDED_CLOUD_MODEL = "deepseek/deepseek-v4.1-flash";
+export const RECOMMENDED_CLOUD_MODEL = "openai/gpt-6-luna";
 
 /**
  * The model the nine-section REPORT engine (`streamReportTimeline` with
- * `REPORT_PROMPT_SET`) is pinned to. Its own literal, deliberately NOT
- * {@link RECOMMENDED_CLOUD_MODEL}: openai/gpt-6-luna was measured on the report
- * engine only (e2e/report.real.spec.ts, 3 runs on 2026-10-10: 39-43 s, $0.013
- * billed each, every voice inside its word band). The legacy live reading was
- * never driven or measured on it, so it must not inherit it.
+ * `REPORT_PROMPT_SET`) is pinned to (e2e/report.real.spec.ts, 3 runs on 2026-10-10:
+ * 39-43 s, $0.013 billed each, every voice inside its word band). Since 2026-10-15 it
+ * is the same model as {@link RECOMMENDED_CLOUD_MODEL}, but its own literal, so the
+ * report engine and the reading default can only part by a deliberate code change.
  *
  * Pinned, never the `~openai/gpt-luna-latest` alias, so quality, latency and cost
  * cannot move without a code change. The report engine takes its model from the
@@ -223,8 +224,8 @@ export const REPORT_ENGINE_MODEL = "openai/gpt-6-luna";
  *
  * Chat used to default to `minimax/minimax-m2.7` for first-token latency. On the
  * live site (2026-10-02) that model took 26.7 s to produce a first token, so chat
- * now takes the same fast default as readings. Not {@link REPORT_ENGINE_MODEL}:
- * tool calling on Luna has not been measured.
+ * now takes the same fast default as readings. Not {@link REPORT_ENGINE_MODEL}: that is the
+ * report engine's own pinned version, which the chat does not share.
  *
  * Used as the chat-tier default by `applyChatSettings` (applied on the OpenRouter
  * cloud preset only when the user has set no explicit `chatModel`) and as the

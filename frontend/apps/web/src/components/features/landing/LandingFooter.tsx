@@ -65,6 +65,9 @@ export function LandingFooter(): ReactElement {
             <Link to="/data-deletion" className="transition-colors hover:text-accent-gold-bright">
               {t('footer.dataDeletion')}
             </Link>
+            <Link to="/how-we-test" className="transition-colors hover:text-accent-gold-bright">
+              {t('footer.howWeTest')}
+            </Link>
             <a
               href={GITHUB_URL}
               target="_blank"

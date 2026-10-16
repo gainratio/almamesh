@@ -44,7 +44,7 @@
       "rough": "Estimada",
       "unknown": "No la sé"
     },
-    "confidence_margin": "La trataremos como precisa con un margen de ±{{minutes}} min.",
+    "confidence_margin": "La trataremos como correcta con un margen de ±{{minutes}} min.",
     "confidence_exact_note": "La trataremos como una hora exacta.",
     "confidence_unknown_note": "Usaremos el mediodía como valor provisional; podrás ajustarla a mano más tarde en Ajustes.",
     "dst_gap": "Las {{time}} no existieron en {{zone}} en esta fecha: los relojes se adelantaron una hora por el horario de verano. Revisa la hora en el registro de nacimiento.",
@@ -111,5 +111,11 @@
     "reset_hint": "¿Sigue sin funcionar? Borra los datos del motor en caché y recarga para empezar de cero.",
     "still_warming": "El motor en el dispositivo aún se está preparando — espera un momento, tu carta se generará en cuanto esté listo.",
     "help": "Si tu carta ya se generó, la verás en el panel. De lo contrario, intenta generarla de nuevo."
+  },
+  "ai_step": {
+    "title": "Tu carta está lista",
+    "body": "Conecta un modelo de IA para hacer preguntas sobre tu carta. Tu clave se queda en este dispositivo y solo se envía al proveedor que elijas.",
+    "connect": "Conectar IA",
+    "not_now": "Ahora no"
   }
 }

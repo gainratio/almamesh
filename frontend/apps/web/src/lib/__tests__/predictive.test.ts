@@ -54,6 +54,17 @@ describe('buildEnsurePredictiveInput', () => {
     });
   });
 
+  it("names a period's window and inclusive last day, and omits a last day that is the reference day", () => {
+    const month = buildEnsurePredictiveInput('p', BIRTH, '2019-05-01T00:00:00Z', { readingEnd: '2019-05-31' });
+    expect(month).toMatchObject({ referenceInstant: '2019-05-01T00:00:00Z', readingEnd: '2019-05-31' });
+    expect(month).not.toHaveProperty('windowMonths');
+    const long = buildEnsurePredictiveInput('p', BIRTH, '2027-01-01T00:00:00Z', { windowMonths: 24, readingEnd: '2028-06-30' });
+    expect(long).toMatchObject({ windowMonths: 24, readingEnd: '2028-06-30' });
+    // A Day of the reference day is the engine default: today's Day trip keeps today's key.
+    const day = buildEnsurePredictiveInput('p', BIRTH, '2026-06-09T00:00:00Z', { readingEnd: '2026-06-09' });
+    expect(day).toEqual(buildEnsurePredictiveInput('p', BIRTH, '2026-06-09T00:00:00Z'));
+  });
+
   it('sends the birthplace civil offset at the birth instant (date-line zone, DST)', () => {
     const apia: ProcessedBirthData = {
       birth_datetime_utc: '2024-01-09T21:00:00.000Z',

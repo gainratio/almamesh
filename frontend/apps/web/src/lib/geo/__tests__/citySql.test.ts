@@ -51,7 +51,8 @@ describe('bounded city storage', () => {
   it('caps each SQL result batch and pages past rejected qualifier matches', async () => {
     const db = await freshDb();
     const rows = Array.from({ length: 500 }, (_, i) => row(`San ${i}`, 1000 + i));
-    rows.push(row('San Francisco', 1));
+    // "ca" must name the row's state: qualifiers filter, they are never ignored.
+    rows.push({ ...row('San Francisco', 1), s: 'California', c: 'United States', cc: 'US' });
     await ensureCitiesImported(db, load('v1', [rows]));
     expect(await cityCandidates(db, 'san')).toHaveLength(CITY_SQL_CANDIDATES);
     const candidates = await cityCandidates(db, 'san francisco ca', 400);

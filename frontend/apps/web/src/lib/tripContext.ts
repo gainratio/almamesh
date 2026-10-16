@@ -1,0 +1,184 @@
+/**
+ * A time-travel trip's context (plan 2026-10-13, "Context bootstrap"): the natal
+ * summary, the place the user lived then, the period and its dashas, built from
+ * (chart, as_of) alone, for the chat's context card. The chat turn reads the
+ * trip's place through `tripPin` (an old trip with no place reads the birth
+ * place). Pure and deterministic: the period's sky (transits, strength,
+ * domains) comes from read_period.
+ *
+ * Privacy: the natal summary carries signs, houses, nakshatras and lords. Never
+ * a birth date, time, coordinate or degree. Only the local card shows that a
+ * place is the birth place.
+ */
+import type { SiderealChart } from '@almamesh/browser/types';
+import { pinRelative, selectDashasForPeriod, type PeriodDashas } from '@almamesh/llm';
+import type { ChatThreadAsOf, ProcessedBirthData } from '@almamesh/shared-types';
+
+import { birthYearOf } from './periodChart';
+import { formatPinLabel } from './timeTravelSheet';
+import { tripPeriodLabel } from './timeTravelThreads';
+
+import { birthPlaceOf } from './tripPlacePrefill';
+
+/**
+ * Every trip sends the model its place's label and zone (Harish: the AI must
+ * know where the trip is), including a trip at the birth place, which the sheet
+ * prefills. An old trip with no place reads the birth place the same way. What
+ * never reaches a request: coordinates, the birth date or time, and any marker
+ * saying a place is the birth place (only the local card says so).
+ */
+export const UNKNOWN_PLACE_LABEL = 'unknown place';
+
+export type TripTense = 'past' | 'present' | 'future';
+
+export interface TripPeriod {
+  readonly start: string;
+  readonly end: string;
+  readonly granularity: ChatThreadAsOf['granularity'];
+  readonly tense: TripTense;
+  /** The period in the UI language, e.g. "May 2019". */
+  readonly label: string;
+  /** Short form for the header and thread title, e.g. "Jan 2027". */
+  readonly short: string;
+}
+
+export interface TripPlace {
+  /** The trip's place label, sent to the model. */
+  readonly label: string;
+  readonly timezone: string;
+  /** Local only (the card): 'birth_place' when an old trip has no place of its own. */
+  readonly source: 'trip' | 'birth_place';
+  /** Local display only (the card): the city, even for the birth-place fallback. */
+  readonly display: string;
+}
+
+export interface NatalPoint {
+  readonly sign: string;
+  readonly nakshatra: string;
+  readonly pada: number;
+  readonly sign_lord: string;
+}
+
+export interface NatalPlanet {
+  readonly name: string;
+  readonly sign: string;
+  readonly house: number;
+  readonly nakshatra: string;
+  readonly dignity: string;
+  readonly retrograde: boolean;
+  /** The houses this planet rules from the lagna (engine-stated). */
+  readonly houses_ruled: readonly number[];
+  readonly combust: boolean;
+  readonly yogakaraka: boolean;
+}
+
+export interface NatalYoga {
+  readonly name: string;
+  readonly category: string;
+  readonly planets_involved: readonly string[];
+}
+
+export interface NatalSummary {
+  readonly lagna: NatalPoint;
+  readonly moon: NatalPoint | null;
+  readonly planets: readonly NatalPlanet[];
+  readonly yogas: readonly NatalYoga[];
+}
+
+export interface TripContext {
+  readonly period: TripPeriod;
+  readonly place: TripPlace;
+  readonly today: string;
+  readonly natal: NatalSummary;
+  readonly dashas: PeriodDashas;
+}
+
+export interface TripContextInput {
+  readonly chart: SiderealChart;
+  readonly asOf: ChatThreadAsOf;
+  /** The viewer's day, YYYY-MM-DD. */
+  readonly today: string;
+  readonly birth: ProcessedBirthData | undefined;
+  readonly language: string;
+}
+
+const TENSE = { past: 'past', future: 'future', contains_today: 'present' } as const;
+
+function point(source: { sign: string; nakshatra: string; nakshatra_pada: number; sign_lord: string }): NatalPoint {
+  return { sign: source.sign, nakshatra: source.nakshatra, pada: source.nakshatra_pada, sign_lord: source.sign_lord };
+}
+
+/**
+ * Lagna, Moon, planets by sign and house with their lordships, combustion and
+ * yogakaraka, and yogas with their planets: no degrees, dates or coordinates.
+ * A chart stored before a field existed reads it as empty or false.
+ */
+export function natalSummary(chart: SiderealChart): NatalSummary {
+  const planets = Object.values(chart.planets ?? {}).map((planet) => ({
+    name: planet.name,
+    sign: planet.sign,
+    house: planet.house,
+    nakshatra: planet.nakshatra,
+    dignity: planet.dignity,
+    retrograde: planet.is_retrograde,
+    houses_ruled: planet.houses_ruled ?? [],
+    combust: planet.is_combust ?? false,
+    yogakaraka: planet.is_yogakaraka ?? false,
+  }));
+  const moon = chart.planets?.moon;
+  return {
+    lagna: point(chart.lagna),
+    moon: moon ? point(moon) : null,
+    planets,
+    yogas: (chart.yogas ?? []).map((yoga) => ({
+      name: yoga.display_name, category: yoga.category, planets_involved: yoga.planets_involved ?? [],
+    })),
+  };
+}
+
+/** The pin the tools read: an old trip with no place borrows the birth place. */
+export function tripPin(asOf: ChatThreadAsOf, birth: ProcessedBirthData | undefined): ChatThreadAsOf {
+  if (asOf.place) return asOf;
+  const home = birthPlaceOf(birth?.birth_location_details);
+  return home ? { ...asOf, place: home } : asOf;
+}
+
+function tripPlace(asOf: ChatThreadAsOf, birth: ProcessedBirthData | undefined): TripPlace {
+  if (asOf.place) {
+    return { label: asOf.place.label, timezone: asOf.place.timezone, source: 'trip', display: asOf.place.label };
+  }
+  const home = birthPlaceOf(birth?.birth_location_details);
+  if (home) return { label: home.label, timezone: home.timezone, source: 'birth_place', display: home.label };
+  return { label: UNKNOWN_PLACE_LABEL, timezone: 'UTC', source: 'birth_place', display: '' };
+}
+
+export function tripContext(input: TripContextInput): TripContext {
+  const { asOf } = input;
+  const range = { start: asOf.start, end: asOf.end };
+  return {
+    period: {
+      ...range,
+      granularity: asOf.granularity,
+      tense: TENSE[pinRelative(range, input.today)],
+      label: formatPinLabel(asOf, input.language),
+      short: tripPeriodLabel(asOf, input.language),
+    },
+    place: tripPlace(asOf, input.birth),
+    today: input.today,
+    natal: natalSummary(input.chart),
+    // A chart stored without a dasha tree still has a trip; it just has no dasha rows.
+    dashas: input.chart.dashas
+      ? selectDashasForPeriod(input.chart.dashas, range, birthYearOf(input.birth))
+      : { maha: [], antar: [], notes: [] },
+  };
+}
+
+const title = (lord: string) => lord.charAt(0).toUpperCase() + lord.slice(1);
+
+/** 'Jupiter–Saturn → Jupiter–Mercury': the maha–antar rows that cover the trip. */
+export function tripDashaLine(trip: TripContext): string {
+  const rows = trip.dashas.antar.length > 0
+    ? trip.dashas.antar.map((row) => `${title(row.maha_lord)}–${title(row.lord)}`)
+    : trip.dashas.maha.map((row) => title(row.lord));
+  return rows.join(' → ');
+}

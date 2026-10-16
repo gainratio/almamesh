@@ -43,6 +43,7 @@ import type { IndexableMessage } from '@almamesh/memory';
 import { devicePolicy } from '@almamesh/browser';
 
 import {
+  canonicalChatMessages,
   clearMemory as clearPersistedMemory,
   deleteMemoryForProfile as deletePersistedMemoryForProfile,
   deleteMemoryForThread as deletePersistedMemoryForThread,
@@ -497,23 +498,6 @@ async function reconcileDurableDeletionLedger(): Promise<void> {
   }
 }
 
-function restoredMemoryMessages(): readonly IndexableMessage[] {
-  const chat = useChatStore.getState();
-  const messages: IndexableMessage[] = [];
-  for (const thread of Object.values(chat.threads)) {
-    for (const message of chat.messages[thread.id] ?? []) {
-      if (message.error === true || message.content.trim().length === 0) continue;
-      messages.push({
-        id: message.id,
-        thread_id: thread.id,
-        profile_id: thread.profile_id,
-        content: message.content,
-      });
-    }
-  }
-  return messages;
-}
-
 /**
  * Adopt a restore this realm just committed without a page load: the same
  * in-place replace other tabs apply, then the pending search-memory rebuild.
@@ -544,7 +528,7 @@ export async function resumePendingMemoryRebuild(
   const ledger = await (deps.readLedger ?? readDeletionTombstones)();
   if (!ledger.memoryRebuildPending) return;
   await (deps.waitForChat ?? whenChatHydrated)();
-  await (deps.rebuild ?? rebuildMemory)(restoredMemoryMessages());
+  await (deps.rebuild ?? rebuildMemory)(canonicalChatMessages());
   await (deps.complete ?? clearMemoryRebuildPending)(ledger.activeEpoch);
 }
 

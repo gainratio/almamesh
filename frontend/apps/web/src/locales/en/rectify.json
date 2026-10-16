@@ -58,7 +58,7 @@
     "d9_lord_in_d9_h7": "The active period lord sits in the partnership (7th) house of the navamsa (D9) chart",
     "d9_lord_is_d9_lagna_lord": "The active period lord rules the navamsa (D9) rising sign itself",
     "miss_unexplained": "No active period explains this event — it counts against this candidate",
-    "miss_silent": "Predicted a strong {{category}} window with nothing reported",
+    "miss_silent": "Showed a strong {{category}} window with nothing reported",
     "prior_anchor": "Closest to the recorded time — a gentle nudge, never a substitute for events",
     "qualifier_afflicted": "the lord's weakened (afflicted) state matches this difficult event",
     "qualifier_dignified": "the lord's dignified strength matches this fortunate event",
@@ -172,7 +172,7 @@
     "reading": "Reading your message…"
   },
   "summary": {
-    "label": "What happened",
+    "label": "Your note",
     "placeholder": "e.g. Moved to a new city for a job"
   },
   "tray": {

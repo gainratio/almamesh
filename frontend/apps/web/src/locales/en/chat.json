@@ -20,9 +20,14 @@
   },
   "agent": {
     "preparing": "Preparing local tools…",
+    "preparing_chart": "Preparing your chart…",
     "deciding": "Choosing the next safe step…",
     "answering": "Writing the grounded answer…",
-    "complete": "Done"
+    "complete": "Done",
+    "reading": "Reading {{period}}…",
+    "moving": "Moving to {{period}}…",
+    "returning": "Back to today…",
+    "natal_only": "Today’s sky wasn’t ready, so this answer reads your birth chart only."
   },
   "tooltip": "Ask about your chart",
   "controls": {
@@ -39,7 +44,8 @@
     "no_results": "No matching past messages.",
     "thread_fallback": "Conversation",
     "match": "{{percent}}% match",
-    "loading_model": "Loading on-device search (first time only)…"
+    "loading_model": "Loading on-device search (first time only)…",
+    "thread_match": "Matches this conversation’s period or place"
   },
   "suggested": {
     "label": "Suggested questions:",
@@ -80,7 +86,8 @@
     "request_failed": "The AI request failed — try again in a moment, or check your model and endpoint in Settings → AI.",
     "privacy_blocked": "Your AI is set to stay on this device, so nothing was sent to {{endpoint}}. To use a cloud endpoint, tick \"Allow a cloud endpoint\" under Settings → AI → Advanced.",
     "privacy_blocked_no_endpoint": "Your AI is set to stay on this device, so nothing was sent to the cloud endpoint. To use it, tick \"Allow a cloud endpoint\" under Settings → AI → Advanced.",
-    "save_failed": "This answer couldn't be saved on this device, so it may be gone after a reload."
+    "save_failed": "This answer couldn't be saved on this device, so it may be gone after a reload.",
+    "app_updated": "AlmaMesh was updated. Reload to continue; your message is kept."
   },
   "not_configured": {
     "notice": "Connect an AI model to ask questions about your chart — your chart itself is already calculated on your device.",
@@ -95,10 +102,14 @@
     "status_working": "Working out the sky for {{period}}… (about 30 s)",
     "sheet": {
       "title": "Time travel",
-      "intro": "Pick a time. Answers in the new chat will be about it.",
+      "intro": "Pick a time. Answers in the new chat show what your chart highlights for it: themes to reflect on.",
       "intro_change": "Pick a new period. This chat's next answers will be about it.",
       "when": "When?",
-      "tabs": { "day": "Day", "month": "Month", "year": "Year" },
+      "tabs": {
+        "day": "Day",
+        "month": "Month",
+        "year": "Year"
+      },
       "day_label": "Day",
       "month_label": "Month",
       "year_label": "Year",
@@ -106,22 +117,71 @@
       "where_hint": "Type a city. The search stays on this device.",
       "where_placeholder": "Search for a city",
       "where_required": "Pick where you were (or will be) that day.",
+      "where_required_period": "Pick where you were (or will be) at that time.",
+      "where_prefilled": "Filled in from your nearest trip. Change it if you were somewhere else.",
       "where_none": "No city found. Try a nearby larger city.",
       "where_failed": "Place search is temporarily unavailable. Try again.",
       "retry_lookup": "Retry search",
       "before_birth": "That's before you were born. Pick a later period.",
       "save_failed": "Couldn't save this on your device. Try again.",
       "go": "Go",
-      "cancel": "Cancel"
+      "cancel": "Cancel",
+      "where_question": "Where were you living then?",
+      "where_question_day": "Where were you that day?",
+      "where_suggestion": "Use {{place}} (your birth place)",
+      "where_home": "Use {{place}} (where you live now)"
     },
     "banner": {
-      "about": "answers are about this period",
+      "about": "what your chart highlights for this period",
       "change": "Change",
       "back": "Back to today"
     },
     "starters": {
-      "past": { "hard": "Why did this time feel hard?", "teaching": "What was this period teaching me?" },
-      "future": { "prepare": "What should I prepare for?", "strongest": "Which months look strongest?" }
+      "past": {
+        "hard": "Why did this time feel hard?",
+        "teaching": "What was this period teaching me?"
+      },
+      "future": {
+        "prepare": "What does my chart highlight for this time?",
+        "strongest": "Which months look strongest?"
+      }
     }
+  },
+  "tools": {
+    "button": "Tools",
+    "heading": "Tools the AI can use in this thread",
+    "row": "Looked up {{what}}",
+    "row_failed": "Could not look up {{what}}",
+    "row_skipped": "Skipped {{what}}",
+    "args": "Asked with",
+    "result": "Got back",
+    "read_period": "Read a period: dashas, lords, sky, themes, dated windows",
+    "travel": "Travel to another time",
+    "rows": {
+      "read_period": "the period reading",
+      "travel": "a move in time",
+      "place": "a place",
+      "context": "chart facts"
+    }
+  },
+  "threads": {
+    "label": "Conversations",
+    "button": "Conversations",
+    "today": "Today",
+    "trips": "Time travel"
+  },
+  "trip": {
+    "card_label": "What this trip reads",
+    "dasha": "Dasha: {{dasha}}",
+    "birth_place_fallback": "No place was chosen for this trip: it reads {{place}}, the birth place.",
+    "transits": "Transits: {{transits}}"
+  },
+  "place_pick": {
+    "title": "Which {{place}}?",
+    "label": "Place"
+  },
+  "moved": {
+    "to": "Moved to {{title}}",
+    "today": "Moved to today"
   }
 }

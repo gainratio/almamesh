@@ -44,6 +44,11 @@ function placeProblem(place: unknown): string | undefined {
   return inRange(longitude, 180) ? undefined : 'as_of.place.longitude';
 }
 
+/** A trip place (label, IANA zone, coordinates) the store would keep: also the shape of a person's current place. */
+export function isPinPlace(value: unknown): value is NonNullable<ChatThreadAsOf['place']> {
+  return placeProblem(value) === undefined;
+}
+
 /** The first day a valid start may hold: the 1st for a month, Jan 1 for a year. */
 function startFits(start: string, granularity: string): boolean {
   if (granularity === 'month') return start.endsWith('-01');
@@ -78,8 +83,9 @@ export function chatAsOfProblem(value: unknown): string | undefined {
   const period = periodProblem(value);
   if (period) return period;
   const { granularity, place } = value;
-  if (granularity === 'day') return place === undefined ? 'as_of.place' : placeProblem(place);
-  return place === undefined ? undefined : 'as_of.place';
+  // Every new trip carries a place; Month/Year pins saved before 2026-10-13 have none.
+  if (place === undefined) return granularity === 'day' ? 'as_of.place' : undefined;
+  return placeProblem(place);
 }
 
 export function isChatThreadAsOf(value: unknown): value is ChatThreadAsOf {

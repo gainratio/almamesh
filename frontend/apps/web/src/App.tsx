@@ -46,10 +46,12 @@ const LifeDomainPage = lazyWithRetry(() => import('./pages/LifeDomain'), 'LifeDo
 const MeshPage = lazyWithRetry(() => import('./pages/Mesh'), 'Mesh')
 const MeshEdgePage = lazyWithRetry(() => import('./pages/MeshEdge'), 'MeshEdge')
 const RectifyPage = lazyWithRetry(() => import('./pages/Rectify'), 'Rectify')
+const OnboardingAiPage = lazyWithRetry(() => import('./pages/OnboardingAi'), 'OnboardingAi')
 const ReportViewPage = lazyWithRetry(() => import('./pages/ReportView'), 'ReportView')
 const PrivacyPolicy = lazyWithRetry(() => import('./pages/legal/PrivacyPolicy'), 'PrivacyPolicy')
 const TermsOfService = lazyWithRetry(() => import('./pages/legal/TermsOfService'), 'TermsOfService')
 const DataDeletion = lazyWithRetry(() => import('./pages/legal/DataDeletion'), 'DataDeletion')
+const HowWeTest = lazyWithRetry(() => import('./pages/legal/HowWeTest'), 'HowWeTest')
 const SettingsLayout = lazyWithRetry(() => import('./pages/settings/SettingsLayout'), 'SettingsLayout')
 const ProfileSettings = lazyWithRetry(() => import('./pages/settings/ProfileSettings'), 'ProfileSettings')
 const PeopleSettings = lazyWithRetry(() => import('./pages/settings/PeopleSettings'), 'PeopleSettings')
@@ -144,6 +146,7 @@ function AppRoutes() {
     <AppLayout>
       <AnimatedRoutes>
         <Route path="/onboarding" element={storagePage(<OnboardingPage />)} />
+        <Route path="/onboarding/ai" element={storagePage(<OnboardingAiPage />)} />
         <Route path="/dashboard" element={storagePage(<DashboardPage />)} />
         <Route path="/predictive" element={storagePage(<PredictivePage />)} />
         <Route path="/life/:domain" element={storagePage(<LifeDomainPage />)} />
@@ -168,6 +171,7 @@ function AppRoutes() {
         <Route path="/privacy" element={page(<PrivacyPolicy />)} />
         <Route path="/terms" element={page(<TermsOfService />)} />
         <Route path="/data-deletion" element={page(<DataDeletion />)} />
+        <Route path="/how-we-test" element={page(<HowWeTest />)} />
 
         <Route path="*" element={<NotFoundPage />} />
       </AnimatedRoutes>

@@ -30,6 +30,7 @@ import {
   type SmokePass,
   type SmokeRun,
 } from "./deployment.js"
+import { CARRY_FORWARD_TOOL, CARRY_FORWARD_TOOL_SOURCE, carryForwardCommand } from "./assetCarryForward.js"
 import { AUDIT_EXCEPTIONS_FILE, auditIgnoreArgs, parseAuditExceptions } from "./auditExceptions.js"
 import {
   PRODUCT_GATES,
@@ -179,6 +180,8 @@ fi`
 interface ReleaseArtifact {
   dist: Directory
   roots: Directory
+  /** scripts/carryForwardAssets.mjs from the same verified source (deploy skew protection). */
+  carryTool: File
 }
 
 type PagesClient = ReturnType<typeof dag.cloudflarePages>
@@ -633,6 +636,9 @@ exec ${inline.join(" ")}`,
       // "unknown" computing at noon, and the Vedic weekday lord for Apia
       // (date-line) and Sydney (east of UTC) births. Chromium only.
       "TIME_HANDLING_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-handling --project=chromium",
+      // The onboarding AI step (Connect AI / Not now) and the chat's no-AI prompt
+      // through real onboarding. Chromium here; WebKit and an iPhone run on macOS.
+      "ONBOARDING_AI_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:onboarding-ai --project=chromium",
       // Time travel (spec 2026-10-08), Inc A, B, C and D journeys: June 2019
       // typed in plain chat, an 18-month period, places, and the Time travel
       // button (2027 pinned; a Day pin found on the device). A stubbed
@@ -643,6 +649,9 @@ exec ${inline.join(" ")}`,
       // slower hosted runners; neither shard changes the test or job budgets.
       "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=chromium --fully-parallel --workers=1 --shard=1/2 --output=browser-journeys-artifacts/time-travel-shard-1",
       "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=chromium --fully-parallel --workers=1 --shard=2/2 --output=browser-journeys-artifacts/time-travel-shard-2",
+      // Trip threads (2026-10-13): a new thread per trip with its place, trip-bound
+      // tools, tool-call rows, the thread list, search and layout. Stubbed provider.
+      "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel-threads.spec.ts --project=chromium --workers=1 --output=browser-journeys-artifacts/time-travel-threads",
       // A person added on /mesh survives an immediate full page load (the
       // write is on disk before the dialog moves on). Chromium only.
       "MESH_PERSIST_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:mesh-add-persist",
@@ -884,9 +893,16 @@ exec ${inline.join(" ")}`,
       "api/feedback.ts",
       this.source.file("frontend/apps/web/functions/api/feedback.ts"),
     )
+    // No predecessor in the dry run: the carry-forward tool still runs on the
+    // real dist (manifest written, missing-chunk-404 check enforced).
+    const dist = this.carriedDist(
+      release.directory(DIST),
+      this.source.file(CARRY_FORWARD_TOOL_SOURCE),
+      null,
+    )
     const roots = dag
       .directory()
-      .withDirectory("dist", release.directory(DIST))
+      .withDirectory("dist", dist)
       .withDirectory("functions", functions)
     return this.pagesFunctionsProof(roots, expectedSha)
   }
@@ -942,6 +958,11 @@ exec ${inline.join(" ")}`,
           evidence.repository,
         ),
       ),
+      carryForwardAssets: async (artifact, previous) => {
+        const carried = this.carriedRelease(artifact, previous.deploymentUrl)
+        await carried.dist.sync()
+        return carried
+      },
       verifyPreview: async (artifact, evidence) => {
         await this.pagesFunctionsProof(artifact.roots, evidence.commitSha).sync()
       },
@@ -1079,7 +1100,31 @@ exec ${inline.join(" ")}`,
       .directory()
       .withDirectory(PAGES_TARGET.deployRoot, dist)
       .withDirectory("functions", functions)
-    return { dist, roots }
+    return { dist, roots, carryTool: source.file(CARRY_FORWARD_TOOL_SOURCE) }
+  }
+  /**
+   * Deploy skew protection: the release's dist plus the previous releases'
+   * hashed /assets/*, downloaded from the live deployment's immutable URL and
+   * verified against its assets-manifest.json (assetCarryForward.ts). Not
+   * nonced: a deployment URL never changes content, so a cached result for the
+   * same dist and the same previous deployment is the right result.
+   */
+  private carriedDist(dist: Directory, tool: File, previousUrl: string | null): Directory {
+    return dag
+      .container()
+      .from(NODE_IMAGE)
+      .withDirectory("/release/dist", dist)
+      .withFile(CARRY_FORWARD_TOOL, tool)
+      .withExec(carryForwardCommand("/release/dist", previousUrl))
+      .directory("/release/dist")
+  }
+  private carriedRelease(artifact: ReleaseArtifact, previousUrl: string): ReleaseArtifact {
+    const dist = this.carriedDist(artifact.dist, artifact.carryTool, previousUrl)
+    const roots = dag
+      .directory()
+      .withDirectory(PAGES_TARGET.deployRoot, dist)
+      .withDirectory("functions", artifact.roots.directory("functions"))
+    return { dist, roots, carryTool: artifact.carryTool }
   }
   private pagesFunctionsProof(roots: Directory, expectedSha: string): Container {
     const derived = this.pagesFunctionsBuild(roots).directory("/derived")

@@ -117,3 +117,54 @@ describe('cityLookup — natural-language & diacritic matching', () => {
         expect(results[0].country).toBe('France');
     });
 });
+
+describe('cityLookup — state-aware places (bundled GeoNames admin1)', () => {
+    it.each(['novato, ca', 'Novato', 'novato california', 'Novato, CA, USA'])(
+        '%j -> Novato, California, United States with its own zone',
+        async (query) => {
+            const [top] = await searchCitiesOffline(query);
+            expect(top.displayName).toBe('Novato, California, United States');
+            expect(top.state).toBe('California');
+            expect(top.timezone).toBe('America/Los_Angeles');
+            expect(top.latitude).toBeCloseTo(38.107, 2);
+            expect(top.longitude).toBeCloseTo(-122.570, 2);
+        },
+    );
+
+    it('lists every Springfield by state, most populous first', async () => {
+        const results = await searchCitiesOffline('Springfield', 6);
+        const labels = results.map((r) => r.displayName);
+        expect(labels).toHaveLength(6);
+        expect(new Set(labels).size).toBe(6);
+        expect(labels).toContain('Springfield, Illinois, United States');
+        const populations = results.map((r) => r.population);
+        expect(populations).toEqual([...populations].sort((a, b) => b - a));
+    });
+
+    it('tells Portland, OR from Portland, ME', async () => {
+        const oregon = await searchCitiesOffline('Portland, OR');
+        expect(oregon.map((r) => r.displayName)).toEqual(['Portland, Oregon, United States']);
+        expect(oregon[0].timezone).toBe('America/Los_Angeles');
+        const maine = await searchCitiesOffline('Portland, ME');
+        expect(maine.map((r) => r.displayName)).toEqual(['Portland, Maine, United States']);
+        expect(maine[0].timezone).toBe('America/New_York');
+    });
+
+    it('offers San Jose, California and San José, Costa Rica', async () => {
+        const labels = (await searchCitiesOffline('San Jose', 6)).map((r) => r.displayName);
+        expect(labels[0]).toBe('San Jose, California, United States');
+        expect(labels).toContain('San José, Costa Rica');
+    });
+
+    it('resolves Vadodara to Gujarat, India and Asia/Kolkata', async () => {
+        const [top] = await searchCitiesOffline('Vadodara');
+        expect(top.displayName).toBe('Vadodara, Gujarat, India');
+        expect(top.timezone).toBe('Asia/Kolkata');
+    });
+
+    it('a state code filters: "paris tx" is only Paris, Texas', async () => {
+        const results = await searchCitiesOffline('paris tx');
+        expect(results.map((r) => r.displayName)).toEqual(['Paris, Texas, United States']);
+        expect(results[0].timezone).toBe('America/Chicago');
+    });
+});

@@ -86,7 +86,13 @@
     "success_description": "Os seus dados de nascimento foram atualizados e o seu mapa foi regenerado no dispositivo.",
     "view_new_chart": "Ver novo mapa",
     "processing_title": "Regenerando o seu mapa",
-    "processing_description": "Calculando no dispositivo — leva apenas um instante."
+    "processing_description": "Calculando no dispositivo — leva apenas um instante.",
+    "current_place_label": "Onde você mora agora?",
+    "current_place_placeholder": "Busque uma cidade",
+    "current_place_hint": "Opcional. Fica neste dispositivo.",
+    "current_place_clear": "Limpar",
+    "current_place_saved": "Salvo",
+    "current_place_failed": "Não foi possível salvar. Tente de novo."
   },
   "rectification_record": {
     "title": "Sua retificação",
@@ -182,13 +188,15 @@
   },
   "aiModels": {
     "interpretation_label": "Modelo de interpretação / leitura do mapa",
-    "interpretation_advice": "O padrão, DeepSeek V4.1 Flash, é rápido e barato: nos nossos testes escreveu a linha do tempo completa em cerca de 50 segundos por cerca de 2 centavos. Um modelo maior pode escrever com mais profundidade, mas demora mais.",
+    "interpretation_advice": "O padrão, GPT Luna, é rápido e barato: nos nossos testes escreveu a linha do tempo completa em cerca de 45 segundos por menos de 1 centavo. Um modelo maior pode escrever com mais profundidade, mas demora mais.",
     "chat_label": "Modelo de chat",
-    "switch_title": "Mudar para DeepSeek V4.1 Flash?",
-    "switch_body": "Você usa o GLM 5.3 Flash. Nos nossos testes (3 execuções cada), o DeepSeek V4.1 Flash escreveu a linha do tempo completa em cerca de 50 s todas as vezes. O GLM 5.3 Flash não mostrou nada por mais de um minuto em 2 de 3 execuções e levou 200 s na que terminou.",
-    "switch_accept": "Mudar para DeepSeek V4.1 Flash",
+    "switch_title": "Mudar para GPT Luna?",
+    "switch_body": "Você usa o GLM 5.3 Flash. Nos nossos testes (3 execuções cada), o GPT Luna escreveu a linha do tempo completa em 39–49 s todas as vezes. O GLM 5.3 Flash não mostrou nada por mais de um minuto em 2 de 3 execuções e levou 200 s na que terminou.",
+    "switch_accept": "Mudar para GPT Luna",
     "switch_dismiss": "Manter GLM 5.3 Flash",
     "chat_advice": "Recomenda-se um modelo menor e mais rápido. O chat já reutiliza os dados do mapa e a leitura gerada, então não precisa de um modelo pesado — um rápido mantém as respostas ágeis.",
+    "context_label": "Janela de contexto (tokens)",
+    "context_advice": "Quanto este modelo consegue ler de uma vez. O chat mantém cada pedido dentro da metade disso. Deixe em branco se não souber: o chat assume uma janela pequena de 8k.",
     "loading_models": "Carregando modelos…",
     "more_models": "Digite para buscar…",
     "catalog_hint": "Escolha entre {{count}} modelos do OpenRouter — ou digite qualquer id de modelo.",
@@ -201,7 +209,9 @@
     "none_button": "Desativar a IA",
     "active_badge": "Ativo",
     "cloud_title": "Conectar IA",
-    "cloud_body": "Adicione interpretações escritas e chat com uma chave do OpenRouter (recomendado) ou qualquer endpoint compatível com OpenAI. As solicitações baseadas no mapa não incluem o seu nome nem a sua data de nascimento, mas as posições planetárias e as datas dos períodos que incluem podem revelar a sua data de nascimento. Se você usar IA para organizar eventos de vida, a narrativa digitada será enviada como escrita após o aviso; os dados de nascimento e o mapa não serão anexados."
+    "cloud_body": "Adicione interpretações escritas e chat com uma chave do OpenRouter (recomendado) ou qualquer endpoint compatível com OpenAI. As solicitações baseadas no mapa não incluem o seu nome nem a sua data de nascimento, mas as posições planetárias e as datas dos períodos que incluem podem revelar a sua data de nascimento. Se você usar IA para organizar eventos de vida, a narrativa digitada será enviada como escrita após o aviso; os dados de nascimento e o mapa não serão anexados.",
+    "cloud_summary": "As solicitações do mapa não incluem o seu nome nem a sua data de nascimento, mas as posições planetárias e as datas que levam podem revelá-la.",
+    "cloud_details_summary": "O que é enviado"
   },
   "preferences": {
     "title": "Preferências",

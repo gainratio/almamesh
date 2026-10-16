@@ -25,36 +25,40 @@ import { openRouterPreset, writeLlmSettings } from '@almamesh/llm';
 
 import '../../i18n/config';
 import MeshEdgePage from '../MeshEdge';
-import { buildChatToolset, type ChatToolset } from '../../lib/chatToolset';
-import { expectToolsetReadsViewerToday } from '../../test/viewerToday';
 import { MESH_EDGE_FRIEND, MESH_EDGE_SPOUSE } from '../../test/meshFixtures';
 import { __resetMemoryForTest, __setMemoryForTest } from '../../lib/chatMemory';
 import { ChartEngineContext, type ChartEngineContextValue } from '../../providers/chartEngineContext';
 
-const llmMocks = vi.hoisted(() => ({
-  streamAgentChat: vi.fn(),
-  streamChartChat: vi.fn(),
+// The chat panel is a lazy chunk (AI SDK + zod). Its first import in a test file can
+// take over findBy's 1 s default under full-suite load (seen in 1 of 4 full gate
+// runs here); the wait is for the import, not for app behavior.
+const LAZY_CHAT = { timeout: 10_000 } as const;
+
+const llmMocks = vi.hoisted(() => ({ streamChartChat: vi.fn(), runToolTurn: vi.fn() }));
+
+vi.mock('@almamesh/llm', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@almamesh/llm')>()),
+  streamChartChat: llmMocks.streamChartChat,
 }));
 
-vi.mock('@almamesh/llm', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@almamesh/llm')>();
-  return {
-    ...actual,
-    streamAgentChat: llmMocks.streamAgentChat,
-    streamChartChat: llmMocks.streamChartChat,
-  };
+// The real chat turn (lib/chatTurn.ts) runs; only the tool loop is replaced, so its options are visible.
+vi.mock('@almamesh/llm/toolLoop', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@almamesh/llm/toolLoop')>()),
+  runToolTurn: llmMocks.runToolTurn,
+}));
+
+// The chat turn's context budget: a fixed small window, and no catalog read from a unit test.
+const budgetMocks = vi.hoisted(() => ({ onRound: vi.fn(), onToolCall: vi.fn() }));
+vi.mock('../../lib/chatContextBudget', async () => {
+  const { chatPromptBudgetFor } = await vi.importActual<typeof import('@almamesh/llm')>('@almamesh/llm');
+  return { chatContextFor: vi.fn(async () => ({ promptBudget: chatPromptBudgetFor(8_192), telemetry: budgetMocks })) };
 });
 
-// Pin the viewer's zone so the viewer-today check holds on a runner in any TZ.
+// Pin the viewer's zone so the NOW line is the viewer's day on a runner in any TZ.
 vi.mock('../../lib/analysisInstant', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../lib/analysisInstant')>()),
   viewerTimeZone: () => 'America/Los_Angeles',
 }));
-
-vi.mock('../../lib/chatToolset', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../lib/chatToolset')>();
-  return { ...actual, buildChatToolset: vi.fn(actual.buildChatToolset) };
-});
 
 const ANCHOR: Profile = {
   id: 'p-anchor',
@@ -158,7 +162,7 @@ function renderAt(path: string, engine: ChartEngineContextValue | null = null): 
 describe('MeshEdgePage', () => {
   beforeEach(() => {
     localStorage.clear();
-    llmMocks.streamAgentChat.mockReset();
+    llmMocks.runToolTurn.mockReset();
     llmMocks.streamChartChat.mockReset();
     useLanguageStore.setState({ language: 'en' });
     useProfilesStore.setState({ profiles: {}, activeProfileId: null, hydrated: true });
@@ -290,6 +294,10 @@ describe('MeshEdgePage', () => {
     // AI is unconfigured in tests → the honest CTA, never a spinner.
     expect(screen.getByTestId('mesh-reading-cta')).toBeTruthy();
     expect(screen.queryByTestId('mesh-discuss-chat')).toBeNull();
+    // Its button opens the shared AI setup panel in place.
+    fireEvent.click(screen.getByTestId('mesh-reading-connect'));
+    expect(screen.getByRole('dialog', { name: 'Connect AI' })).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
 
     // The engine's read-only promise, verbatim, at the foot.
     expect(screen.getByTestId('mesh-integrity-note').textContent).toContain(
@@ -326,7 +334,7 @@ describe('MeshEdgePage', () => {
     expect(screen.getByTestId('mesh-window-5y').getAttribute('aria-pressed')).toBe('true');
   });
 
-  it('keeps relationship chat inside the bounded agent loop with sanitized mesh grounding', async () => {
+  it('keeps relationship chat inside the tool loop with sanitized mesh grounding', async () => {
     writeLlmSettings(openRouterPreset('sk-or-v1-0000-synthetic-test-key', 'test-org/test-model'));
     __setMemoryForTest({
       indexMessage: vi.fn().mockResolvedValue(undefined),
@@ -335,11 +343,12 @@ describe('MeshEdgePage', () => {
       deleteForThread: vi.fn().mockResolvedValue(undefined),
       clear: vi.fn().mockResolvedValue(undefined),
     });
-    llmMocks.streamAgentChat.mockImplementation(async function* (options) {
+    llmMocks.runToolTurn.mockImplementation(async function* (options) {
       options.onStatus?.({ phase: 'deciding', round: 1 });
       options.onStatus?.({ phase: 'answering' });
       yield 'The relationship timing is grounded in both charts.';
       options.onStatus?.({ phase: 'complete' });
+      return { answer: undefined };
     });
 
     seedPeople(SPOUSE);
@@ -348,35 +357,39 @@ describe('MeshEdgePage', () => {
     renderAt('/mesh/p-spouse');
 
     fireEvent.click(screen.getByTestId('mesh-discuss-chat'));
-    fireEvent.change(await screen.findByTestId('chat-input'), {
+    fireEvent.change(await screen.findByTestId('chat-input', {}, LAZY_CHAT), {
       target: { value: 'How are our charts working together?' },
     });
     fireEvent.click(screen.getByTestId('chat-send-button'));
 
-    await waitFor(() => expect(llmMocks.streamAgentChat).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(llmMocks.runToolTurn).toHaveBeenCalledTimes(1));
     expect(llmMocks.streamChartChat).not.toHaveBeenCalled();
-    const options = llmMocks.streamAgentChat.mock.calls[0][0];
-    expect(options.tools.map((tool: { name: string }) => tool.name)).toEqual([
-      'get_current_datetime',
-      'get_chart_facts',
-      'get_timing',
-      'resolve_place',
-      'time_travel',
-    ]);
-    expect(JSON.stringify(options.messages)).toContain('ENGINE RELATIONSHIP CONTEXT');
-    expect(JSON.stringify(options.messages)).not.toContain(ANCHOR.name);
-    expect(JSON.stringify(options.messages)).not.toContain(SPOUSE.name);
+    const options = llmMocks.runToolTurn.mock.calls[0][0];
+    expect(options.tools.map((tool: { name: string }) => tool.name)).toEqual(['read_period', 'travel']);
+    expect(options.readFirst).toBe(false);
+    // The turn's rounds and every tool call reach its dev telemetry (window.__almameshAgentRounds/Calls).
+    expect(options.onRound).toBe(budgetMocks.onRound);
+    const call = { round: 1, toolCallId: 'c1', toolName: 'read_period', args: {}, result: {}, status: 'complete' as const, validFirstTry: true };
+    options.onToolCall?.(call);
+    expect(budgetMocks.onToolCall).toHaveBeenCalledWith(call);
+    const sent = JSON.stringify(options.messages);
+    expect(sent).toContain('ENGINE RELATIONSHIP CONTEXT');
+    expect(sent).not.toContain(ANCHOR.name);
+    expect(sent).not.toContain(SPOUSE.name);
+    // Today is the viewer's day and zone, never the anchor's birth zone (Asia/Kolkata in this fixture).
+    expect(sent).toMatch(/NOW: today is \w+ \d{1,2} \w+ \d{4}, America\/Los_Angeles\./);
     await waitFor(() =>
       expect(screen.getByTestId('chat-panel').textContent).toContain(
         'relationship timing is grounded',
       ),
     );
-    // Same function of the same instant as the Dashboard pin: a page that reads
-    // its birth zone for "today" fails here.
-    const toolset = vi.mocked(buildChatToolset).mock.results.at(-1)!.value as ChatToolset;
-    await expectToolsetReadsViewerToday(toolset, 'Asia/Kolkata'); // the anchor's birth zone in this fixture
   });
-  it('refuses relationship chat when the anchor chart has no birthplace timezone (no silent UTC)', async () => {
+
+  // Northstar on PR #366: "take me to May 2019" -> asked where -> "Delhi" names no move. Re-grade
+  // (2026-10-15): this test asserted the defect, a pending request read from the user's text that let
+  // the next turn travel anywhere ({to:"today"} queued). Contract reversed: pending is the saved
+  // needs_place travel call, and it finishes only that call's `to`, with a place.
+  const discussTwoTurns = async (firstTurn: (options: { tools: { name: string; execute: (args: unknown, context: unknown) => Promise<unknown> }[]; onToolCall?: (row: unknown) => void }) => Promise<void>) => {
     writeLlmSettings(openRouterPreset('sk-or-v1-0000-synthetic-test-key', 'test-org/test-model'));
     __setMemoryForTest({
       indexMessage: vi.fn().mockResolvedValue(undefined),
@@ -384,6 +397,67 @@ describe('MeshEdgePage', () => {
       deleteForProfile: vi.fn().mockResolvedValue(undefined),
       deleteForThread: vi.fn().mockResolvedValue(undefined),
       clear: vi.fn().mockResolvedValue(undefined),
+    });
+    llmMocks.runToolTurn.mockImplementationOnce(async function* (options) {
+      await firstTurn(options);
+      yield 'Where did you live then?';
+      return { answer: undefined };
+    });
+    llmMocks.runToolTurn.mockImplementationOnce(async function* () {
+      yield 'Noted.';
+      return { answer: undefined };
+    });
+    seedPeople(SPOUSE);
+    seedCharts(SPOUSE);
+    seedEdge(SPOUSE, MESH_EDGE_SPOUSE);
+    renderAt('/mesh/p-spouse');
+    fireEvent.click(screen.getByTestId('mesh-discuss-chat'));
+    const send = async (question: string) => {
+      fireEvent.change(await screen.findByTestId('chat-input'), { target: { value: question } });
+      fireEvent.click(screen.getByTestId('chat-send-button'));
+    };
+    await send('take me to May 2019');
+    await waitFor(() => expect(llmMocks.runToolTurn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId('chat-panel').textContent).toContain('Where did you live then?'));
+    await send('Delhi');
+    await waitFor(() => expect(llmMocks.runToolTurn).toHaveBeenCalledTimes(2));
+    const travel = llmMocks.runToolTurn.mock.calls[1][0].tools.find((tool: { name: string }) => tool.name === 'travel');
+    return (args: unknown) => travel.execute(args, { now: new Date(), signal: new AbortController().signal });
+  };
+
+  it('relationship chat: "where?" asked with no travel call grants the reply nothing', async () => {
+    const travel = await discussTwoTurns(async () => undefined);
+    expect(await travel({ to: 'today', place: null })).toMatchObject({ status: 'refused', reason: 'not_asked' });
+  });
+
+  it('relationship chat: after a travel call that needed a place, the reply may finish only that move', async () => {
+    const travel = await discussTwoTurns(async (options) => {
+      const tool = options.tools.find((candidate) => candidate.name === 'travel');
+      const args = { to: '2019-05', place: null };
+      const result = await tool?.execute(args, { now: new Date(), signal: new AbortController().signal });
+      expect(result).toEqual({ status: 'needs_place', ask: 'Ask where the user lived (or will be) then.' });
+      options.onToolCall?.({ round: 1, toolCallId: 't1', toolName: 'travel', args, result, status: 'complete', validFirstTry: true });
+    });
+    expect(await travel({ to: 'today', place: null })).toMatchObject({ status: 'refused', reason: 'not_pending_move' });
+    expect(await travel({ to: '1990', place: 'Lisbon' })).toMatchObject({ status: 'refused', reason: 'not_pending_move' });
+    expect(await travel({ to: '2019-05', place: null })).toMatchObject({ status: 'refused', reason: 'not_pending_move' });
+  });
+
+  // Contract reversed (chat tool layer redesign, Task 6, 2026-10-14): this chat used to be refused,
+  // because get_current_datetime could answer "in the chart's zone". That tool is gone and today is
+  // the viewer's day, so no part of a chat turn reads the birth zone.
+  it('answers relationship chat when the anchor chart has no birthplace timezone (no tool reads it)', async () => {
+    writeLlmSettings(openRouterPreset('sk-or-v1-0000-synthetic-test-key', 'test-org/test-model'));
+    __setMemoryForTest({
+      indexMessage: vi.fn().mockResolvedValue(undefined),
+      retrieve: vi.fn().mockResolvedValue([]),
+      deleteForProfile: vi.fn().mockResolvedValue(undefined),
+      deleteForThread: vi.fn().mockResolvedValue(undefined),
+      clear: vi.fn().mockResolvedValue(undefined),
+    });
+    llmMocks.runToolTurn.mockImplementation(async function* () {
+      yield 'Both charts lean on Venus now.';
+      return { answer: undefined };
     });
     seedPeople(SPOUSE);
     seedCharts(SPOUSE);
@@ -402,16 +476,43 @@ describe('MeshEdgePage', () => {
     renderAt('/mesh/p-spouse');
 
     fireEvent.click(screen.getByTestId('mesh-discuss-chat'));
-    fireEvent.change(await screen.findByTestId('chat-input'), {
+    fireEvent.change(await screen.findByTestId('chat-input', {}, LAZY_CHAT), {
       target: { value: 'How are our charts working together?' },
     });
     fireEvent.click(screen.getByTestId('chat-send-button'));
 
-    // The send fails visibly (the chat's generic error card) and nothing is
-    // sent: no model ever answers "what time is it" in a guessed UTC.
-    await waitFor(() =>
-      expect(screen.getByTestId('chat-panel').textContent).toMatch(/couldn't process your request/),
-    );
-    expect(llmMocks.streamAgentChat).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByTestId('chat-panel').textContent).toContain('Both charts lean on Venus now.'));
+    expect(llmMocks.runToolTurn).toHaveBeenCalledTimes(1);
+  });
+  // Task 11 (2026-10-14): the anchor's "Where do you live now?" is this today thread's place, by label and zone.
+  it('relationship chat says where the anchor lives now (label and zone, never coordinates)', async () => {
+    writeLlmSettings(openRouterPreset('sk-or-v1-0000-synthetic-test-key', 'test-org/test-model'));
+    __setMemoryForTest({
+      indexMessage: vi.fn().mockResolvedValue(undefined),
+      retrieve: vi.fn().mockResolvedValue([]),
+      deleteForProfile: vi.fn().mockResolvedValue(undefined),
+      deleteForThread: vi.fn().mockResolvedValue(undefined),
+      clear: vi.fn().mockResolvedValue(undefined),
+    });
+    llmMocks.runToolTurn.mockImplementation(async function* () {
+      yield 'Both charts lean on Venus now.';
+      return { answer: undefined };
+    });
+    seedPeople(SPOUSE);
+    useProfilesStore.setState((state) => ({
+      profiles: { ...state.profiles, [ANCHOR.id]: { ...ANCHOR, currentPlace: { label: 'Novato, California, United States', timezone: 'America/Los_Angeles', latitude: 38.1074, longitude: -122.5697 } } },
+    }));
+    seedCharts(SPOUSE);
+    seedEdge(SPOUSE, MESH_EDGE_SPOUSE);
+    renderAt('/mesh/p-spouse');
+
+    fireEvent.click(screen.getByTestId('mesh-discuss-chat'));
+    fireEvent.change(await screen.findByTestId('chat-input', {}, LAZY_CHAT), { target: { value: 'How are we this month?' } });
+    fireEvent.click(screen.getByTestId('chat-send-button'));
+
+    await waitFor(() => expect(llmMocks.runToolTurn).toHaveBeenCalledTimes(1));
+    const sent = JSON.stringify(llmMocks.runToolTurn.mock.calls[0][0].messages);
+    expect(sent).toContain('THIS THREAD: today, where the user lives now: Novato, California, United States (America/Los_Angeles).');
+    expect(sent).not.toMatch(/38\.10|122\.56/);
   });
 });

@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -112,5 +112,37 @@ describe('Onboarding first step: restore instead of starting over', () => {
     renderInShell();
     expect(screen.getByRole('button', { name: 'Restaurar de um backup' })).toBeTruthy();
     await i18n.changeLanguage('en');
+  });
+});
+
+describe('Onboarding step change', () => {
+  beforeEach(() => {
+    useOnboardingStore.getState().reset();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  // On a phone the Next button sits below the fold; the next step must start
+  // at its top, not wherever the last step left the page scrolled.
+  it('scrolls the page to the top when the step changes, and not on first load', async () => {
+    const scrollTo = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    renderInShell();
+    expect(screen.getByText('Step 1 of 5')).toBeTruthy();
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    act(() => {
+      useOnboardingStore.getState().setName('Asha');
+      useOnboardingStore.getState().nextStep();
+    });
+
+    await waitFor(() => expect(screen.getByText('Step 2 of 5')).toBeTruthy());
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo.mock.calls[0][0]).toMatchObject({ top: 0 });
+
+    act(() => useOnboardingStore.getState().prevStep());
+    await waitFor(() => expect(screen.getByText('Step 1 of 5')).toBeTruthy());
+    expect(scrollTo).toHaveBeenCalledTimes(2);
   });
 });

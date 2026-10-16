@@ -268,3 +268,24 @@ def test_glue_passes_window_months_to_the_engine() -> None:
 def test_glue_refuses_a_window_past_two_years() -> None:
     with pytest.raises(ValueError, match="window_months"):
         _predictive_glue()(_predictive_input(windowMonths=25))
+
+
+def _reading_window(raw: str) -> dict[str, str]:
+    window = json.loads(raw)["period_reading"]["window"]
+    assert isinstance(window, dict)
+    return window
+
+
+def test_glue_passes_reading_end_to_the_engine() -> None:
+    glue = _predictive_glue()
+    assert _reading_window(glue(_predictive_input())) == {
+        "start": "2026-06-09",
+        "end": "2026-06-10",
+    }
+    month = glue(_predictive_input(readingEnd="2026-07-08"))
+    assert _reading_window(month) == {"start": "2026-06-09", "end": "2026-07-09"}
+
+
+def test_glue_refuses_a_reading_end_past_the_window() -> None:
+    with pytest.raises(ValueError, match="reading_end"):
+        _predictive_glue()(_predictive_input(readingEnd="2027-06-10"))

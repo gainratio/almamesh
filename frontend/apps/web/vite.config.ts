@@ -3,9 +3,10 @@ import react from '@vitejs/plugin-react'
 import { VitePWA, type VitePluginPWAAPI } from 'vite-plugin-pwa'
 import { vitePrerenderPlugin } from 'vite-prerender-plugin'
 import path from 'path'
-import { existsSync, writeFileSync, readFileSync, readdirSync } from 'fs'
+import { existsSync, writeFileSync, readFileSync, readdirSync, renameSync, rmSync } from 'fs'
 import { createHash } from 'crypto'
 import { PUBLIC_ROUTE_PATHS, prerenderOutputFile } from './src/seo/routeHead'
+import { SPA_FALLBACK_ALLOWLIST } from './src/seo/spaRoutes'
 import { createBuildIdentity } from './src/lib/buildIdentity'
 import { extractYogaWasm, isYogaWasmModuleId } from './src/lib/yogaWasmAsset'
 import { ortWasmOnlyPlugin } from './src/lib/ortWasmOnly'
@@ -156,6 +157,30 @@ function yogaWasmAssetPlugin(): Plugin {
         quotedDataUri,
         `String(import.meta.ROLLUP_FILE_URL_${referenceId}).split('/').pop()`,
       )
+    },
+  }
+}
+
+// Vite writes its chunk manifest into outDir, and Cloudflare Pages would serve
+// it publicly. Vite 8 refuses a manifest path outside outDir, so move it out
+// after the bundle is written. scripts/verify-chat-lazy.mjs reads the moved copy.
+function moveManifestOutOfDistPlugin(): Plugin {
+  let outDir = 'dist'
+  return {
+    name: 'almamesh-move-manifest-out-of-dist',
+    apply: 'build',
+    enforce: 'post',
+    configResolved(config) {
+      outDir = config.build.outDir
+    },
+    closeBundle: {
+      order: 'post',
+      handler() {
+        const from = path.resolve(__dirname, outDir, '.vite')
+        const to = path.resolve(__dirname, '.build-manifest')
+        rmSync(to, { recursive: true, force: true })
+        if (existsSync(from)) renameSync(from, to)
+      },
     },
   }
 }
@@ -350,13 +375,8 @@ function pwaPlugin(): Plugin[] {
       // returning users with an empty precache + a Chrome error page. `/` is
       // served 200 by CF Pages and by `vite preview`.
       navigateFallback: '/',
-      navigateFallbackAllowlist: [
-        /^\/(?:onboarding|dashboard|predictive|report|edit-birth-details)\/?$/,
-        /^\/life\/(?:career|finances|health|relationships|spiritual|education|family)\/?$/,
-        /^\/mesh(?:\/[^/]+)?\/?$/,
-        /^\/rectify\/[^/]+\/?$/,
-        /^\/settings(?:\/(?:profile|people|ai|preferences|data))?\/?$/,
-      ],
+      // The allowlist lives beside the router contract (src/seo/spaRoutes.ts).
+      navigateFallbackAllowlist: [...SPA_FALLBACK_ALLOWLIST],
       // Raise the 2 MiB default so the offline geocoder data (~2 MB cities) and
       // the larger app-shell chunks precache.
       maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
@@ -512,7 +532,7 @@ const NON_ROOT_PUBLIC_ROUTES: readonly string[] = PUBLIC_ROUTE_PATHS.filter((p) 
 // Spec 064 — build-time prerender of the PUBLIC routes only (landing + legal).
 // `src/prerender-entry.tsx` runs IN NODE during `vite build` and renders the
 // engine-free public shells to real per-route HTML (dist/index.html + the FLAT
-// dist/{welcome,privacy,terms,data-deletion}.html — see flattening below) with
+// dist/{welcome,privacy,terms,data-deletion,how-we-test}.html — see flattening below) with
 // per-route head tags from src/seo/routeHead.ts — so crawlers get content, not
 // an empty JS shell. Private app routes stay 100% client-rendered. Runs BEFORE
 // VitePWA in the plugin list: the prerendered pages are emitted during
@@ -711,6 +731,7 @@ export default defineConfig({
     // (keeps the 26.86 MB asyncify wasm out of the Pages upload).
     ortWasmOnlyPlugin(),
     noSourcemapsPlugin(),
+    moveManifestOutOfDistPlugin(),
     previewProdBrowserHeadersPlugin(),
     ...prerenderPublicRoutesPlugin(),
     flattenPrerenderedRoutesPlugin(),
@@ -790,6 +811,8 @@ export default defineConfig({
     // build lane forgets it. The workbox `**/*.map` globIgnore above is kept as
     // harmless defence-in-depth. Pinned by src/lib/__tests__/securityHeaders.test.ts.
     sourcemap: false,
+    // dist/.vite/manifest.json lets scripts/verify-chat-lazy.mjs walk the chunk graph.
+    manifest: true,
     // The largest legitimate lazy chunks are intentional and code-split, so the
     // 500 kB default warning is pure noise: the offline geocoder city DB
     // (~2 MB, loaded only in onboarding's location search) and the React/vendor

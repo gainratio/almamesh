@@ -9,6 +9,7 @@
 import type {
   DashaYearConvention,
   LifeDomainsContext,
+  PeriodReadingContext,
   StrengthContext,
   TransitContext,
   VargaContextFull,
@@ -242,6 +243,8 @@ export interface SiderealChart {
   readonly varga_context_full?: VargaContextFull | null;
   /** Ashtakavarga (BAV/SAV) + Shadbala strength context. */
   readonly strength_context?: StrengthContext | null;
-  /** Per-life-domain deterministic synthesis (7 LifeDomainForecast entries). */
+  /** Per-life-domain deterministic synthesis (one LifeDomainForecast per LifeDomain). */
   readonly domains_context?: LifeDomainsContext | null;
+  /** The period reading (spec 2026-10-13): dashas, running lords, slow sky, themes. */
+  readonly period_reading?: PeriodReadingContext | null;
 }

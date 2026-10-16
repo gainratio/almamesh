@@ -35,7 +35,7 @@ import { StrengthEvidencePanels } from '../components/features/predictive/Streng
 import { useElapsedSeconds, formatElapsed } from '../hooks/useElapsedSeconds';
 import { usePredictiveLayer, type PredictiveLayer } from '../hooks/usePredictiveLayer';
 import { displayInterpretationForChart } from '../hooks/useStreamingInterpretation';
-import { domainGuidance, DOMAIN_GUIDANCE_KEY, isLifeDomain } from '../lib/lifeAtlas';
+import { domainGuidance, DOMAIN_GUIDANCE_KEY, DOMAIN_NOTE_KEY, isLifeDomain, showsStrengthBand } from '../lib/lifeAtlas';
 import { formatRupas, selectPrimaryStoredChart } from '../lib/predictive';
 import { grahaName } from '../lib/predictiveEventCopy';
 
@@ -187,6 +187,7 @@ function LifeDomainContent({ domain }: { domain: LifeDomain }): ReactElement {
   // Absent on an older persisted payload — the page renders exactly as before.
   const receipt = layer.rawContexts?.domain_strength_receipts?.[domain];
   const signerPublicKey = layer.rawContexts?.strength_signer_public_key;
+  const noteKey = DOMAIN_NOTE_KEY[domain];
 
   return (
     <div className="space-y-8" data-testid="life-domain-page">
@@ -211,9 +212,14 @@ function LifeDomainContent({ domain }: { domain: LifeDomain }): ReactElement {
           <h1 className="mt-1 font-display text-3xl leading-tight text-text-primary">
             {t(`predictive:domains.names.${domain}`)}
           </h1>
+          {noteKey && (
+            <p className="mt-2 max-w-prose text-sm text-text-secondary" data-testid="life-domain-note">
+              {t(`life:${noteKey}`)}
+            </p>
+          )}
           {forecast && (
             <div className="mt-3 flex flex-wrap items-center gap-3">
-              <BandBadge band={forecast.strength_summary.band} />
+              {showsStrengthBand(domain) && <BandBadge band={forecast.strength_summary.band} />}
               <StrengthLine forecast={forecast} />
             </div>
           )}

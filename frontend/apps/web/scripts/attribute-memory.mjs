@@ -28,6 +28,7 @@ import { clearInterval, setInterval } from 'node:timers'
 import { chromium, devices, webkit } from '@playwright/test'
 
 import { readProcessTree } from './processMemory.mjs'
+import { passOnboardingAiStep } from './onboardingAiStep.mjs'
 
 const BASE_URL = process.argv.find((argument) => /^https?:\/\//.test(argument)) ?? 'http://127.0.0.1:4199'
 const BROWSER_NAME = process.argv.find((a) => a.startsWith('--browser='))?.slice(10) ?? 'webkit'
@@ -209,7 +210,7 @@ try {
   await page.getByTestId('confidence-option-exact').click()
   await page.getByTestId('next-button').click()
   await page.getByTestId('skip-life-events-button').click()
-  await page.waitForURL('**/dashboard', { timeout: 300_000 })
+  await passOnboardingAiStep(page, { timeout: 300_000 })
   await page.getByTestId('chart-visualization').first().waitFor({ state: 'attached', timeout: 300_000 })
   await stage(page, 'chart')
   await page.getByTestId('floating-chat-button').click()

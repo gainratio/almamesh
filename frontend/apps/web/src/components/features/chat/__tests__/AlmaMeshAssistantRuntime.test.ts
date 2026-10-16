@@ -65,3 +65,44 @@ describe('AlmaMesh assistant-ui external-store adapter', () => {
     ).toThrow(/text-only/i);
   });
 });
+
+describe('tool-call parts reach assistant-ui', () => {
+  it('maps persisted tool calls through, in order, with their args and the result the model got', () => {
+    const converted = convertChatMessage(message({
+      content: 'Steady work in Singapore.',
+      parts: [
+        { type: 'tool-call', toolCallId: 'a', toolName: 'get_trip_context', args: {}, status: 'complete', result: { place: { label: 'Singapore' } } },
+        { type: 'tool-call', toolCallId: 'b', toolName: 'get_timing', args: { section: 'transits' }, status: 'error', result: { code: 'tool_failed' } },
+        { type: 'text', text: 'Steady work in Singapore.' },
+      ],
+    }));
+    expect(converted.content).toEqual([
+      { type: 'tool-call', toolCallId: 'a', toolName: 'get_trip_context', args: {}, argsText: '{}', result: { place: { label: 'Singapore' } }, isError: false },
+      { type: 'tool-call', toolCallId: 'b', toolName: 'get_timing', args: { section: 'transits' }, argsText: '{"section":"transits"}', result: { code: 'tool_failed' }, isError: true },
+      { type: 'text', text: 'Steady work in Singapore.' },
+    ]);
+  });
+
+  it('a skipped call reaches assistant-ui as not an error, marked skipped', () => {
+    const converted = convertChatMessage(message({
+      parts: [{ type: 'tool-call', toolCallId: 'g', toolName: 'get_timing', args: {}, status: 'skipped', result: { code: 'skipped' } }],
+    }));
+    expect(converted.content).toEqual([
+      { type: 'tool-call', toolCallId: 'g', toolName: 'get_timing', args: {}, argsText: '{}', result: { code: 'skipped' }, isError: false, artifact: { status: 'skipped' } },
+    ]);
+  });
+
+  it('a message without parts stays one text part', () => {
+    expect(convertChatMessage(message()).content).toEqual([{ type: 'text', text: 'A grounded answer.' }]);
+  });
+});
+
+describe('thread list entries', () => {
+  it('a trip and a today thread', async () => {
+    const { threadListEntry } = await import('../AlmaMeshAssistantRuntime');
+    const base = { profile_id: 'p1', created_at: '', updated_at: '', archived_at: null, message_count: 0 };
+    expect(threadListEntry({ ...base, id: 't1', title: '⏳ May 2019 · Singapore', as_of: { start: '2019-05-01', end: '2019-05-31', granularity: 'month' } }))
+      .toEqual({ status: 'regular', id: 't1', title: '⏳ May 2019 · Singapore', custom: { trip: true } });
+    expect(threadListEntry({ ...base, id: 't2', title: null })).toEqual({ status: 'regular', id: 't2', custom: { trip: false } });
+  });
+});

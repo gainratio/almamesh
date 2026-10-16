@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 
-import type { ChatThreadSummary } from '@almamesh/shared-types';
+import type { ChatMessagePart, ChatThreadSummary } from '@almamesh/shared-types';
 
 import {
   CHAT_PERSIST_VERSION,
@@ -452,10 +452,6 @@ const PIN_2027 = { start: '2027-01-01', end: '2027-12-31', granularity: 'year' }
 const PIN_JUNE = { start: '2026-06-01', end: '2026-06-30', granularity: 'month' } as const;
 
 describe('chat store v3: time-travel pins', () => {
-  it('is persisted as version 3', () => {
-    expect(CHAT_PERSIST_VERSION).toBe(3);
-  });
-
   it('migrates a v2 blob with its threads and messages intact (no as_of = a normal thread)', () => {
     const v2 = {
       threads: { t1: { id: 't1', profile_id: 'p1', title: 'Career', message_count: 1 } },
@@ -561,5 +557,237 @@ describe('chat store v3: time-travel pins', () => {
     const after = newStore();
     after.setState(JSON.parse(JSON.stringify({ threads, messages, summaries })) as Partial<ChatStore>);
     expect(after.getState().threads[id]?.as_of).toEqual(PIN_2027);
+  });
+});
+
+const LOOKUP: ChatMessagePart = {
+  type: 'tool-call',
+  toolCallId: 'call_1',
+  toolName: 'get_transits',
+  args: { place: 'Singapore', month: '2019-05' },
+  result: { saturn: 'Sagittarius' },
+  status: 'complete',
+};
+
+describe('chat store v4: visible tool-call parts', () => {
+  it('is persisted as version 4', () => {
+    expect(CHAT_PERSIST_VERSION).toBe(4);
+  });
+
+  it('appendMessage persists the parts on the message', () => {
+    const store = newStore();
+    const id = store.getState().startThread('p1');
+    const parts = [LOOKUP, { type: 'text', text: 'Saturn was in Sagittarius.' }] as const;
+    const returned = store.getState().appendMessage(id, 'assistant', 'Saturn was in Sagittarius.', { parts });
+    expect(returned.parts).toEqual(parts);
+    expect(store.getState().getMessages(id)[0]?.parts).toEqual(parts);
+  });
+
+  it('keeps both the error flag and the parts when both are given', () => {
+    const store = newStore();
+    const id = store.getState().startThread('p1');
+    const failed = { ...LOOKUP, status: 'error' } as const;
+    const message = store.getState().appendMessage(id, 'assistant', 'boom', { error: true, parts: [failed] });
+    expect(message).toMatchObject({ error: true, parts: [failed] });
+  });
+
+  it('keeps a skipped tool-call part on the stored message', () => {
+    const store = newStore();
+    const id = store.getState().startThread('p1');
+    const skipped = { ...LOOKUP, status: 'skipped', result: { code: 'skipped' } } as const;
+    expect(store.getState().appendMessage(id, 'assistant', 'answer', { parts: [skipped] }).parts).toEqual([skipped]);
+  });
+
+  it('a message without parts carries no parts key', () => {
+    const store = newStore();
+    const id = store.getState().startThread('p1');
+    expect('parts' in store.getState().appendMessage(id, 'user', 'Hi')).toBe(false);
+  });
+
+  it('drops malformed parts but keeps the message and its text', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const store = newStore();
+    const id = store.getState().startThread('p1');
+    const bad = [{ ...LOOKUP, toolName: 'get transits' }] as unknown as readonly ChatMessagePart[];
+    const message = store.getState().appendMessage(id, 'assistant', 'Saturn.', { parts: bad });
+    expect('parts' in message).toBe(false);
+    expect(store.getState().getMessages(id).map((m) => m.content)).toEqual(['Saturn.']);
+    expect(warn).toHaveBeenCalledWith('[almamesh:warn:chat.tool_failed]');
+    warn.mockRestore();
+  });
+
+  it('parts survive the serialize → fresh-store round trip', () => {
+    const before = newStore();
+    const id = before.getState().startThread('p1');
+    before.getState().appendMessage(id, 'assistant', 'Saturn.', { parts: [LOOKUP] });
+    const { threads, messages, summaries } = before.getState();
+    const after = newStore();
+    after.setState(JSON.parse(JSON.stringify({ threads, messages, summaries })) as Partial<ChatStore>);
+    expect(after.getState().getMessages(id)[0]?.parts).toEqual([LOOKUP]);
+  });
+
+  it('migrates a v3 blob unchanged: every message stays as it was, none gains parts', () => {
+    const v3 = {
+      threads: { t1: { id: 't1', profile_id: 'p1', title: 'Career', message_count: 2, as_of: PIN_2027 } },
+      messages: {
+        t1: [
+          { id: 'm1', thread_id: 't1', role: 'user', content: 'Hi', created_at: '2026-10-01T00:00:00.000Z' },
+          { id: 'm2', thread_id: 't1', role: 'assistant', content: 'Hello', created_at: '2026-10-01T00:00:01.000Z', error: true },
+        ],
+      },
+      summaries: {},
+    };
+    const out = migrateChatPersistedState(structuredClone(v3), 3);
+    expect(out).toEqual(v3);
+    expect(out.messages.t1?.some((message) => 'parts' in message)).toBe(false);
+  });
+
+  it('hydration drops malformed parts and keeps valid ones, never the message', () => {
+    const blob = {
+      threads: { t1: { id: 't1', profile_id: 'p1' } },
+      messages: {
+        t1: [
+          { id: 'm1', thread_id: 't1', role: 'assistant', content: 'a', parts: [LOOKUP] },
+          { id: 'm2', thread_id: 't1', role: 'assistant', content: 'b', parts: [{ type: 'tool-call' }] },
+          { id: 'm3', thread_id: 't1', role: 'assistant', content: 'c', parts: 'oops' },
+        ],
+      },
+      summaries: {},
+    };
+    const out = migrateChatPersistedState(blob, 3);
+    expect(out.messages.t1).toEqual([
+      { id: 'm1', thread_id: 't1', role: 'assistant', content: 'a', parts: [LOOKUP] },
+      { id: 'm2', thread_id: 't1', role: 'assistant', content: 'b' },
+      { id: 'm3', thread_id: 't1', role: 'assistant', content: 'c' },
+    ]);
+  });
+
+  it('hydration leaves a non-list message entry and a non-object message untouched', () => {
+    const blob = { threads: {}, messages: { t1: 'corrupt', t2: ['plain'] }, summaries: {} };
+    expect(migrateChatPersistedState(blob, 3).messages).toEqual({ t1: 'corrupt', t2: ['plain'] });
+  });
+});
+
+describe('setToolCallResult (assistant-ui onAddToolResult)', () => {
+  it('records a result on one tool-call part of a stored message and keeps the rest', () => {
+    const store = newStore();
+    const id = store.getState().startThread('p1');
+    const pending: ChatMessagePart = { type: 'tool-call', toolCallId: 'call_2', toolName: 'time_travel', args: {}, status: 'complete' };
+    const message = store.getState().appendMessage(id, 'assistant', 'Moved.', { parts: [LOOKUP, pending] });
+    expect(store.getState().setToolCallResult(id, message.id, 'call_2', { moved: true }, false)).toBe(true);
+    expect(store.getState().getMessages(id)[0]?.parts).toEqual([LOOKUP, { ...pending, result: { moved: true }, status: 'complete' }]);
+  });
+
+  it('refuses an unknown message or call, and a result that is not plain JSON', () => {
+    const store = newStore();
+    const id = store.getState().startThread('p1');
+    const message = store.getState().appendMessage(id, 'assistant', 'A.', { parts: [LOOKUP] });
+    expect(store.getState().setToolCallResult(id, 'nope', 'call_1', 1, false)).toBe(false);
+    expect(store.getState().setToolCallResult(id, message.id, 'nope', 1, false)).toBe(false);
+    expect(store.getState().setToolCallResult(id, message.id, 'call_1', { bad: Number.NaN }, false)).toBe(false);
+    expect(store.getState().getMessages(id)[0]?.parts).toEqual([LOOKUP]);
+  });
+
+  it('marks an error result', () => {
+    const store = newStore();
+    const id = store.getState().startThread('p1');
+    const message = store.getState().appendMessage(id, 'assistant', 'A.', { parts: [LOOKUP] });
+    store.getState().setToolCallResult(id, message.id, 'call_1', { code: 'denied' }, true);
+    expect(store.getState().getMessages(id)[0]?.parts?.[0]).toMatchObject({ status: 'error', result: { code: 'denied' } });
+  });
+});
+
+describe('the app-updated notice is stored on the message (2026-10-13)', () => {
+  it('appendMessage keeps notice: app_updated with the error flag', () => {
+    const store = newStore();
+    const id = store.getState().startThread('p1');
+    const message = store.getState().appendMessage(id, 'assistant', 'AlmaMesh was updated.', { error: true, notice: 'app_updated' });
+    expect(message).toMatchObject({ error: true, notice: 'app_updated' });
+    expect(store.getState().getMessages(id)[0]?.notice).toBe('app_updated');
+  });
+});
+
+describe('moveMessages: a chat-initiated trip takes its turn along (2026-10-14)', () => {
+  function turnIn(store: ReturnType<typeof newStore>, threadId: string) {
+    const question = store.getState().appendMessage(threadId, 'user', 'Take me to September 2017');
+    const answer = store.getState().appendMessage(threadId, 'assistant', 'Here is September 2017.');
+    return [question.id, answer.id] as const;
+  }
+  const POINTER = 'Moved to ⏳ Sep 2017 · Mumbai, India';
+
+  it('moves the turn, in order, to the trip and leaves a one-line pointer (role system, moved_to) behind', () => {
+    const store = newStore();
+    const from = store.getState().startThread('p1');
+    store.getState().appendMessage(from, 'user', 'How is today?');
+    store.getState().appendMessage(from, 'assistant', 'Calm.');
+    const ids = turnIn(store, from);
+    const to = store.getState().startThread('p1');
+    expect(store.getState().moveMessages(from, to, ids, POINTER)).toBe(true);
+    const moved = store.getState().getMessages(to);
+    expect(moved.map((m) => [m.id, m.role, m.content, m.thread_id])).toEqual([
+      [ids[0], 'user', 'Take me to September 2017', to],
+      [ids[1], 'assistant', 'Here is September 2017.', to],
+    ]);
+    const left = store.getState().getMessages(from);
+    expect(left.map((m) => m.content)).toEqual(['How is today?', 'Calm.', POINTER]);
+    expect(left[2]).toMatchObject({ role: 'system', moved_to: to, thread_id: from });
+    expect(store.getState().threads[from]?.message_count).toBe(3);
+    expect(store.getState().threads[to]?.message_count).toBe(2);
+  });
+
+  it('removes a source thread the move leaves empty, instead of a pointer alone in it', () => {
+    const store = newStore();
+    const from = store.getState().startThread('p1');
+    const ids = turnIn(store, from);
+    const to = store.getState().startThread('p1');
+    expect(store.getState().moveMessages(from, to, ids, POINTER)).toBe(true);
+    expect(store.getState().threads[from]).toBeUndefined();
+    expect(store.getState().messages[from]).toBeUndefined();
+    expect(store.getState().getMessages(to)).toHaveLength(2);
+  });
+
+  it('an untitled target takes its title from the moved question', () => {
+    const store = newStore();
+    const from = store.getState().startThread('p1');
+    store.getState().appendMessage(from, 'user', 'earlier');
+    const ids = turnIn(store, from);
+    const to = store.getState().startThread('p1');
+    store.getState().moveMessages(from, to, ids, POINTER);
+    expect(store.getState().threads[to]?.title).toBe('Take me to September 2017');
+  });
+
+  it.each([
+    ['an unknown target', (s: ReturnType<typeof newStore>, from: string) => [from, 'nope'] as const],
+    ['another profile\'s thread', (s: ReturnType<typeof newStore>, from: string) => [from, s.getState().startThread('p2')] as const],
+    ['the same thread', (_s: ReturnType<typeof newStore>, from: string) => [from, from] as const],
+  ])('moves nothing to %s', (_label, pick) => {
+    const store = newStore();
+    const from = store.getState().startThread('p1');
+    const ids = turnIn(store, from);
+    const [source, target] = pick(store, from);
+    const before = store.getState().getMessages(from);
+    expect(store.getState().moveMessages(source, target, ids, POINTER)).toBe(false);
+    expect(store.getState().getMessages(from)).toEqual(before);
+  });
+
+  it('moves nothing when a message id is not in the source thread', () => {
+    const store = newStore();
+    const from = store.getState().startThread('p1');
+    const [question] = turnIn(store, from);
+    const to = store.getState().startThread('p1');
+    expect(store.getState().moveMessages(from, to, [question, 'missing'], POINTER)).toBe(false);
+    expect(store.getState().getMessages(from)).toHaveLength(2);
+    expect(store.getState().getMessages(to)).toHaveLength(0);
+  });
+
+  it('hydration drops a malformed moved_to and keeps the message', () => {
+    const blob = { threads: {}, messages: { t1: [
+      { id: 'm1', thread_id: 't1', role: 'system', content: POINTER, created_at: 'x', moved_to: 42 },
+      { id: 'm2', thread_id: 't1', role: 'system', content: POINTER, created_at: 'x', moved_to: 't2' },
+    ] } };
+    const out = migrateChatPersistedState(blob, 4);
+    expect(out.messages.t1?.[0]).not.toHaveProperty('moved_to');
+    expect(out.messages.t1?.[0]?.content).toBe(POINTER);
+    expect(out.messages.t1?.[1]?.moved_to).toBe('t2');
   });
 });

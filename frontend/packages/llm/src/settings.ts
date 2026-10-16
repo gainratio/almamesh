@@ -64,6 +64,12 @@ export interface LlmSettings {
    * (default {@link CHAT_CLOUD_MODEL}).
    */
   readonly chatModel?: string;
+  /**
+   * The chat model's context window in tokens, for a custom or local endpoint
+   * (OpenRouter's catalog says it for OpenRouter models). The agent loop keeps
+   * each request within half of it; unset means a small 8k window is assumed.
+   */
+  readonly chatContextTokens?: number;
   readonly privacyMode?: string;
   /** Engine selector; resolves to `"openai-http"` (the only engine). */
   readonly engine?: string;

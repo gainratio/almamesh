@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { bootEngine, seedChart, LLM_SETTINGS_KEY } from './interpretation.helpers';
+import { fulfillToolCall, generalAnswer } from './stubChatProvider';
 
 /**
  * Saves finish before the app says they're done.
@@ -48,11 +49,8 @@ async function stubOpenRouter(page: Page): Promise<void> {
           body: JSON.stringify({ choices: [{ message: { role: 'assistant', content: '{"ok":true}' } }] }),
         });
       }
-      return route.fulfill({
-        status: 200,
-        contentType: 'text/event-stream',
-        body: `data: ${JSON.stringify({ choices: [{ delta: { content: ANSWER } }] })}\n\ndata: [DONE]\n\n`,
-      });
+      // A chat turn answers with one `answer` tool call (lib/chatTurn.ts).
+      return fulfillToolCall(route, { name: 'answer', args: generalAnswer(ANSWER) });
     }
     return route.fulfill({ status: 418, body: 'unexpected OpenRouter call in e2e' });
   });

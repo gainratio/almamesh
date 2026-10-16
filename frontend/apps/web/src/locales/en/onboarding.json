@@ -24,7 +24,7 @@
     "subtitle": "Your birth location affects house calculations",
     "placeholder": "Search for your birth city...",
     "timezone_auto_title": "Timezone auto-detected",
-    "timezone_auto_body": "Your timezone will be automatically determined from your birth city's coordinates for accurate planetary calculations.",
+    "timezone_auto_body": "Your timezone will be automatically determined from your birth city's coordinates, so the planets are placed for the right moment.",
     "hint": "Start typing to search for cities worldwide"
   },
   "birth_time": {
@@ -43,7 +43,7 @@
       "rough": "Rough",
       "unknown": "I don't know"
     },
-    "confidence_margin": "We'll treat this as accurate within ±{{minutes}} min.",
+    "confidence_margin": "We'll treat this as correct to within ±{{minutes}} min.",
     "confidence_exact_note": "We'll treat this as an exact time.",
     "confidence_unknown_note": "We'll use noon as a placeholder — you can refine it by hand later in Settings.",
     "dst_gap": "{{time}} did not exist in {{zone}} on this date: the clocks jumped forward an hour for daylight saving. Please check the time on the birth record.",
@@ -110,5 +110,11 @@
     "reset_hint": "Still stuck? Clear the cached engine data and reload for a clean start.",
     "still_warming": "The on-device engine is still preparing — hang tight, your chart will generate as soon as it's ready.",
     "help": "If your chart was already generated, you'll see it on the dashboard. Otherwise, try generating again."
+  },
+  "ai_step": {
+    "title": "Your chart is ready",
+    "body": "Connect an AI model to ask questions about your chart. Your key stays on this device and is sent only to the provider you choose.",
+    "connect": "Connect AI",
+    "not_now": "Not now"
   }
 }

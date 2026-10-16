@@ -1,12 +1,16 @@
 import { useCallback, useMemo, type PropsWithChildren } from 'react';
 import {
   AssistantRuntimeProvider,
+  AuiConfig,
+  Tools,
   useExternalStoreRuntime,
   type AppendMessage,
+  type ExternalStoreThreadListAdapter,
   type ThreadMessageLike,
+  type Toolkit,
 } from '@assistant-ui/react';
 
-import type { ChatMessage } from '@almamesh/shared-types';
+import type { ChatMessage, ChatMessagePart, ChatThread } from '@almamesh/shared-types';
 
 interface ConvertOptions {
   readonly streaming?: boolean;
@@ -22,7 +26,9 @@ export function convertChatMessage(
   return {
     id: message.id,
     role: message.role,
-    content: [{ type: 'text', text: message.content }],
+    content: message.parts && message.parts.length > 0
+      ? message.parts.map(toRuntimePart)
+      : [{ type: 'text', text: message.content }],
     createdAt: Number.isNaN(createdAt.valueOf()) ? new Date(0) : createdAt,
     ...(message.role === 'assistant'
       ? { status: streaming ? ({ type: 'running' } as const) : ({ type: 'complete', reason: 'stop' } as const) }
@@ -31,8 +37,37 @@ export function convertChatMessage(
       custom: {
         error: message.error === true,
         streaming,
+        ...(message.moved_to ? { movedTo: message.moved_to } : {}),
       },
     },
+  };
+}
+
+type RuntimePart = Exclude<ThreadMessageLike['content'], string>[number];
+
+/** A persisted part as assistant-ui sees it: the same args and result the model got. */
+function toRuntimePart(part: ChatMessagePart): RuntimePart {
+  if (part.type === 'text') return { type: 'text', text: part.text };
+  return {
+    type: 'tool-call',
+    toolCallId: part.toolCallId,
+    toolName: part.toolName,
+    args: part.args as Record<string, never>,
+    argsText: JSON.stringify(part.args),
+    result: part.result,
+    isError: part.status === 'error',
+    // A skipped call was answered without running: the row reads it off the artifact.
+    ...(part.status === 'skipped' ? { artifact: { status: 'skipped' } } : {}),
+  };
+}
+
+/** One thread in the list: its id, its title, and whether it is a trip. */
+export function threadListEntry(thread: ChatThread) {
+  return {
+    status: 'regular' as const,
+    id: thread.id,
+    ...(thread.title ? { title: thread.title } : {}),
+    custom: { trip: thread.as_of !== undefined },
   };
 }
 
@@ -53,6 +88,15 @@ export interface AlmaMeshAssistantRuntimeProps extends PropsWithChildren {
   readonly isRunning: boolean;
   readonly isSendDisabled: boolean;
   readonly onSubmit: (question: string) => Promise<void>;
+  /** The thread's registered tools: their renderers draw its tool-call rows (chatToolkit.tsx). */
+  readonly toolkit?: Toolkit;
+  /** The profile's threads, backed by the chat store (no second store). */
+  readonly threads?: readonly ChatThread[];
+  readonly threadId?: string | null;
+  readonly onSwitchToThread?: (threadId: string) => void;
+  readonly onSwitchToNewThread?: () => void;
+  /** A tool UI supplied a result: record it on the stored part. */
+  readonly onAddToolResult?: (options: { readonly messageId: string; readonly toolCallId: string; readonly result: unknown; readonly isError: boolean }) => void;
 }
 
 /**
@@ -65,6 +109,12 @@ export function AlmaMeshAssistantRuntime({
   isRunning,
   isSendDisabled,
   onSubmit,
+  toolkit,
+  threads,
+  threadId,
+  onSwitchToThread,
+  onSwitchToNewThread,
+  onAddToolResult,
   children,
 }: AlmaMeshAssistantRuntimeProps) {
   const runtimeMessages = useMemo(() => {
@@ -94,13 +144,23 @@ export function AlmaMeshAssistantRuntime({
     [onSubmit],
   );
 
+  const threadList = useMemo<ExternalStoreThreadListAdapter | undefined>(() => (threads ? {
+    threadId: threadId ?? undefined,
+    threads: threads.map(threadListEntry),
+    onSwitchToThread: (id) => onSwitchToThread?.(id),
+    onSwitchToNewThread: () => onSwitchToNewThread?.(),
+  } : undefined), [threads, threadId, onSwitchToThread, onSwitchToNewThread]);
+
   const runtime = useExternalStoreRuntime({
     messages: runtimeMessages,
     convertMessage: (message) => message,
     isRunning,
     isSendDisabled,
     onNew,
+    ...(onAddToolResult ? { onAddToolResult: ({ messageId, toolCallId, result, isError }) => onAddToolResult({ messageId, toolCallId, result, isError: isError === true }) } : {}),
+    ...(threadList ? { adapters: { threadList } } : {}),
   });
+  const config = useMemo(() => (toolkit ? AuiConfig({ tools: Tools({ toolkit }) }) : undefined), [toolkit]);
 
-  return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>;
+  return <AssistantRuntimeProvider runtime={runtime} {...(config ? { config } : {})}>{children}</AssistantRuntimeProvider>;
 }

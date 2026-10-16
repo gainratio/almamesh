@@ -23,9 +23,14 @@
   },
   "agent": {
     "preparing": "Preparando herramientas locales…",
+    "preparing_chart": "Preparando tu carta…",
     "deciding": "Eligiendo el siguiente paso seguro…",
     "answering": "Redactando la respuesta fundamentada…",
-    "complete": "Listo"
+    "complete": "Listo",
+    "reading": "Leyendo {{period}}…",
+    "moving": "Viajando a {{period}}…",
+    "returning": "Volviendo a hoy…",
+    "natal_only": "El cielo de hoy no estaba listo, así que esta respuesta lee solo tu carta natal."
   },
   "tooltip": "Pregunta sobre tu carta",
   "controls": {
@@ -42,7 +47,8 @@
     "no_results": "No hay mensajes anteriores que coincidan.",
     "thread_fallback": "Conversación",
     "match": "{{percent}}% de coincidencia",
-    "loading_model": "Cargando la búsqueda en tu dispositivo (solo la primera vez)…"
+    "loading_model": "Cargando la búsqueda en tu dispositivo (solo la primera vez)…",
+    "thread_match": "Coincide con el periodo o el lugar de esta conversación"
   },
   "suggested": {
     "label": "Preguntas sugeridas:",
@@ -83,7 +89,8 @@
     "request_failed": "La solicitud a la IA falló. Inténtalo de nuevo en un momento o revisa tu modelo y endpoint en Ajustes → IA.",
     "privacy_blocked": "Tu IA está configurada para quedarse en este dispositivo, así que no se envió nada a {{endpoint}}. Para usar un endpoint en la nube, marca «Permitir un endpoint en la nube» en Ajustes → IA → Avanzado.",
     "privacy_blocked_no_endpoint": "Tu IA está configurada para quedarse en este dispositivo, así que no se envió nada al endpoint en la nube. Para usarlo, marca «Permitir un endpoint en la nube» en Ajustes → IA → Avanzado.",
-    "save_failed": "Esta respuesta no se pudo guardar en este dispositivo, así que puede desaparecer al recargar."
+    "save_failed": "Esta respuesta no se pudo guardar en este dispositivo, así que puede desaparecer al recargar.",
+    "app_updated": "AlmaMesh se actualizó. Recarga para continuar; tu mensaje se conserva."
   },
   "not_configured": {
     "notice": "Conecta un modelo de IA para hacer preguntas sobre tu carta — tu carta ya está calculada en tu dispositivo.",
@@ -98,10 +105,14 @@
     "status_working": "Calculando el cielo de {{period}}… (unos 30 s)",
     "sheet": {
       "title": "Viaje en el tiempo",
-      "intro": "Elige un momento. Las respuestas del nuevo chat serán sobre él.",
+      "intro": "Elige un momento. Las respuestas del nuevo chat muestran lo que destaca tu carta para él: temas para reflexionar.",
       "intro_change": "Elige un nuevo periodo. Las próximas respuestas de este chat serán sobre él.",
       "when": "¿Cuándo?",
-      "tabs": { "day": "Día", "month": "Mes", "year": "Año" },
+      "tabs": {
+        "day": "Día",
+        "month": "Mes",
+        "year": "Año"
+      },
       "day_label": "Día",
       "month_label": "Mes",
       "year_label": "Año",
@@ -109,22 +120,71 @@
       "where_hint": "Escribe una ciudad. La búsqueda se queda en este dispositivo.",
       "where_placeholder": "Busca una ciudad",
       "where_required": "Elige dónde estabas (o estarás) ese día.",
+      "where_required_period": "Elige dónde estabas (o estarás) en ese momento.",
+      "where_prefilled": "Tomado de tu viaje más cercano. Cámbialo si estabas en otro lugar.",
       "where_none": "No se encontró la ciudad. Prueba con una ciudad grande cercana.",
       "where_failed": "La búsqueda de lugares no está disponible temporalmente. Inténtalo de nuevo.",
       "retry_lookup": "Reintentar búsqueda",
       "before_birth": "Eso es antes de que nacieras. Elige un periodo posterior.",
       "save_failed": "No se pudo guardar en tu dispositivo. Inténtalo de nuevo.",
       "go": "Ir",
-      "cancel": "Cancelar"
+      "cancel": "Cancelar",
+      "where_question": "¿Dónde vivías entonces?",
+      "where_question_day": "¿Dónde estabas ese día?",
+      "where_suggestion": "Usar {{place}} (tu lugar de nacimiento)",
+      "where_home": "Usar {{place}} (donde vives ahora)"
     },
     "banner": {
-      "about": "las respuestas son sobre este periodo",
+      "about": "lo que destaca tu carta para este periodo",
       "change": "Cambiar",
       "back": "Volver a hoy"
     },
     "starters": {
-      "past": { "hard": "¿Por qué fue difícil esta época?", "teaching": "¿Qué me estaba enseñando este periodo?" },
-      "future": { "prepare": "¿Para qué debo prepararme?", "strongest": "¿Qué meses se ven más fuertes?" }
+      "past": {
+        "hard": "¿Por qué fue difícil esta época?",
+        "teaching": "¿Qué me estaba enseñando este periodo?"
+      },
+      "future": {
+        "prepare": "¿Qué destaca mi carta para esta época?",
+        "strongest": "¿Qué meses se ven más fuertes?"
+      }
     }
+  },
+  "tools": {
+    "button": "Herramientas",
+    "heading": "Herramientas que la IA puede usar en este hilo",
+    "row": "Consultó {{what}}",
+    "row_failed": "No pudo consultar {{what}}",
+    "row_skipped": "Omitió {{what}}",
+    "args": "Preguntó con",
+    "result": "Obtuvo",
+    "read_period": "Lectura del periodo: dashas, regentes, cielo, temas, fechas",
+    "travel": "Viajar a otro momento",
+    "rows": {
+      "read_period": "la lectura del periodo",
+      "travel": "un viaje en el tiempo",
+      "place": "un lugar",
+      "context": "los datos de la carta"
+    }
+  },
+  "threads": {
+    "label": "Conversaciones",
+    "button": "Conversaciones",
+    "today": "Hoy",
+    "trips": "Viaje en el tiempo"
+  },
+  "trip": {
+    "card_label": "Lo que lee este viaje",
+    "dasha": "Dasha: {{dasha}}",
+    "birth_place_fallback": "No se eligió lugar para este viaje: lee {{place}}, el lugar de nacimiento.",
+    "transits": "Tránsitos: {{transits}}"
+  },
+  "place_pick": {
+    "title": "¿Qué {{place}}?",
+    "label": "Lugar"
+  },
+  "moved": {
+    "to": "Movido a {{title}}",
+    "today": "Movido a hoy"
   }
 }

@@ -313,7 +313,7 @@ export interface ReportPdfDomainBlock {
   readonly stability?: string;
 }
 
-/** Section XI — the seven deterministic life-domain forecasts. */
+/** Section XI — the eight deterministic life-domain forecasts. */
 export interface ReportPdfDomains {
   readonly chrome: ReportPdfSectionChrome;
   readonly blocks: ReadonlyArray<ReportPdfDomainBlock>;

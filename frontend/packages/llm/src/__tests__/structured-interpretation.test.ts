@@ -484,7 +484,7 @@ describe("streamStructuredInterpretation — engine predictive context", () => {
     expect(timelineBodies).toHaveLength(2);
     expect(natalBodies).toHaveLength(5);
     for (const body of timelineBodies) {
-      expect(body).toContain("ENGINE PREDICTIVE CONTEXT");
+      expect(body).toContain("ENGINE TIMING CONTEXT");
       // Sade Sati + a month-precision window + a strength figure all reach the LLM.
       expect(body).toMatch(/sade sati/i);
       expect(body).toContain("2030-03");
@@ -493,7 +493,7 @@ describe("streamStructuredInterpretation — engine predictive context", () => {
       expect(body).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/);
     }
     for (const body of natalBodies) {
-      expect(body).not.toContain("ENGINE PREDICTIVE CONTEXT");
+      expect(body).not.toContain("ENGINE TIMING CONTEXT");
       expect(body).not.toContain('"dashas"');
       expect(body).not.toContain("months_remaining");
       expect(body).not.toContain("start_month");
@@ -514,13 +514,13 @@ describe("streamStructuredInterpretation — engine predictive context", () => {
     const natalWithCtx = withCtx.find((body) => body.includes("SECTION:core"));
     const timelineWithCtx = withCtx.find((body) => body.includes("SECTION:current_sky"));
     expect(systemOf(natalWithCtx!)).toMatch(/STABLE NATAL ONLY/);
-    expect(systemOf(natalWithCtx!)).not.toMatch(/ENGINE PREDICTIVE CONTEXT — USE IT/);
+    expect(systemOf(natalWithCtx!)).not.toMatch(/ENGINE TIMING CONTEXT — USE IT/);
     expect(systemOf(timelineWithCtx!)).toMatch(
-      /ENGINE PREDICTIVE CONTEXT — USE IT \(REQUIRED\)/,
+      /ENGINE TIMING CONTEXT — USE IT \(REQUIRED\)/,
     );
     // Without predictive: the stable-natal fence is present instead, and
     // the required directive is absent.
-    expect(systemOf(withoutCtx[0]!)).not.toMatch(/ENGINE PREDICTIVE CONTEXT — USE IT/);
+    expect(systemOf(withoutCtx[0]!)).not.toMatch(/ENGINE TIMING CONTEXT — USE IT/);
     expect(systemOf(withoutCtx[0]!)).toMatch(/STABLE NATAL ONLY/);
   });
 
@@ -560,10 +560,14 @@ describe("streamStructuredInterpretation — output discipline (full + lite prom
     "meta-commentary",
     "chain-of-thought",
     "NEVER pose a question to yourself",
-    "NEVER state a house lordship, sign rulership, dasha",
+    // Contract reworded 2026-10-13 (period reading): the fence stays, and a fact a tool result
+    // states (lordships, yogas, tags, windows) counts as present and must be cited.
+    "DERIVED-FACT FENCE (ABSOLUTE)",
+    "ONLY when the provided engine facts or a tool result",
     "OMIT the claim entirely",
-    "may be narrated ONLY as stated in the provided facts",
-    "a period, a lord, or a window the facts do not state",
+    "do not derive, infer, or guess it",
+    "with their lords and dated windows as stated",
+    "NEVER name a period, a lord, or a window that no fact or tool result states",
     "single authoritative dignity",
     "kendra = houses 1/4/7/10",
   ] as const;

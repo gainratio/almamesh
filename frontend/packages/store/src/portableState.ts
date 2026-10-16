@@ -14,6 +14,7 @@ import {
   MAX_STRING_CHARACTERS,
 } from './jsonBounds';
 import { chatAsOfProblem } from './chatAsOf';
+import { chatMessagePartsProblem } from './chatParts';
 import {
   repairPortableReferences,
   type PortableRepairReport,
@@ -113,10 +114,10 @@ export const PORTABLE_STORE_MAX_VERSIONS = {
   'almamesh-chart-library': 1,
   'almamesh-life-events': 4,
   'almamesh-rectification-records': 2,
-  'almamesh-chat-history': 3,
+  'almamesh-chat-history': 4,
   'almamesh-interpretations': 6,
   'almamesh-mesh-readings': 1,
-  'almamesh-predictive': 5,
+  'almamesh-predictive': 6,
   'almamesh-language': 1,
   'almamesh-preferences': 1,
   'almamesh-deletion-tombstones': 1,
@@ -1116,6 +1117,12 @@ function validateCanonicalDataset(
               throw new Error('Portable state row "almamesh-chat-history" has an invalid message.');
             }
             assertIdentifier(message.id, 'almamesh-chat-history');
+            const partsProblem = message.parts === undefined ? undefined : chatMessagePartsProblem(message.parts);
+            if (partsProblem) {
+              throw new Error(
+                `Portable state row "almamesh-chat-history" message "${message.id}" has an invalid ${partsProblem}.`,
+              );
+            }
           }
         }
         if (field === 'summaries' && isPlainRecord(value)) {

@@ -131,6 +131,34 @@ export default defineConfig([
     },
   },
 
+  // The AI SDK and zod enter through ONE seam: packages/llm/src/toolLoop.ts.
+  // Everything else imports the seam (`@almamesh/llm/toolLoop`), so upgrading or
+  // swapping the engine touches one file.
+  {
+    files: ["**/*.{ts,tsx,js,mjs}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            { name: "ai", message: "Import the AI SDK only in packages/llm/src/toolLoop.ts." },
+            { name: "zod", message: "Import z from @almamesh/llm/toolLoop instead." },
+          ],
+          patterns: [
+            {
+              group: ["ai/*", "@ai-sdk/*", "zod/*"],
+              message: "Import the AI SDK and zod only in packages/llm/src/toolLoop.ts.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["packages/llm/src/toolLoop.ts"],
+    rules: { "no-restricted-imports": "off" },
+  },
+
   // shared-types mirrors the backend's Pydantic classes by name, e.g.
   // `interface HealthGuidance extends Persona {}`. The empty body is
   // deliberate: the named type documents which backend class it matches.

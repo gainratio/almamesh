@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useChartLibraryStore, useChatStore, type StoredChart } from '@almamesh/store';
+import { CHAT_PERSIST_VERSION, migrateChatPersistedState, useChartLibraryStore, useChatStore, type StoredChart } from '@almamesh/store';
+import type { ChatMessagePart } from '@almamesh/shared-types';
 
 const llm = vi.hoisted(() => ({ configured: true }));
 vi.mock('@almamesh/llm', async (importOriginal) => ({
@@ -234,6 +235,19 @@ describe('the chat sheet travels through the seam', () => {
     expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(MARCH_2019);
   });
 
+  it('Change after a conversation opens a second thread; the first keeps its period and messages (Jan 2027 regression)', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(MARCH_2019));
+    const first = result.current.threadId!;
+    await act(() => result.current.submit('How was March?', async () => 'Busy.'));
+    await act(() => result.current.repin(YEAR));
+    expect(result.current.threadId).not.toBe(first);
+    expect(result.current.asOf).toEqual(YEAR);
+    expect(result.current.messages).toEqual([]);
+    expect(useChatStore.getState().threads[first]?.as_of).toEqual(MARCH_2019);
+    expect(useChatStore.getState().getMessages(first).map((m) => m.content)).toEqual(['How was March?', 'Busy.']);
+  });
+
   it('Back to today in chat clears the Dashboard moment', async () => {
     const { result } = renderHook(() => useChatThread(PROFILE, CHART));
     await act(() => result.current.pin(MARCH_2019));
@@ -309,7 +323,7 @@ describe('chat tool actions apply after a successful durable turn', () => {
   });
   afterEach(() => vi.mocked(waitForStoreSaved).mockImplementation(async () => undefined));
 
-  it('keeps the current pin during streaming, then moves Dashboard and the next question', async () => {
+  it('keeps the current pin during streaming, then opens a new trip for the Dashboard and the next question', async () => {
     const { result } = renderHook(() => useChatThread(PROFILE, CHART));
     await act(() => result.current.pin(YEAR));
     const originalThread = result.current.threadId;
@@ -326,12 +340,73 @@ describe('chat tool actions apply after a successful durable turn', () => {
     expect(result.current.asOf).toEqual(YEAR);
     expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(YEAR);
     await act(async () => { release(); await pending; });
-    expect(result.current.threadId).toBe(originalThread);
+    // Contract reversed 2026-10-13: the tool opens a NEW trip.
+    // Contract reversed 2026-10-14 (the answer follows the user): the turn moves into the new trip,
+    // so the 2027 trip it was asked in, which held nothing else, is removed instead of left empty.
+    expect(result.current.threadId).not.toBe(originalThread);
+    expect(useChatStore.getState().threads[originalThread!]).toBeUndefined();
+    expect(result.current.messages.map((m) => [m.role, m.content])).toEqual([['user', 'Take me to June'], ['assistant', 'Moving to June.']]);
     expect(result.current.asOf).toEqual(JUNE);
     expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(JUNE);
     const next = vi.fn(async (_input: ChatStreamInput) => 'June facts.');
     await act(() => result.current.submit('What about work?', next));
     expect(next.mock.calls[0]?.[0].asOf).toEqual(JUNE);
+  });
+
+  it('the question and its answer follow the user into the new trip; the old thread keeps a pointer to it', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    const originalThread = result.current.threadId!;
+    await act(() => result.current.submit('How is 2027?', async () => 'Steady.'));
+    await act(() => result.current.submit('Take me to June', async ({ onTravel, onToolCall }) => {
+      onToolCall?.({ toolCallId: 't1', toolName: 'travel', args: { to: '2026-06' }, result: { status: 'queued' }, status: 'complete' });
+      onTravel?.({ kind: 'travel', asOf: JUNE });
+      return 'June is busy.';
+    }));
+    const trip = result.current.threadId!;
+    expect(trip).not.toBe(originalThread);
+    expect(result.current.asOf).toEqual(JUNE);
+    expect(result.current.messages.map((m) => [m.role, m.content])).toEqual([['user', 'Take me to June'], ['assistant', 'June is busy.']]);
+    expect(result.current.messages[1]?.parts?.[0]).toMatchObject({ type: 'tool-call', toolName: 'travel' });
+    const left = useChatStore.getState().getMessages(originalThread);
+    expect(left.map((m) => [m.role, m.content])).toEqual([
+      ['user', 'How is 2027?'], ['assistant', 'Steady.'], ['system', 'Moved to ⏳ Jun 2026'],
+    ]);
+    expect(left[2]?.moved_to).toBe(trip);
+    expect(useChatStore.getState().threads[originalThread]?.as_of).toEqual(YEAR);
+  });
+
+  it('the moved turn is searchable in its new thread (memory re-indexed under it)', async () => {
+    const indexMessage = vi.fn().mockResolvedValue(undefined);
+    __setMemoryForTest({
+      indexMessage, retrieve: vi.fn().mockResolvedValue([]), deleteForProfile: vi.fn().mockResolvedValue(undefined),
+      deleteForThread: vi.fn().mockResolvedValue(undefined), clear: vi.fn().mockResolvedValue(undefined),
+    });
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.submit('Take me to June', async ({ onTravel }) => {
+      onTravel?.({ kind: 'travel', asOf: JUNE });
+      return 'June is busy.';
+    }));
+    const trip = result.current.threadId!;
+    await act(async () => { await Promise.resolve(); });
+    const reindexed = indexMessage.mock.calls.map(([message]) => message as { thread_id: string; content: string })
+      .filter((message) => message.thread_id === trip).map((message) => message.content);
+    expect(reindexed).toEqual(expect.arrayContaining(['Take me to June', 'June is busy.']));
+  });
+
+  it('a tool Back to today takes the turn to the today thread and leaves the trip a pointer', async () => {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    await act(() => result.current.pin(YEAR));
+    const trip = result.current.threadId!;
+    await act(() => result.current.submit('How is 2027?', async () => 'Steady.'));
+    await act(() => result.current.submit('Back to today', async ({ onTravel }) => {
+      onTravel?.({ kind: 'back_to_today' });
+      return 'Back in today.';
+    }));
+    expect(result.current.threadId).not.toBe(trip);
+    expect(result.current.messages.map((m) => m.content)).toEqual(['Back to today', 'Back in today.']);
+    const pointer = useChatStore.getState().getMessages(trip).at(-1);
+    expect(pointer).toMatchObject({ role: 'system', moved_to: result.current.threadId });
   });
 
   it('a tool Back to today leaves the pin and clears the Dashboard moment', async () => {
@@ -482,11 +557,65 @@ describe('chat tool actions apply after a successful durable turn', () => {
     }); });
     await act(async () => { await started; });
     act(() => useChatStore.getState().deleteThread(source));
-    expect(result.current.threadId).toBe(fallback);
+    // While the move saves, its new (empty) trip is listed; it is removed once the move is cancelled.
     await act(async () => { release(); await pending; });
     expect(useChatStore.getState().threads[source]).toBeUndefined();
     expect(result.current.threadId).toBe(fallback);
     expect(useTimeTravelStore.getState().moments[PROFILE]).toEqual(YEAR);
     expect(result.current.isStreaming).toBe(false);
+  });
+});
+
+// Re-grade of PR #366 (2026-10-15): the pending move was read from the user's text, so "Take me to
+// the part about marriage" opened the travel gate for the next turn, and it survived a reload. It is
+// now read from the saved travel result only: a reload keeps a real needs_place call pending (that is
+// the saved thread), and nothing else.
+describe('the pending move is read from the saved thread, across a reload', () => {
+  const NEEDS_PLACE: ChatMessagePart = {
+    type: 'tool-call', toolCallId: 'c1', toolName: 'travel', args: { to: '2019-05', place: null }, status: 'complete',
+    result: { status: 'needs_place', ask: 'Ask where the user lived (or will be) then.' },
+  };
+
+  /** Saves a two-message thread, then reloads the store from its persisted JSON. */
+  function savedThenReloaded(request: string, answer: string, parts?: readonly ChatMessagePart[]) {
+    const store = useChatStore.getState();
+    const tid = store.ensureThread(PROFILE, CHART);
+    store.appendMessage(tid, 'user', request);
+    store.appendMessage(tid, 'assistant', answer, parts ? { parts } : undefined);
+    const { threads, messages, summaries } = useChatStore.getState();
+    useChatStore.setState({ threads: {}, messages: {}, summaries: {} });
+    useChatStore.setState(migrateChatPersistedState(JSON.parse(JSON.stringify({ threads, messages, summaries })), CHAT_PERSIST_VERSION));
+  }
+
+  async function pendingOnNextTurn(): Promise<ChatStreamInput['pendingTravel']> {
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    const stream = vi.fn(async (_input: ChatStreamInput) => 'Noted.');
+    await act(() => result.current.submit('Delhi', stream));
+    return stream.mock.calls[0]?.[0].pendingTravel;
+  }
+
+  it.each([
+    'Take me to the part about marriage',
+    'Llévame a la sección de carrera',
+    'Me leva para a parte do casamento',
+    'Two options: move to Lisbon in 2027, or stay. Which is better?',
+    'take me to May 2019',
+  ])('"%s" answered with no travel call: nothing pending after a reload', async (request) => {
+    savedThenReloaded(request, 'Where were you then?');
+    expect(await pendingOnNextTurn()).toBeUndefined();
+  });
+
+  it('a saved needs_place travel call is pending after a reload, bound to its `to`', async () => {
+    savedThenReloaded('take me to May 2019', 'Where did you live in May 2019?', [NEEDS_PLACE, { type: 'text', text: 'Where did you live in May 2019?' }]);
+    expect(await pendingOnNextTurn()).toEqual({ kind: 'pending_travel', to: '2019-05' });
+  });
+
+  it('it expires after exactly the next user turn', async () => {
+    savedThenReloaded('take me to May 2019', 'Where did you live in May 2019?', [NEEDS_PLACE]);
+    const { result } = renderHook(() => useChatThread(PROFILE, CHART));
+    const stream = vi.fn(async (_input: ChatStreamInput) => 'Noted.');
+    await act(() => result.current.submit('Delhi', stream));
+    await act(() => result.current.submit('How was work?', stream));
+    expect(stream.mock.calls.map(([input]) => input.pendingTravel)).toEqual([{ kind: 'pending_travel', to: '2019-05' }, undefined]);
   });
 });

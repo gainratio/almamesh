@@ -15,6 +15,7 @@
 import tzlookup from 'tz-lookup';
 
 import type { CityMatch } from './cityLookup';
+import { placeLabel } from './cityMatch';
 
 const ENDPOINT = 'https://geocoding-api.open-meteo.com/v1/search';
 
@@ -52,7 +53,8 @@ function fallbackTimezone(latitude: number, longitude: number): string | undefin
 }
 
 function toMatch(place: OpenMeteoPlace): CityMatch {
-  const displayName = [place.name, place.admin1, place.country].filter(Boolean).join(', ');
+  // The same "City, State, Country" label as the bundled list and the chat.
+  const displayName = placeLabel(place.name, place.admin1, place.country ?? '');
   return {
     displayName,
     city: place.name,

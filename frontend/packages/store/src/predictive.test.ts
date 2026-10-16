@@ -290,4 +290,20 @@ describe("predictiveRequestKey and the engine window", () => {
       '["p1","1990-01-15T12:00:00Z",28.6139,77.209,"2026-06-01T00:00:00Z",330,24]',
     );
   });
+
+  it("names the reading's last day, so a Month and a Year sharing a start never share a result", () => {
+    const month = predictiveRequestKey({ ...BASE, readingEnd: "2026-06-30" });
+    const year = predictiveRequestKey({ ...BASE, readingEnd: "2027-05-31" });
+    expect(month).toBe(
+      '["p1","1990-01-15T12:00:00Z",28.6139,77.209,"2026-06-01T00:00:00Z",330,{"readingEnd":"2026-06-30"}]',
+    );
+    expect(year).not.toBe(month);
+    expect(month).not.toBe(predictiveRequestKey(BASE));
+  });
+
+  it("names both a 24-month window and the reading's last day", () => {
+    expect(predictiveRequestKey({ ...BASE, windowMonths: 24, readingEnd: "2027-12-31" })).toBe(
+      '["p1","1990-01-15T12:00:00Z",28.6139,77.209,"2026-06-01T00:00:00Z",330,24,{"readingEnd":"2027-12-31"}]',
+    );
+  });
 });

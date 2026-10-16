@@ -138,8 +138,15 @@ function reportSectionDiagnostic(event: unknown, elapsedMs: number): unknown {
 }
 
 describe('real-model e2e specs', () => {
-  it('configure deepseek/deepseek-v4-pro, the cheapest model on 2026-10-09', () => {
-    expect(E2E_REAL_MODEL).toBe('deepseek/deepseek-v4-pro');
+  // Changed 2026-10-15 (Harish): deepseek-v4-pro overloaded easily. Luna Pro is $0.10 in / $0.50
+  // out per M (vs $0.39 / $0.78), with tools and reasoning, and is not the openai/gpt-6-luna
+  // product default (see "neither product default" below).
+  it('configure openai/gpt-6-luna-pro, the cheaper and steadier model on 2026-10-15', () => {
+    expect(E2E_REAL_MODEL).toBe('openai/gpt-6-luna-pro');
+  });
+
+  it('assert the new product defaults by literal, not only against the constants', () => {
+    expect([PRODUCT_DEFAULT_MODEL, PRODUCT_CHAT_DEFAULT_MODEL]).toEqual(['openai/gpt-6-luna', 'openai/gpt-6-luna']);
   });
 
   it("assert the app's real default models, one per tier", () => {
@@ -147,11 +154,13 @@ describe('real-model e2e specs', () => {
     expect(PRODUCT_CHAT_DEFAULT_MODEL).toBe(CHAT_CLOUD_MODEL);
   });
 
-  it("mirrors the report engine's own pinned model, which neither the reading nor the chat default is", () => {
+  // CONTRACT REVERSED 2026-10-15: neither default used to be the report engine's model. Harish
+  // chose that pinned Luna as the reading and chat default, so all three share it.
+  it("mirrors the report engine's own pinned model, which the reading and chat defaults now share", () => {
     expect(REPORT_ENGINE_DEFAULT_MODEL).toBe('openai/gpt-6-luna');
     expect(REPORT_ENGINE_DEFAULT_MODEL).toBe(REPORT_ENGINE_MODEL);
-    expect(PRODUCT_DEFAULT_MODEL).not.toBe(REPORT_ENGINE_DEFAULT_MODEL);
-    expect(PRODUCT_CHAT_DEFAULT_MODEL).not.toBe(REPORT_ENGINE_DEFAULT_MODEL);
+    expect(PRODUCT_DEFAULT_MODEL).toBe(REPORT_ENGINE_DEFAULT_MODEL);
+    expect(PRODUCT_CHAT_DEFAULT_MODEL).toBe(REPORT_ENGINE_DEFAULT_MODEL);
   });
 
   it('runs full-report acceptance on the imported production report model by default', () => {

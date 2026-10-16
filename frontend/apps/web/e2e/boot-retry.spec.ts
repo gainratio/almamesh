@@ -28,6 +28,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { expect, test as base, webkit, type Page } from '@playwright/test';
+import { passOnboardingAiStep } from '../scripts/onboardingAiStep.mjs';
 
 const RETRY_LINE = '[almamesh] engine.boot_retry error=RuntimeError';
 const RECOVERY_CARD = '[data-testid="reset-app-data-button"]';
@@ -119,7 +120,7 @@ for (const fault of FAULTS) {
 
     await submitReferenceBirth(page);
 
-    await page.waitForURL('**/dashboard', { timeout: 120_000 });
+    await passOnboardingAiStep(page, { timeout: 120_000 });
     await expect(page.getByTestId('chart-visualization').first()).toBeVisible();
     await page.screenshot({ path: test.info().outputPath(`dashboard-after-boot-retry-${fault.arm === true ? 'trap' : fault.arm}.png`) });
 
@@ -160,7 +161,7 @@ test('a first engine sync that stalls while onboarding waits follows the automat
   await page.goto('/onboarding');
   await submitReferenceBirth(page);
 
-  await page.waitForURL('**/dashboard', { timeout: 150_000 });
+  await passOnboardingAiStep(page, { timeout: 150_000 });
   await expect(page.getByTestId('chart-visualization').first()).toBeVisible();
   expect(trustRootRequests).toBeGreaterThanOrEqual(2);
   expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).__recoveryCardSeen ?? false)).toBe(false);
@@ -262,7 +263,7 @@ test('a post-ready correlated fatal requires Retry, then a fresh real Worker ren
   expect(consoleErrors).toEqual(['[almamesh:error:app.typed_error]']);
 
   await page.getByTestId('retry-generation-button').click();
-  await page.waitForURL('**/dashboard', { timeout: 120_000 });
+  await passOnboardingAiStep(page, { timeout: 120_000 });
   await expect(page.getByTestId('chart-visualization').first()).toBeVisible();
   const recovered = await recoveryProof(page);
   expect(recovered.document).toBe(originalDocument);
@@ -277,6 +278,9 @@ test('a post-ready correlated fatal requires Retry, then a fresh real Worker ren
   await page.getByTestId('time-travel-tab-month').click();
   await page.getByTestId('time-travel-month').selectOption('03');
   await page.getByTestId('time-travel-month-year').selectOption('2019');
+  // Every trip needs a place (3f338a94): Go waits until the offered birth place is confirmed.
+  await expect(page.getByTestId('time-travel-go')).toBeDisabled();
+  await page.getByTestId('time-travel-where-suggestion').click();
   await page.getByTestId('time-travel-go').click();
   await expect(page.getByTestId('time-travel-sheet')).toBeHidden();
   await expect(page.getByTestId('dashboard-time-travel-banner')).toContainText('March');
@@ -307,7 +311,7 @@ test('a failed engine boot on the dashboard shows the Life Atlas failure and a R
 
   await page.goto('/onboarding');
   await submitReferenceBirth(page);
-  await page.waitForURL('**/dashboard', { timeout: 120_000 });
+  await passOnboardingAiStep(page, { timeout: 120_000 });
   await expect(page.getByTestId('chart-visualization').first()).toBeVisible();
 
   // From here on, the FIRST chart Worker of each document answers its boot

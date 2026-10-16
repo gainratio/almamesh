@@ -123,16 +123,13 @@ export type {
 } from "./client";
 export type { ChatMessage, StreamChatOptions } from "./client";
 
-// --- Bounded browser-native tool orchestration ---
-export { AGENT_LIMITS, streamAgentChat } from "./agent";
-export type {
-  AgentJsonObject,
-  AgentStatusEvent,
-  AgentTool,
-  AgentToolContext,
-  AgentToolFailure,
-  StreamAgentChatOptions,
-} from "./agent";
+// --- The chat turn's context budget and the earlier turns' tool facts ---
+export { DEFAULT_CONTEXT_TOKENS, calibratedEstimate, chatPromptBudgetFor, estimateRequestTokens, turnTokenBudget } from "./contextBudget";
+export type { TokenCalibration } from "./contextBudget";
+export { compactToolResult, defaultToolSummary, summarizeToolResult, toolFactsNote } from "./compaction";
+export { resolveModelContextTokens } from "./model-context";
+export type { ResolveModelContextOptions } from "./model-context";
+export type { PriorToolCall, ToolSummarizer, ToolSummary } from "./compaction";
 
 // Reading provenance: which resolved config (engine/model/endpoint — never a
 // secret) produced a stored reading, so the UI can caption it and a config
@@ -143,11 +140,12 @@ export type { ReadingProvenance } from "./provenance";
 export {
   buildInterpretationMessages,
   buildChatMessages,
+  formatNow,
   serializeInterpretationForChat,
   INTERP_TOKEN_BUDGET,
   CLOUD_CHAT_BUDGET,
 } from "./prompt";
-export type { ViewMode, ChatRectificationContext, ChatPromptBudget } from "./prompt";
+export type { ViewMode, ChatRectificationContext, ChatPromptBudget, ThreadFacts, ThreadHome, ThreadTrip } from "./prompt";
 
 export { languageInstruction, withLanguage } from "./language";
 export type { PromptLanguage } from "./language";
@@ -443,51 +441,16 @@ export {
 
 // Time travel: argument rules for the timing tool's optional start/end.
 export {
-  BEFORE_BIRTH_MESSAGE,
   BIRTH_YEAR_SKY_NOTE,
   endsBeforeBirthYear,
   startsInOrBeforeBirthYear,
-  ISO_DAY_PATTERN,
-  OVER_TWO_YEARS_NOTE,
-  PAST_EPHEMERIS_NOTE,
   isCalendarDay,
-  parsePeriodArgs,
-  periodEcho,
-  periodLimits,
   ENGINE_DAYS_PER_MONTH,
   EPHEMERIS_LAST_YEAR,
   LONG_PERIOD_WINDOW_MONTHS,
   periodWindowMonths,
-  windowEndsBeforePeriodEnd,
 } from "./period";
-export type { PeriodArgs, PeriodEcho, PeriodLimits } from "./period";
-export {
-  MAX_SEGMENTS,
-  NEEDS_PLACE_ERROR,
-  PLACE_CONFLICT_ERROR,
-  PLACE_NEEDED_BELOW_DAYS,
-  PLACE_REF_ARG_PATTERN,
-  PLACE_REF_ERROR,
-  SEGMENT_GAP_NOTE,
-  SEGMENTS_ORDER_ERROR,
-  SEGMENTS_SHAPE_ERROR,
-  SEGMENTS_WITH_DATES_ERROR,
-  SEGMENTS_WITH_PLACE_ERROR,
-  TIME_FORMAT_ERROR,
-  TIME_NEEDS_DAY_ERROR,
-  TIME_NEEDS_PLACE_ERROR,
-  TIME_OF_DAY_PATTERN,
-  needsPlace,
-  parseTimingArgs,
-} from "./period-places";
-export type { TimingArgs, TimingSegment } from "./period-places";
 export { BIRTH_YEAR_ROWS_NOTE, NO_TREE_NOTE, PRATYANTAR_NOTE, selectDashasForPeriod } from "./period-dashas";
 export type { PeriodAntarRow, PeriodDashaRow, PeriodDashas } from "./period-dashas";
-export {
-  COVERED_EVENTS,
-  SLOW_GRAHAS,
-  placementsAsOfNote,
-  restrictTransitsToPeriod,
-  timelineCutoffNote,
-} from "./period-transits";
+export { SLOW_GRAHAS, restrictTransitsToPeriod } from "./period-transits";
 export type { RestrictedTransits } from "./period-transits";

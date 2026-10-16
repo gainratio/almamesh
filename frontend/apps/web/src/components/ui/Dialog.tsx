@@ -1,4 +1,4 @@
-import { useEffect, useId, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
@@ -13,6 +13,27 @@ export interface DialogProps {
   title?: ReactNode;
   children: ReactNode;
   className?: string;
+}
+
+interface CloseButtonProps {
+  readonly label: string;
+  readonly onClose: () => void;
+}
+
+/** The visible way out: a 44px target, labelled, in the panel's top corner. */
+function CloseButton({ label, onClose }: CloseButtonProps) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClose}
+      className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-text-muted transition-colors hover:bg-background-tertiary hover:text-text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-gold"
+    >
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+      </svg>
+    </button>
+  );
 }
 
 /**
@@ -52,6 +73,23 @@ export function Dialog({ open, onClose, title, children, className }: DialogProp
     };
   }, [open, onClose]);
 
+  // Keyboard-first: opening moves focus into the dialog (unless a child already
+  // took it, e.g. an autofocused field), and closing gives it back to whatever
+  // opened it. Keyed on `open` only, so a new `onClose` identity never re-runs it.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const panel = panelRef.current;
+    const active = document.activeElement;
+    if (!open || !panel || panel.contains(active)) {
+      return;
+    }
+    const opener = active instanceof HTMLElement ? active : null;
+    panel.focus();
+    return () => {
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [open]);
+
   // No document (SSR / non-DOM render target) means there is nothing to portal
   // into; render nothing rather than throwing. Placed AFTER every hook so the
   // hook order never varies between renders.
@@ -69,18 +107,23 @@ export function Dialog({ open, onClose, title, children, className }: DialogProp
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
         >
+          {/* A pointer convenience only: the labelled close button in the panel
+              (and Escape) is the keyboard and screen-reader way out. */}
           <button
             type="button"
-            aria-label={t('dialog.close_aria')}
+            aria-hidden="true"
+            tabIndex={-1}
             className="absolute inset-0 cursor-default bg-ui-overlay backdrop-blur-sm"
             onClick={onClose}
           />
           <motion.div
+            ref={panelRef}
+            tabIndex={-1}
             role="dialog"
             aria-modal="true"
             aria-labelledby={title != null ? titleId : undefined}
             className={cn(
-              'relative z-10 max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-lg border border-ui-border',
+              'relative z-10 max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-lg border border-ui-border focus:outline-none',
               'bg-background-secondary shadow-[0_24px_64px_-16px_rgba(0,0,0,0.8)]',
               className,
             )}
@@ -89,11 +132,16 @@ export function Dialog({ open, onClose, title, children, className }: DialogProp
             exit={{ opacity: 0, scale: 0.97, y: 8 }}
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
           >
-            {title != null && (
-              <div className="border-b border-ui-border px-5 py-4">
+            {title != null ? (
+              <div className="flex items-center justify-between gap-3 border-b border-ui-border py-2 pl-5 pr-2">
                 <h2 id={titleId} className="font-display text-lg text-text-primary">
                   {title}
                 </h2>
+                <CloseButton label={t('dialog.close_aria')} onClose={onClose} />
+              </div>
+            ) : (
+              <div className="flex justify-end px-2 pt-2">
+                <CloseButton label={t('dialog.close_aria')} onClose={onClose} />
               </div>
             )}
             <div className="px-5 py-4">{children}</div>

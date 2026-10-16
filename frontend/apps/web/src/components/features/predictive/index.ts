@@ -1,6 +1,6 @@
 /**
  * Predictive surfaces — transits/Gochara, the Shodasavarga gallery, strength
- * (Ashtakavarga + Shadbala) and the seven life-domain forecasts, all rendered
+ * (Ashtakavarga + Shadbala) and the life-domain forecasts, all rendered
  * verbatim from the lazily-computed engine contexts (`usePredictiveStore`).
  */
 

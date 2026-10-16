@@ -238,7 +238,7 @@ test('[contract/stubbed] interpretation populates from the stubbed LLM on the da
   await expect(summary).toBeVisible({ timeout: 60_000 });
   await expect(page.getByTestId('reading-section')).toBeVisible();
 
-  // The Life Atlas renders all seven domain cards immediately — in the honest
+  // The Life Atlas renders every domain card immediately — in the honest
   // pending state here (no predictive compute was requested in this test).
   await expect(page.getByTestId('life-atlas')).toBeVisible();
   await expect(page.getByTestId('life-atlas-card-career')).toBeVisible();
@@ -524,10 +524,11 @@ test('shows the Connect-an-AI CTA when no model is configured', async ({ page })
 
   await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
 
-  // The "Connect an AI model" CTA / link to /settings/ai is shown.
+  // The "Connect an AI model" CTA is shown, and opens the AI setup panel in place.
   const cta = page.getByTestId('connect-ai-link');
   await expect(cta).toBeVisible({ timeout: 60_000 });
-  await expect(cta).toHaveAttribute('href', /\/settings\/ai/);
+  await cta.click();
+  await expect(page.getByRole('dialog', { name: 'Connect AI' }).getByTestId('llm-openrouter-key')).toBeVisible();
 
   // And no bare "Interpretation data not available" empty-state.
   await expect(page.getByText('Interpretation data not available')).toHaveCount(0);

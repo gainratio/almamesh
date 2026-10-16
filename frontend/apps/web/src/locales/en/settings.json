@@ -83,7 +83,13 @@
     "success_description": "Your birth details have been updated and your chart has been regenerated on-device.",
     "view_new_chart": "View New Chart",
     "processing_title": "Regenerating Your Chart",
-    "processing_description": "Computing on-device — this only takes a moment."
+    "processing_description": "Computing on-device — this only takes a moment.",
+    "current_place_label": "Where do you live now?",
+    "current_place_placeholder": "Search for a city",
+    "current_place_hint": "Optional. Stays on this device.",
+    "current_place_clear": "Clear",
+    "current_place_saved": "Saved",
+    "current_place_failed": "Couldn’t save. Try again."
   },
   "rectification_record": {
     "title": "Your rectification",
@@ -179,13 +185,15 @@
   },
   "aiModels": {
     "interpretation_label": "Interpretation / chart-reading model",
-    "interpretation_advice": "The default, DeepSeek V4.1 Flash, is fast and cheap: in our tests it wrote the full timeline in about 50 seconds for about 2 cents. A bigger model may write deeper prose, but takes longer.",
+    "interpretation_advice": "The default, GPT Luna, is fast and cheap: in our tests it wrote the full timeline in about 45 seconds for under 1 cent. A bigger model may write deeper prose, but takes longer.",
     "chat_label": "Chat model",
-    "switch_title": "Switch to DeepSeek V4.1 Flash?",
-    "switch_body": "You're on GLM 5.3 Flash. In our tests (3 runs each), DeepSeek V4.1 Flash wrote the whole timeline in about 50 s every time. GLM 5.3 Flash showed nothing for over a minute in 2 of 3 runs and took 200 s in the one that finished.",
-    "switch_accept": "Switch to DeepSeek V4.1 Flash",
+    "switch_title": "Switch to GPT Luna?",
+    "switch_body": "You're on GLM 5.3 Flash. In our tests (3 runs each), GPT Luna wrote the whole timeline in 39–49 s every time. GLM 5.3 Flash showed nothing for over a minute in 2 of 3 runs and took 200 s in the one that finished.",
+    "switch_accept": "Switch to GPT Luna",
     "switch_dismiss": "Keep GLM 5.3 Flash",
     "chat_advice": "A smaller, faster model is advised. Chat already reuses the chart facts and the generated reading, so it doesn't need a heavy model — a quick one keeps answers snappy.",
+    "context_label": "Context window (tokens)",
+    "context_advice": "How much this model can read at once. Chat keeps each request within half of it. Leave blank if unsure: chat then assumes a small 8k window.",
     "loading_models": "Loading models…",
     "more_models": "Type to search…",
     "catalog_hint": "Pick from {{count}} OpenRouter models — or type any model id.",
@@ -198,7 +206,9 @@
     "none_button": "Turn AI off",
     "active_badge": "Active",
     "cloud_title": "Connect AI",
-    "cloud_body": "Add written interpretations and chat with an OpenRouter key (recommended) or any OpenAI-compatible endpoint. Chart data leaves your device without your name or birth date, but the planet positions and period dates it includes can reveal your birth date. If you use AI to organize life events, the narrative you enter is sent as written after the disclosure; birth details and chart data are not attached."
+    "cloud_body": "Add written interpretations and chat with an OpenRouter key (recommended) or any OpenAI-compatible endpoint. Chart data leaves your device without your name or birth date, but the planet positions and period dates it includes can reveal your birth date. If you use AI to organize life events, the narrative you enter is sent as written after the disclosure; birth details and chart data are not attached.",
+    "cloud_summary": "Chart requests leave out your name and birth date, but the planet positions and dates they carry can reveal it.",
+    "cloud_details_summary": "What gets sent"
   },
   "preferences": {
     "title": "Preferences",

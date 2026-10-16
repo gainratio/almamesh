@@ -19,9 +19,116 @@ describe('derived SQLite schema', () => {
     const tables = await db.query<{ name: string }>("SELECT name FROM sqlite_schema WHERE type='table'");
     expect(tables.map(({ name }) => name)).toEqual(expect.arrayContaining(['cities', 'cities_fts', 'dataset_meta', 'period_sky']));
     expect((await db.query<{ user_version: number }>('PRAGMA user_version'))[0]?.user_version).toBe(DERIVED_SCHEMA_VERSION);
-    await db.exec("INSERT INTO cities VALUES(7, 'Bogotá', 'Colombia', 'CO', 4.61, -74.08, 100, 'bogota', 'bogota colombia co')");
+    await db.exec("INSERT INTO cities (idx, n, c, cc, lat, lon, p, name_fold, search_fold) VALUES(7, 'Bogotá', 'Colombia', 'CO', 4.61, -74.08, 100, 'bogota', 'bogota colombia co')");
     await db.exec("INSERT INTO cities_fts(cities_fts) VALUES('rebuild')");
     expect(await db.query("SELECT rowid FROM cities_fts WHERE cities_fts MATCH '" + '"ogot"' + "'")).toEqual([{ rowid: 7 }]);
+  });
+
+  it('gives a v3 file made before the state column a nullable state, keeping its rows', async () => {
+    const db = await open();
+    await db.exec('CREATE TABLE cities (idx INTEGER PRIMARY KEY, n TEXT NOT NULL, c TEXT NOT NULL, cc TEXT NOT NULL, lat REAL NOT NULL, lon REAL NOT NULL, p INTEGER NOT NULL, name_fold TEXT NOT NULL, search_fold TEXT NOT NULL) STRICT');
+    await db.exec("INSERT INTO cities VALUES(0, 'Novato', 'United States', 'US', 38.1, -122.57, 55530, 'novato', 'novato')");
+    await db.exec('PRAGMA user_version=3');
+    await migrateDerivedDb(db);
+    await migrateDerivedDb(db);
+    expect(await db.query('SELECT n, s FROM cities')).toEqual([{ n: 'Novato', s: null }]);
+    await db.exec("UPDATE cities SET s = 'California'");
+    expect((await cityRowAt(db, 0))?.s).toBe('California');
+  });
+
+  it('adds the chat keyword index to a v1 database without losing rows', async () => {
+    const db = await open();
+    await db.exec('CREATE TABLE dataset_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT');
+    await db.exec("INSERT INTO dataset_meta VALUES ('period-sky-epoch', '3')");
+    await db.exec('PRAGMA user_version=1');
+    await migrateDerivedDb(db);
+    const tables = await db.query<{ name: string }>("SELECT name FROM sqlite_schema WHERE type='table'");
+    expect(tables.map(({ name }) => name)).toContain('chat_fts');
+    expect(await db.query('SELECT value FROM dataset_meta WHERE key=?', ['period-sky-epoch'])).toEqual([{ value: '3' }]);
+    expect((await db.query<{ user_version: number }>('PRAGMA user_version'))[0]?.user_version).toBe(3);
+  });
+
+  it('schema v3 replaces a v2 keyword index with a contentless one and leaves no old text behind', async () => {
+    expect(DERIVED_SCHEMA_VERSION).toBe(3);
+    const db = await open();
+    await db.exec('CREATE TABLE dataset_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT');
+    await db.exec("CREATE VIRTUAL TABLE chat_fts USING fts5(profile_id UNINDEXED, thread_id UNINDEXED, message_id UNINDEXED, text, tokenize='unicode61 remove_diacritics 2')");
+    await db.exec("INSERT INTO chat_fts VALUES ('p1', 't1', 'm1', 'my zqxjkvbeacon note')");
+    await db.exec("INSERT INTO dataset_meta VALUES ('chat-fts-built', '1'), ('period-sky-epoch', '3')");
+    await db.exec('PRAGMA user_version=2');
+    await migrateDerivedDb(db);
+    expect(await db.query('SELECT count(*) AS n FROM chat_fts')).toEqual([{ n: 0 }]);
+    await db.exec("INSERT INTO chat_fts (profile_id, thread_id, message_id, text) VALUES ('p1', 't1', 'm2', 'fresh text')");
+    expect(await db.query('SELECT message_id, text FROM chat_fts')).toEqual([{ message_id: 'm2', text: null }]);
+    expect(await db.query('SELECT key FROM dataset_meta ORDER BY key')).toEqual([{ key: 'period-sky-epoch' }]);
+    const hex = Buffer.from('zqxjkvbeacon').toString('hex');
+    expect(await db.query('SELECT pgno FROM sqlite_dbpage WHERE instr(lower(hex(data)), ?) > 0', [hex])).toEqual([]);
+    expect((await db.query<{ user_version: number }>('PRAGMA user_version'))[0]?.user_version).toBe(3);
+  });
+
+  it('zeroes deleted content and lets a fresh database return freed pages', async () => {
+    const db = await open();
+    await migrateDerivedDb(db);
+    expect(await db.query('PRAGMA secure_delete')).toEqual([{ secure_delete: 1 }]);
+    expect(await db.query('PRAGMA auto_vacuum')).toEqual([{ auto_vacuum: 2 }]);
+  });
+
+  it('sets and reads back the durability pragmas on every connection', async () => {
+    const db = await open();
+    await db.exec('PRAGMA synchronous=OFF');
+    await migrateDerivedDb(db);
+    expect(await db.query('PRAGMA synchronous')).toEqual([{ synchronous: 2 }]);
+    // Node opens this fixture in memory; on OPFS the library sets DELETE and refuses anything else.
+    expect(await db.query('PRAGMA journal_mode')).toEqual([{ journal_mode: 'memory' }]);
+  });
+
+  it('refuses a connection whose durability pragmas did not apply', async () => {
+    const db = await open();
+    const query = db.query.bind(db);
+    const ignoring = Object.assign(Object.create(db) as SqlDatabase, {
+      exec: db.exec.bind(db),
+      query: ((sql: string, bind?: Parameters<SqlDatabase['query']>[1]) => sql === 'PRAGMA synchronous' ? Promise.resolve([{ synchronous: 1 }]) : query(sql, bind)) as SqlDatabase['query'],
+      transaction: db.transaction.bind(db),
+    });
+    await expect(migrateDerivedDb(ignoring)).rejects.toThrow(/durab/i);
+  });
+
+  it('the schema itself refuses malformed period-sky rows', async () => {
+    const db = await open();
+    await migrateDerivedDb(db);
+    const insert = (key: string, profile: string, payload: string, epoch: number) =>
+      db.exec('INSERT INTO period_sky (key, engine, profile_id, payload, epoch) VALUES (?, ?, ?, ?, ?)', [key, 'engine', profile, payload, epoch]);
+    await insert('ok', 'p1', '{}', 0);
+    await expect(insert('', 'p1', '{}', 0)).rejects.toThrow(/CHECK/);
+    await expect(insert('k2', '', '{}', 0)).rejects.toThrow(/CHECK/);
+    await expect(insert('k3', 'p1', 'not json', 0)).rejects.toThrow(/CHECK/);
+    await expect(insert('k4', 'p1', '{}', -1)).rejects.toThrow(/CHECK/);
+    expect(await db.query('SELECT key FROM period_sky')).toEqual([{ key: 'ok' }]);
+  });
+
+  it('upgrading an older file recreates period_sky with its constraints and keeps the epoch fence', async () => {
+    const db = await open();
+    await db.exec('CREATE TABLE dataset_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT');
+    await db.exec('CREATE TABLE period_sky (key TEXT PRIMARY KEY, engine TEXT NOT NULL, profile_id TEXT NOT NULL, payload TEXT NOT NULL, epoch INTEGER NOT NULL DEFAULT 0) STRICT');
+    await db.exec("INSERT INTO period_sky VALUES ('old', 'engine', '', 'not json', 0)");
+    await db.exec("INSERT INTO dataset_meta VALUES ('period-sky-epoch', '4')");
+    await db.exec('PRAGMA user_version=2');
+    await migrateDerivedDb(db);
+    expect(await db.query('SELECT key FROM period_sky')).toEqual([]);
+    await expect(db.exec("INSERT INTO period_sky VALUES ('k', 'engine', '', '{}', 0)")).rejects.toThrow(/CHECK/);
+    expect(await db.query("SELECT value FROM dataset_meta WHERE key = 'period-sky-epoch'")).toEqual([{ value: '4' }]);
+  });
+
+  it('a refused VACUUM on a new file does not block the migration', async () => {
+    const db = await open();
+    const exec = db.exec.bind(db);
+    const refusing = Object.assign(Object.create(db) as SqlDatabase, {
+      exec: (sql: string, bind?: Parameters<SqlDatabase['exec']>[1]) => sql === 'VACUUM' ? Promise.reject(new Error('refused')) : exec(sql, bind),
+      query: db.query.bind(db),
+      transaction: db.transaction.bind(db),
+    });
+    await migrateDerivedDb(refusing);
+    expect((await db.query<{ user_version: number }>('PRAGMA user_version'))[0]?.user_version).toBe(DERIVED_SCHEMA_VERSION);
   });
 
   it('migration is atomic and idempotent and retains rows', async () => {
@@ -199,22 +306,37 @@ describe('short derived database sessions', () => {
 
   it('closes a session when its callback exceeds the lifetime bound', async () => {
     const backend = persistedBackend();
-    // The deadline now includes opening/importing this real SQLite fixture.
-    const session = createDerivedDbSessions({ ...backend, locks: nativeLocksDouble(), epoch: async () => 0, timeoutMs: 50 });
-    await expect(session.withDb(async () => new Promise<void>(() => undefined))).rejects.toThrow(/timed out/);
-    expect(backend.isOwned()).toBe(false);
+    const expireNow: Array<() => void> = [];
+    const session = createDerivedDbSessions({
+      ...backend, locks: nativeLocksDouble(), epoch: async () => 0,
+      deadline: (expire) => { expireNow.push(expire); return () => undefined; },
+    });
+    const entered = Promise.withResolvers<void>();
+    const stuck = session.withDb(async () => { entered.resolve(); return new Promise<void>(() => undefined); });
+    await entered.promise;
+    expireNow.at(-1)?.();
+    await expect(stuck).rejects.toThrow(/timed out/);
+    await vi.waitFor(() => expect(backend.isOwned()).toBe(false));
     await expect(session.withDb(async (db) => (await db.query('SELECT 1 AS n'))[0])).resolves.toEqual({ n: 1 });
   });
 });
 
 describe('derived database page lifecycle', () => {
+  /** What a healthy OPFS connection answers to the migration's pragma reads. */
+  function pragmaAnswer(sql: string): readonly object[] {
+    if (sql.startsWith('PRAGMA journal_mode')) return [{ journal_mode: 'delete' }];
+    if (sql === 'PRAGMA synchronous') return [{ synchronous: 2 }];
+    return [{ user_version: 0 }];
+  }
+
   function databaseDouble() {
     const close = vi.fn<() => Promise<void>>(async () => undefined);
     const db = {
       close,
-      query: vi.fn(async () => [{ user_version: 0 }]),
+      query: vi.fn(async (sql: string) => pragmaAnswer(sql)),
       exec: vi.fn(async () => ({ changes: 0, lastInsertRowId: 0 })),
       transaction: async (work: (connection: SqlDatabase) => Promise<unknown>) => work(db as unknown as SqlDatabase),
+      storage: { persistence: 'opfs' },
     };
     return { db: db as unknown as SqlDatabase, close };
   }

@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { useServiceWorker } from '../hooks/useServiceWorker'
 import { useVersionCheck } from '../hooks/useVersionCheck'
+import { useAppStale } from '../lib/appStale'
 import { reloadPage, type UpdateStatus } from '../lib/swUpdate'
 
 /**
@@ -68,12 +69,14 @@ export function UpdateBanner() {
     pollInterval: 5 * 60 * 1000,
     checkOnFocus: true,
   })
+  // A lazy chunk of this tab's build is gone (lib/appStale.ts): say so, same reload action.
+  const stale = useAppStale((state) => state.stale)
 
   if (updateStatus) {
     return <UpdateProgress status={updateStatus} />
   }
 
-  const show = needRefresh || hasNewVersion
+  const show = needRefresh || hasNewVersion || stale
   if (!show) {
     return null
   }
@@ -96,7 +99,7 @@ export function UpdateBanner() {
       aria-live="polite"
       className={BANNER_CLASS}
     >
-      <span className="text-sm font-medium">{t('update.available')}</span>
+      <span className="text-sm font-medium">{t(stale ? 'update.stale' : 'update.available')}</span>
       <button
         onClick={reload}
         className={BUTTON_CLASS}

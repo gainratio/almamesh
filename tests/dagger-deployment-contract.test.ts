@@ -148,7 +148,7 @@ describe("protected Dagger evidence", () => {
 })
 
 describe("single-transaction delivery orchestration", () => {
-  test("orders binding, signed build, preview, envelope, one deploy, reload, then live proof", async () => {
+  test("orders binding, signed build, carry-forward from the live deployment, preview, envelope, one deploy, reload, then live proof", async () => {
     const events: string[] = []
     let evidenceIdCalls = 0
     let reloadCalls = 0
@@ -174,12 +174,20 @@ describe("single-transaction delivery orchestration", () => {
         events.push("signed-build")
         return "closed-release"
       },
-      verifyPreview: async (artifact) => {
+      carryForwardAssets: async (artifact, previous) => {
+        // The previous release's hashed /assets/* come from the deployment live
+        // right now, and everything after this sees the carried artifact.
         expect(artifact).toBe("closed-release")
+        expect(previous).toEqual(PREVIOUS)
+        events.push("carry-forward")
+        return "carried-release"
+      },
+      verifyPreview: async (artifact) => {
+        expect(artifact).toBe("carried-release")
         events.push("preview")
       },
       createEnvelope: async (artifact, identities, roots) => {
-        expect(artifact).toBe("closed-release")
+        expect(artifact).toBe("carried-release")
         expect(identities).toEqual({
           consumer: `hseshadr/almamesh@${commitSha}`,
           producer: `${centralSha}:781`,
@@ -225,7 +233,7 @@ describe("single-transaction delivery orchestration", () => {
         return { deploymentId: "deployment-id", deploymentUrl: "https://deployment.pages.dev" }
       },
       verifyLive: async (artifact, evidence, provider) => {
-        expect(artifact).toBe("closed-release")
+        expect(artifact).toBe("carried-release")
         expect(evidence.workflowRunId).toBe("781")
         expect(provider.deploymentId).toBe("deployment-id")
         events.push("live-static-bundle-feedback")
@@ -254,9 +262,10 @@ describe("single-transaction delivery orchestration", () => {
       "bind-source",
       "guard-source",
       "signed-build",
+      "previous-production",
+      "carry-forward",
       "preview",
       "envelope",
-      "previous-production",
       "native-main",
       "deploy",
       "evidence-id",
@@ -288,6 +297,8 @@ describe("single-transaction delivery orchestration", () => {
       "bind-source",
       "guard-source",
       "signed-build",
+      "previous-production",
+      "carry-forward",
       "preview",
     ])
   })
@@ -483,6 +494,10 @@ function failClosedPort(events: string[]) {
     },
     buildRelease: async () => {
       events.push("signed-build")
+      return "closed-release"
+    },
+    carryForwardAssets: async () => {
+      events.push("carry-forward")
       return "closed-release"
     },
     verifyPreview: async () => {
@@ -721,6 +736,8 @@ describe("post-deploy live smoke and rollback through the central module", () =>
     await expect(deliverProduction(port, commitSha, "781", 3, centralSha, runRepository)).rejects.toThrow(
       "previous production deployment differs",
     )
+    // Validated before anything is fetched from it: carry-forward never reads a foreign host.
+    expect(events).not.toContain("carry-forward")
     expect(events).not.toContain("deploy")
   })
 
@@ -942,6 +959,7 @@ describe("nonfatal IndexNow tail", () => {
         "https://almamesh.com/privacy",
         "https://almamesh.com/terms",
         "https://almamesh.com/data-deletion",
+        "https://almamesh.com/how-we-test",
       ])) throw new Error("URLs")
       return { ok: true }
     }`

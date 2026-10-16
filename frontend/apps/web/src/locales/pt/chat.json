@@ -23,9 +23,14 @@
   },
   "agent": {
     "preparing": "Preparando ferramentas locais…",
+    "preparing_chart": "Preparando seu mapa…",
     "deciding": "Escolhendo o próximo passo seguro…",
     "answering": "Escrevendo a resposta fundamentada…",
-    "complete": "Concluído"
+    "complete": "Concluído",
+    "reading": "Lendo {{period}}…",
+    "moving": "Indo para {{period}}…",
+    "returning": "Voltando para hoje…",
+    "natal_only": "O céu de hoje não ficou pronto, então esta resposta lê só o seu mapa natal."
   },
   "tooltip": "Pergunte sobre seu mapa",
   "controls": {
@@ -42,7 +47,8 @@
     "no_results": "Nenhuma mensagem anterior corresponde.",
     "thread_fallback": "Conversa",
     "match": "{{percent}}% de correspondência",
-    "loading_model": "Carregando a busca no seu dispositivo (só na primeira vez)…"
+    "loading_model": "Carregando a busca no seu dispositivo (só na primeira vez)…",
+    "thread_match": "Corresponde ao período ou ao lugar desta conversa"
   },
   "suggested": {
     "label": "Perguntas sugeridas:",
@@ -83,7 +89,8 @@
     "request_failed": "A solicitação à IA falhou. Tente novamente em instantes ou verifique seu modelo e endpoint em Configurações → IA.",
     "privacy_blocked": "Sua IA está configurada para ficar neste dispositivo, então nada foi enviado para {{endpoint}}. Para usar um endpoint na nuvem, marque «Permitir um endpoint na nuvem» em Configurações → IA → Avançado.",
     "privacy_blocked_no_endpoint": "Sua IA está configurada para ficar neste dispositivo, então nada foi enviado para o endpoint na nuvem. Para usá-lo, marque «Permitir um endpoint na nuvem» em Configurações → IA → Avançado.",
-    "save_failed": "Esta resposta não pôde ser salva neste dispositivo, então pode sumir ao recarregar."
+    "save_failed": "Esta resposta não pôde ser salva neste dispositivo, então pode sumir ao recarregar.",
+    "app_updated": "O AlmaMesh foi atualizado. Recarregue para continuar; sua mensagem fica guardada."
   },
   "not_configured": {
     "notice": "Conecte um modelo de IA para fazer perguntas sobre seu mapa — seu mapa já está calculado no seu dispositivo.",
@@ -98,10 +105,14 @@
     "status_working": "Calculando o céu de {{period}}… (cerca de 30 s)",
     "sheet": {
       "title": "Viagem no tempo",
-      "intro": "Escolha um momento. As respostas no novo chat serão sobre ele.",
+      "intro": "Escolha um momento. As respostas no novo chat mostram o que o seu mapa destaca para ele: temas para refletir.",
       "intro_change": "Escolha um novo período. As próximas respostas deste chat serão sobre ele.",
       "when": "Quando?",
-      "tabs": { "day": "Dia", "month": "Mês", "year": "Ano" },
+      "tabs": {
+        "day": "Dia",
+        "month": "Mês",
+        "year": "Ano"
+      },
       "day_label": "Dia",
       "month_label": "Mês",
       "year_label": "Ano",
@@ -109,22 +120,71 @@
       "where_hint": "Digite uma cidade. A busca fica neste dispositivo.",
       "where_placeholder": "Busque uma cidade",
       "where_required": "Escolha onde você estava (ou estará) nesse dia.",
+      "where_required_period": "Escolha onde você estava (ou estará) nessa época.",
+      "where_prefilled": "Preenchido a partir da sua viagem mais próxima. Mude se você estava em outro lugar.",
       "where_none": "Cidade não encontrada. Tente uma cidade maior perto dali.",
       "where_failed": "A busca de lugares está temporariamente indisponível. Tente novamente.",
       "retry_lookup": "Tentar busca novamente",
       "before_birth": "Isso é antes de você nascer. Escolha um período depois.",
       "save_failed": "Não foi possível salvar no seu dispositivo. Tente de novo.",
       "go": "Ir",
-      "cancel": "Cancelar"
+      "cancel": "Cancelar",
+      "where_question": "Onde você morava então?",
+      "where_question_day": "Onde você estava naquele dia?",
+      "where_suggestion": "Usar {{place}} (seu local de nascimento)",
+      "where_home": "Usar {{place}} (onde você mora agora)"
     },
     "banner": {
-      "about": "as respostas são sobre este período",
+      "about": "o que o seu mapa destaca para este período",
       "change": "Mudar",
       "back": "Voltar para hoje"
     },
     "starters": {
-      "past": { "hard": "Por que essa época foi difícil?", "teaching": "O que esse período estava me ensinando?" },
-      "future": { "prepare": "Para o que devo me preparar?", "strongest": "Quais meses parecem mais fortes?" }
+      "past": {
+        "hard": "Por que essa época foi difícil?",
+        "teaching": "O que esse período estava me ensinando?"
+      },
+      "future": {
+        "prepare": "O que o meu mapa destaca para esta época?",
+        "strongest": "Quais meses parecem mais fortes?"
+      }
     }
+  },
+  "tools": {
+    "button": "Ferramentas",
+    "heading": "Ferramentas que a IA pode usar nesta conversa",
+    "row": "Consultou {{what}}",
+    "row_failed": "Não conseguiu consultar {{what}}",
+    "row_skipped": "Ignorou {{what}}",
+    "args": "Perguntou com",
+    "result": "Recebeu",
+    "read_period": "Leitura do período: dashas, regentes, céu, temas, datas",
+    "travel": "Viajar para outro momento",
+    "rows": {
+      "read_period": "a leitura do período",
+      "travel": "uma viagem no tempo",
+      "place": "um lugar",
+      "context": "os dados do mapa"
+    }
+  },
+  "threads": {
+    "label": "Conversas",
+    "button": "Conversas",
+    "today": "Hoje",
+    "trips": "Viagem no tempo"
+  },
+  "trip": {
+    "card_label": "O que esta viagem lê",
+    "dasha": "Dasha: {{dasha}}",
+    "birth_place_fallback": "Nenhum lugar foi escolhido para esta viagem: ela lê {{place}}, o local de nascimento.",
+    "transits": "Trânsitos: {{transits}}"
+  },
+  "place_pick": {
+    "title": "Qual {{place}}?",
+    "label": "Lugar"
+  },
+  "moved": {
+    "to": "Movido para {{title}}",
+    "today": "Movido para hoje"
   }
 }

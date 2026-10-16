@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { EPHEMERIS_LAST_YEAR } from '@almamesh/llm';
-import { asOfFromDraft, formatPinLabel, sheetDefaults, sheetYears, SHEET_LAST_YEAR } from '../timeTravelSheet';
+import { asOfFromDraft, formatPinLabel, periodAsOfFromDraft, sheetDefaults, sheetYears, SHEET_LAST_YEAR } from '../timeTravelSheet';
 
 const BOGOTA = { label: 'Bogotá, Colombia', timezone: 'America/Bogota', latitude: 4.711, longitude: -74.0721 };
 
@@ -22,19 +22,38 @@ describe('timeTravelSheet', () => {
     });
   });
 
-  it('prefills Change from a Month pin, which carries no place', () => {
+  it('prefills Change from an old Month pin, which carries no place', () => {
     const june = { start: '2026-06-01', end: '2026-06-30', granularity: 'month' } as const;
     expect(sheetDefaults('2026-10-09', june, true)).toEqual({ granularity: 'month', day: '2026-06-01', month: '2026-06', year: 2026 });
   });
 
-  it('turns a draft into a pin', () => {
-    const draft = { day: '2026-06-15', month: '2028-02', year: 2027 };
-    expect(asOfFromDraft({ ...draft, granularity: 'year' })).toEqual({ start: '2027-01-01', end: '2027-12-31', granularity: 'year' });
-    expect(asOfFromDraft({ ...draft, granularity: 'month' })).toEqual({ start: '2028-02-01', end: '2028-02-29', granularity: 'month' });
-    expect(asOfFromDraft({ ...draft, month: '2026-12', granularity: 'month' })).toEqual({ start: '2026-12-01', end: '2026-12-31', granularity: 'month' });
+  // Contract reversed (plan 2026-10-13 §2, "Place is part of every trip"): Month and Year pins now carry the place too.
+  it('turns a draft into a pin, with its place, for every granularity', () => {
+    const draft = { day: '2026-06-15', month: '2028-02', year: 2027, place: BOGOTA };
+    expect(asOfFromDraft({ ...draft, granularity: 'year' })).toEqual({ start: '2027-01-01', end: '2027-12-31', granularity: 'year', place: BOGOTA });
+    expect(asOfFromDraft({ ...draft, granularity: 'month' })).toEqual({ start: '2028-02-01', end: '2028-02-29', granularity: 'month', place: BOGOTA });
+    expect(asOfFromDraft({ ...draft, month: '2026-12', granularity: 'month' })).toEqual({ start: '2026-12-01', end: '2026-12-31', granularity: 'month', place: BOGOTA });
     expect(asOfFromDraft({ ...draft, granularity: 'day', place: BOGOTA })).toEqual({
       start: '2026-06-15', end: '2026-06-15', granularity: 'day', place: BOGOTA,
     });
+  });
+
+  it('never makes a Month or Year pin without a place', () => {
+    const draft = { day: '2026-06-15', month: '2028-02', year: 2027 };
+    expect(asOfFromDraft({ ...draft, granularity: 'month' })).toBeUndefined();
+    expect(asOfFromDraft({ ...draft, granularity: 'year' })).toBeUndefined();
+  });
+
+  it('keeps the place-optional period pin for the AI time_travel tool (Day still needs a place)', () => {
+    const draft = { day: '2026-06-15', month: '2028-02', year: 2027 };
+    expect(periodAsOfFromDraft({ ...draft, granularity: 'month' })).toEqual({ start: '2028-02-01', end: '2028-02-29', granularity: 'month' });
+    expect(periodAsOfFromDraft({ ...draft, granularity: 'year', place: BOGOTA })).toEqual({ start: '2027-01-01', end: '2027-12-31', granularity: 'year', place: BOGOTA });
+    expect(periodAsOfFromDraft({ ...draft, granularity: 'day' })).toBeUndefined();
+  });
+
+  it('prefills Change from a Month pin that carries a place', () => {
+    const june = { start: '2026-06-01', end: '2026-06-30', granularity: 'month', place: BOGOTA } as const;
+    expect(sheetDefaults('2026-10-09', june, true)).toEqual({ granularity: 'month', day: '2026-06-01', month: '2026-06', year: 2026, place: BOGOTA });
   });
 
   it('never makes a Day pin without a place or a real day', () => {

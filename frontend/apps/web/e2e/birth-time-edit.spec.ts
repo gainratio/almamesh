@@ -18,6 +18,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test as base, webkit, type Page } from "@playwright/test";
+import { passOnboardingAiStep } from '../scripts/onboardingAiStep.mjs';
 
 /**
  * WebKit needs an on-disk profile: a default WebKit context is an ephemeral
@@ -71,7 +72,7 @@ async function onboard(page: Page): Promise<void> {
   await page.getByTestId("confidence-option-exact").click();
   await page.getByTestId("next-button").click();
   await page.getByTestId("skip-life-events-button").click();
-  await page.waitForURL("**/dashboard", { timeout: 300_000 });
+  await passOnboardingAiStep(page, { timeout: 300_000 });
   await page.getByTestId("chart-visualization").first().waitFor({ state: "attached", timeout: 300_000 });
 }
 

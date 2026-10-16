@@ -27,7 +27,7 @@ import { test, expect, type Page } from '@playwright/test';
 
 const LLM_SETTINGS_KEY = 'almamesh-llm-settings';
 const OPENROUTER_BASE = 'openrouter.ai';
-const RECOMMENDED_CLOUD_MODEL = 'deepseek/deepseek-v4.1-flash';
+const RECOMMENDED_CLOUD_MODEL = 'openai/gpt-6-luna';
 const DUMMY_KEY = 'sk-or-test-dummy-key-1234567890';
 
 /**

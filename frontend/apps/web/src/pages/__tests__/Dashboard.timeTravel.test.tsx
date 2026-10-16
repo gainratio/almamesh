@@ -1,7 +1,7 @@
 /**
  * Dashboard Time travel: the button, sheet overlay and banner work with AI off.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -53,6 +53,30 @@ import { hydrateLlmSettings, openRouterPreset, writeLlmSettings } from '@almames
 import { useTimeTravelStore } from '../../lib/timeTravel';
 import { readLocalPrimaryChart } from '../../lib/localChartRead';
 import DashboardPage from '../Dashboard';
+
+/** 2026-10-13: the birth place is a suggestion the person confirms; a test that relies on it taps it. */
+/** happy-dom has no layout; record scrollIntoView calls (restored by restoreAllMocks). */
+function stubScrollIntoView() {
+  if (!('scrollIntoView' in HTMLElement.prototype)) {
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, writable: true, value: () => {} });
+  }
+  return vi.spyOn(HTMLElement.prototype, 'scrollIntoView').mockImplementation(() => {});
+}
+
+async function goTo2019(): Promise<void> {
+  fireEvent.click(screen.getByTestId('dashboard-time-travel-button'));
+  fireEvent.click(screen.getByTestId('time-travel-tab-year'));
+  fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: '2019' } });
+  confirmSuggestedPlace();
+  await act(async () => {
+    fireEvent.click(screen.getByTestId('time-travel-go'));
+  });
+}
+
+function confirmSuggestedPlace(): void {
+  const suggestion = screen.queryByTestId('time-travel-where-suggestion');
+  if (suggestion) fireEvent.click(suggestion);
+}
 
 function chartWithZone(timezone: string): StoredChart {
   return {
@@ -170,17 +194,59 @@ describe('Dashboard Time travel', () => {
     expect(document.activeElement).toBe(button);
   });
 
-  it('a click then a successful Go returns focus to the button', async () => {
+  // CONTRACT REVERSED (PR #366 review): a successful Go used to return focus
+  // to the Time travel button. At 390px the new trip card renders below the
+  // fold, so nothing visibly happened. Go now brings the card into view and
+  // moves focus to it; Cancel and Escape still return focus to the button.
+  it('a click then a successful Go scrolls the new trip card into view and focuses it', async () => {
+    const scrolls = stubScrollIntoView();
     await renderDashboard({ ai: 'off' });
-    const button = screen.getByTestId('dashboard-time-travel-button');
-    fireEvent.click(button);
-    fireEvent.click(screen.getByTestId('time-travel-tab-year'));
-    fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: '2019' } });
-    await act(async () => {
-      fireEvent.click(screen.getByTestId('time-travel-go'));
-    });
+    await goTo2019();
     expect(screen.queryByTestId('time-travel-sheet')).toBeNull();
-    expect(document.activeElement).toBe(button);
+    const card = screen.getByTestId('time-travel-moment-card');
+    expect(document.activeElement).toBe(card);
+    expect(scrolls).toHaveBeenCalledTimes(1);
+    // The trip lands as a unit: the banner (what moment, Change, Back to today)
+    // and the card come into view together, so Back is never scrolled away.
+    const scrolled = scrolls.mock.contexts[0] as HTMLElement;
+    expect(scrolled.contains(card)).toBe(true);
+    expect(scrolled.contains(screen.getByTestId('dashboard-time-travel-banner'))).toBe(true);
+    expect(scrolls.mock.calls[0][0]).toMatchObject({ behavior: 'smooth', block: 'start' });
+  });
+
+  it('with reduced motion, Go jumps to the trip card instead of animating', async () => {
+    const scrolls = stubScrollIntoView();
+    const media = vi.mocked(window.matchMedia);
+    const usual = media.getMockImplementation();
+    media.mockImplementation((query: string) => ({
+      matches: query.includes('prefers-reduced-motion'),
+      media: query,
+      onchange: null,
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    }));
+    onTestFinished(() => {
+      if (usual) media.mockImplementation(usual);
+    });
+    await renderDashboard({ ai: 'off' });
+    await goTo2019();
+    expect(scrolls.mock.calls[0][0]).toMatchObject({ behavior: 'auto' });
+  });
+
+  it('a moment already set when the page opens does not scroll or steal focus', async () => {
+    const scrolls = stubScrollIntoView();
+    await renderDashboard({ ai: 'off' });
+    act(() =>
+      useTimeTravelStore
+        .getState()
+        .setMoment(PROFILE_ID, { start: '2019-01-01', end: '2019-12-31', granularity: 'year' }),
+    );
+    expect(screen.getByTestId('time-travel-moment-card')).toBeTruthy();
+    expect(scrolls).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(screen.getByTestId('time-travel-moment-card'));
   });
 
   it("opened from the banner's Change, a click then Cancel returns focus to Change", async () => {
@@ -218,6 +284,7 @@ describe('Dashboard Time travel', () => {
     fireEvent.click(screen.getByTestId('dashboard-time-travel-button'));
     fireEvent.click(screen.getByTestId('time-travel-tab-year'));
     fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: '2019' } });
+    confirmSuggestedPlace();
     await act(async () => {
       fireEvent.click(screen.getByTestId('time-travel-go'));
     });
@@ -330,6 +397,7 @@ describe('Dashboard Time travel', () => {
 
     fireEvent.click(screen.getByTestId('dashboard-time-travel-change'));
     fireEvent.change(screen.getByTestId('time-travel-year'), { target: { value: '2020' } });
+    confirmSuggestedPlace();
     await act(async () => {
       fireEvent.click(screen.getByTestId('time-travel-go'));
     });

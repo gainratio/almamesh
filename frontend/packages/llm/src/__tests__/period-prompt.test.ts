@@ -70,12 +70,17 @@ describe("a period basis never carries today's predictive sky", () => {
 });
 
 describe("the chat system prompt", () => {
-  it("requires the answer to name the period it looked at", () => {
+  // Contract reversed 2026-10-14 (chat tool layer redesign): the prompt used to ask the model to open
+  // by naming the period ("I looked at 1–30 June 2026."). The answer schema's `period` field now
+  // enforces it, so the prompt keeps only the rules the schema cannot: today's sky never stands in
+  // for another date, and an unavailable reading is said plainly.
+  it("keeps today's sky out of another date and says what the device could not work out", () => {
     const [system] = buildChatMessages(
       sanitizeChartForLlm(BIRTH_2000_CHART, { basis: "chart", instant: new Date("2022-06-01T00:00:00Z") }),
       "How was June 2019?",
     );
-    expect(system.content).toContain("I looked at 1–30 June 2026.");
+    expect(system.content).not.toContain("I looked at 1–30 June 2026.");
+    expect(system.content).toContain("never present today's sky as the sky of another date");
     expect(system.content).toContain("available: false");
   });
 });

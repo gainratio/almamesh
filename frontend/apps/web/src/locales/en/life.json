@@ -16,9 +16,9 @@
   },
   "atlas": {
     "heading": "Life Atlas",
-    "subtitle": "Seven domains of your life — strength, current emphasis and dated windows, computed deterministically on this device.",
+    "subtitle": "Eight domains of your life — strength, current emphasis and dated windows, computed deterministically on this device.",
     "as_of": "As of {{date}}",
-    "pending_hint": "Loading forecast…",
+    "pending_hint": "Loading themes…",
     "next_window": "Next window",
     "no_window": "No timed window in the next twelve months",
     "emphasis_active": "Activated by the running daśā ({{levels}})",
@@ -30,14 +30,16 @@
     "error_title": "The Life Atlas could not be computed",
     "retry": "Try again",
     "engine_warming": "The chart engine is still starting up. Computation begins once it is ready.",
-    "about_title": "About these forecasts",
-    "about_body": "A deterministic synthesis of your daśā timeline, transits, divisional charts and planetary strength. No AI is involved.",
-    "about_link": "Open Sky & Timing"
+    "about_title": "About these themes",
+    "about_body": "A deterministic synthesis of your daśā timeline, transits, divisional charts and planetary strength. No AI is involved. It shows what your chart highlights, for reflection.",
+    "about_link": "Open Sky & Timing",
+    "obstacles_note": "A theme to reflect on: friction with rules or authorities, legal or administrative matters, unexpected setbacks, losses and expenses (the 6th, 8th and 12th houses).",
+    "obstacles_subtitle": "Rules, legal matters, setbacks, losses"
   },
   "domain": {
     "kicker": "Life Atlas",
     "back": "Back to dashboard",
-    "engine_heading": "Engine forecast",
+    "engine_heading": "What the engine highlights",
     "engine_badge": "Deterministic · on-device",
     "ai_heading": "From your reading",
     "ai_badge": "AI narration",

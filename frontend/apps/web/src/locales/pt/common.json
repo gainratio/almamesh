@@ -143,12 +143,14 @@
     "finishing_previous": "Concluindo o download anterior… a atualização acontece quando terminar.",
     "activating": "Atualizando…",
     "stalled": "A atualização não pôde ser concluída. Feche as outras abas do AlmaMesh e recarregue.",
-    "reload_now": "Recarregar agora"
+    "reload_now": "Recarregar agora",
+    "stale": "O AlmaMesh foi atualizado. Recarregue para continuar."
   },
   "footer": {
     "privacy": "Política de privacidade",
     "terms": "Termos de serviço",
-    "data_deletion": "Exclusão de dados"
+    "data_deletion": "Exclusão de dados",
+    "how_we_test": "Como testamos"
   },
   "provenance": {
     "aria": "Procedência do cálculo"
@@ -215,5 +217,8 @@
     "reload": "Recarregar",
     "discard_failed_body": "Não foi possível remover deste dispositivo uma pessoa que você cancelou, então ela pode voltar ao recarregar.",
     "try_again": "Tentar novamente"
+  },
+  "ai_setup": {
+    "dialog_title": "Conectar IA"
   }
 }

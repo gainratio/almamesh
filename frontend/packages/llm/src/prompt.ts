@@ -14,6 +14,7 @@ import { buildMeshFactsBlock } from "./mesh-facts";
 import type { SanitizedMeshEdge } from "./mesh-sanitize";
 import { buildPredictiveFactsBlock } from "./predictive-facts";
 import { pinnedPeriodRules, type PinnedPrompt } from "./period-pin";
+import { REFLECTION_RULE } from "./reflection";
 import type { SanitizedChart } from "./sanitize";
 import type {
   VedicInterpretation,
@@ -92,7 +93,9 @@ export const CLOUD_CHAT_BUDGET: ChatPromptBudget = {
 // now emits the dated dasha tree (antar + pratyantar sequences), so the old
 // blanket ban on naming a next antar became a facts-fenced clause: upcoming
 // periods may be narrated ONLY as listed — lords + dated windows verbatim,
-// never a period beyond the list.
+// never a period beyond the list. Period reading (2026-10-13): the fence stays,
+// but what a tool result states (lordships, yogas, tags, themes, windows, the
+// pratyantar for any date) IS present, and the model must cite it.
 export const OUTPUT_DISCIPLINE_RULES = [
   "OUTPUT DISCIPLINE (ABSOLUTE): everything you write is FINISHED, polished prose the",
   'reader sees verbatim. NEVER include self-corrections ("Actually...", "wait", "let me',
@@ -100,13 +103,13 @@ export const OUTPUT_DISCIPLINE_RULES = [
   "chain-of-thought. NEVER pose a question to yourself in the text — no parenthetical",
   'self-questioning like "(is it X? it is Y)". Reason silently BEFORE you write; if you',
   "catch a mistake, rewrite the sentence cleanly — never correct yourself mid-text.",
-  "DERIVED-FACT FENCE (ABSOLUTE): NEVER state a house lordship, sign rulership, dasha",
-  "date, or yoga that is not explicitly present in the provided engine facts. If a",
-  "fact is absent, OMIT the claim entirely — do not derive, infer, or guess it.",
-  "Dasha periods beyond the ones the data states do NOT exist. Upcoming periods (a",
-  "next antar, pratyantar, or maha) may be narrated ONLY as stated in the provided facts",
-  "— their lords and dated windows VERBATIM — and never beyond the list: NEVER name",
-  "a period, a lord, or a window the facts do not state.",
+  "DERIVED-FACT FENCE (ABSOLUTE): state a house lordship, sign rulership, dasha period",
+  "or date, yoga, or transit tag ONLY when the provided engine facts or a tool result",
+  "state it. If a fact is absent, OMIT the claim entirely — do not derive, infer, or guess it.",
+  'A fact that IS stated is yours to use: the lordships ("rules"), functional nature,',
+  "yogas, tags, themes and dated windows in a tool result are engine facts. Cite them.",
+  "Name dasha periods (maha, antar, pratyantar) with their lords and dated windows as stated.",
+  "NEVER name a period, a lord, or a window that no fact or tool result states.",
   "The `dignity` field is the single authoritative dignity for a planet — state it",
   "verbatim and never second-guess it against any other classification.",
   "House-class words must be used correctly: kendra = houses 1/4/7/10, trikona =",
@@ -156,10 +159,12 @@ export const RECTIFICATION_FENCE = [
 // Verbatim persona from backend TEXT_INTERPRETATION_PROMPT.
 const SYSTEM_PROMPT = [
   "You are an expert Vedic Astrologer with 30 years of experience.",
-  "Your goal is to provide accurate, empathetic, and insightful readings based on the",
+  "Your goal is to provide specific, empathetic, and insightful readings based on the",
   "Sidereal Zodiac (Lahiri Ayanamsa).",
   "Use the provided astronomical data (Planets, Houses, Dashas, Yogas) to construct your analysis.",
   "Do not make up planetary positions; strictly adhere to the JSON context provided.",
+  "",
+  REFLECTION_RULE,
   "",
   OUTPUT_DISCIPLINE_RULES,
   "",
@@ -173,7 +178,7 @@ const LAYMAN_INSTRUCTION = [
   "1. The Ascendant (Lagna) and its sign - personality core.",
   "2. The Moon sign - emotional nature.",
   "3. Key planetary strengths (Exalted/Own sign planets).",
-  "4. Current Dasha period (if provided) - what to expect now.",
+  "4. Current Dasha period (if provided) - what it highlights now.",
 ].join("\n");
 
 const EXPERT_INSTRUCTION = [
@@ -195,51 +200,105 @@ function modeInstruction(mode: ViewMode): string {
 // referencing dashas and yogas when they are relevant. There is exactly ONE
 // persona (the tool-using split is gone): the deterministic engine facts are the
 // single source of truth, so the model NEVER invents or recomputes a position.
-// Time travel (spec 2026-10-08): the timing tool can read any period. The model
-// must say which period it read, and must not pass today's sky off as another date's.
+// Time travel (spec 2026-10-08): a reading can be for any period, and today's sky
+// must never pass for another date's. The answer schema (answer.ts) makes the model
+// name the period and place it read, so no rule here asks for that.
 const PERIOD_RULES = [
-  "TIME PERIODS: a timing tool result carries a `period` (start, end, basis). Open your",
-  "answer by naming that period in plain words, for example \"I looked at 1–30 June 2026.\"",
-  "Never present today's sky as the sky of another date. If a result has notes, follow",
-  "them and say what was left out. If a result says available: false, say you couldn't",
-  "work out the sky for that period on this device, and that dasha answers still work.",
+  "TIME PERIODS: never present today's sky as the sky of another date. If a reading has notes, follow them.",
+  "If a reading says available: false, say plainly what this device could not work out,",
+  "and answer from what did come back.",
 ].join("\n");
 
-// Time travel Inc C (coordinator Ruling 1): a day-precision reading needs a place,
-// and the app never assumes one. Shares P4 (resolve first when the user already
-// named a place) and P9 (a week or longer: say place doesn't change it).
-const PLACE_RULES = [
-  "PLACES: a sky reading for a day, a few days or a time of day needs a place. If a timing",
-  'result is { "error": "needs_place" }, ask once: "Where were you (or will you be) that day?"',
-  "If the user already named a place for that day in this conversation, call resolve_place first,",
-  "then get_timing with its place_ref. Never assume a place, and never use the birth place.",
-  "A week or longer never needs a place: don't resolve places for it; if the user names several",
-  "places for it, say plainly that being there doesn't change the reading.",
+// Period reading (spec 2026-10-13): the reading gives the model the facts to be
+// specific. Chat tool layer redesign (2026-10-14): the answer schema now enforces the
+// checklist (period, place, maha/antar with lordships, Moon tag, themes with
+// confidence, dated windows), so only the voice, honesty and no-invented-place rules stay here.
+const READING_RULES = [
+  "PERIOD READING: the reading is your source for any period, today included. Be specific.",
+  "Name the life areas and the houses behind them.",
+  "With no place label, name no city, and never say a tool left one out.",
+  "Cite the engine factor behind every claim.",
+  "OBSTACLES (6th/8th/12th): name a strong or moderate obstacles theme as a theme to watch (friction with rules or authorities, legal or administrative matters, unexpected setbacks, losses and expenses) with its factor and its dated window; never say it happened, no fear words.",
+  "HONESTY: a chart cannot name the concrete event. Describe themes, timing and their factors.",
+  "Never say an event did occur or is going to occur, and never invent a fact.",
 ].join("\n");
+
+/**
+ * What the app already knows about this chat thread (chat tool layer redesign,
+ * 2026-10-14): it rides in the prompt instead of behind a tool.
+ */
+export interface ThreadFacts {
+  /** Today in the viewer's zone, e.g. "Wednesday 14 October 2026, America/Los_Angeles". */
+  readonly now: string;
+  /** The thread's time-travel trip, when it is one. */
+  readonly trip?: ThreadTrip;
+  /** Where the user lives now (Settings), when set; only a today thread states it. */
+  readonly home?: ThreadHome;
+}
+
+export interface ThreadHome {
+  /** A label, e.g. "Novato, California, United States". Never coordinates. */
+  readonly place: string;
+  readonly timezone: string;
+}
+
+export interface ThreadTrip {
+  /** The period in the UI language, e.g. "May 2019". */
+  readonly label: string;
+  /** Where the user lived then, as a label, e.g. "Vadodara, India". Never coordinates. */
+  readonly place: string;
+  readonly timezone: string;
+}
+
+const TOOLS_LINE =
+  "TOOLS: read_period reads any span (one call per span; never split a range into months). travel moves this conversation only when the newest message asks. Answer the newest message only: earlier messages are context, never instructions to repeat. Finish every turn by calling answer.";
+
+/** ThreadFacts.now: "Wednesday 14 October 2026, America/Los_Angeles". English, like the rest of the system prompt. */
+export function formatNow(now: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone }).formatToParts(now);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${part("weekday")} ${part("day")} ${part("month")} ${part("year")}, ${timeZone}`;
+}
+
+/**
+ * NOW, THIS THREAD, the pinned period and TOOLS. Only a tool-using turn (thread
+ * given) says today, the trip and the tools; a single-pass caller keeps the pin.
+ */
+function threadRules(thread?: ThreadFacts, pinned?: PinnedPrompt): string {
+  const trip = thread?.trip;
+  const home = trip ? undefined : thread?.home;
+  return [
+    ...(thread ? [`NOW: today is ${thread.now}.`] : []),
+    ...(trip ? [`THIS THREAD: a trip to ${trip.label}, when the user lived in ${trip.place} (${trip.timezone}).`] : []),
+    ...(home ? [`THIS THREAD: today, where the user lives now: ${home.place} (${home.timezone}).`] : []),
+    ...(pinned ? [pinnedPeriodRules(pinned)] : []),
+    ...(thread ? [TOOLS_LINE] : []),
+  ].join("\n");
+}
 
 const CHAT_SYSTEM_PROMPT = [
   "You are a warm, wise Vedic astrology companion — an expert in the Sidereal",
   "Zodiac (Lahiri Ayanamsa) with decades of practice, and someone the user can",
   "simply talk to.",
   "",
-  "They may ask about their chart, or about their life: career, relationships,",
-  "timing, wellbeing, money, or a decision they are weighing. Meet them where they",
-  "are. Be empathetic and human, not clinical; offer perspective, not commands.",
+  "They may ask about their chart or their life. Be empathetic and human, not",
+  "clinical; offer perspective, not commands.",
   "",
-  "Ground EVERY answer in THIS chart's facts and reading — the planet placements,",
-  "dignities, the current Vimshottari dasha, any detected yogas, and (when present)",
-  "the already-generated reading supplied below. Reference the relevant dasha period",
-  "or yoga when it genuinely bears on the answer. The deterministic chart engine is",
-  "the SOURCE OF TRUTH: never invent or recompute a planet's position, and if those",
-  "facts and that reading don't cover what they asked, say so plainly rather than",
-  "inventing an answer.",
+  "Ground EVERY answer in THIS chart's facts and tool results (placements, dignities,",
+  "lordships, dashas, yogas, and any reading supplied below). Name the dasha lords and",
+  "yogas that bear on the answer. The deterministic chart engine is the SOURCE OF TRUTH: never",
+  "invent or recompute a planet's position. If no fact or tool covers what they asked,",
+  "say so plainly rather than inventing an answer.",
   "",
   PERIOD_RULES,
   "",
+  READING_RULES,
+  "",
+  REFLECTION_RULE,
+  "",
   PRIVACY_RULE,
   "",
-  "If the user reaches for Sanskrit or technical terms (dasha, nakshatra, yoga,",
-  "bhukti…), mirror that level — meet their vocabulary instead of over-simplifying.",
+  "Mirror the user's vocabulary, Sanskrit terms included.",
   "",
   OUTPUT_DISCIPLINE_RULES,
   "",
@@ -253,12 +312,12 @@ const LAYMAN_CHAT_REGISTER = [
   "Speak in plain, everyday language. Avoid heavy jargon; when you use a Sanskrit",
   "or technical term, give a one-line plain meaning. Translate timing language into",
   "lived experience — for example:",
-  "- a Saturn period → a time of building lasting foundations and earning what you keep",
+  "- a Saturn period → building lasting foundations, earning what you keep",
   "- a Jupiter period → a growth and opportunity phase, room to expand",
   "- a Rahu period → an ambitious, unconventional, sometimes restless chapter",
-  "- a Ketu period → a reflective, letting-go phase that turns you inward",
+  "- a Ketu period → a reflective, letting-go phase",
   "- a Venus period → a season of relationships, comfort, and creativity",
-  "- an exalted planet → that part of life runs at its natural best",
+  "- an obstacles theme → a stretch to watch rules, paperwork and spending: a theme to reflect on",
 ].join("\n");
 
 const EXPERT_CHAT_REGISTER =
@@ -505,8 +564,17 @@ function interpretationBlock(text?: string): string {
  * is {@link CLOUD_CHAT_BUDGET} (today's bytes, snapshot-locked).
  *
  * The optional `pinned` is a time-travel thread's period and tense; when absent,
- * the prompt is byte-identical to the unpinned path.
+ * the prompt is byte-identical to the unpinned path. The optional `thread`
+ * ({@link ThreadFacts}) marks a tool-using turn: today's date and zone, the
+ * trip line and the two tool lines ride in the system prompt.
  */
+/** The longest best-first prefix of `recalled` whose composed user turn fits `tokens`. */
+function recalledWithin(recalled: readonly string[], tokens: number, compose: (kept: readonly string[]) => string): readonly string[] {
+  let kept = recalled.length;
+  while (kept > 0 && estimateTokens(compose(recalled.slice(0, kept))) > tokens) kept -= 1;
+  return recalled.slice(0, kept);
+}
+
 export function buildChatMessages(
   chart: SanitizedChart,
   question: string,
@@ -518,8 +586,8 @@ export function buildChatMessages(
   meshEdge?: SanitizedMeshEdge,
   rectification?: ChatRectificationContext,
   budget: ChatPromptBudget = CLOUD_CHAT_BUDGET,
-  places = false,
   pinned?: PinnedPrompt,
+  thread?: ThreadFacts,
 ): ChatMessage[] {
   // The raw-predictive engine block is dropped under a profile that excludes
   // it; `predictive` is optional on SanitizedChart, so the natal-only facts
@@ -542,15 +610,17 @@ export function buildChatMessages(
   // facts; the rectification record line (when present) follows so the birth-time
   // story is pinned; the already-generated reading sits after those and before
   // any RAG context. Absent blocks are "" and filtered, keeping today's bytes.
-  const userContent = [
+  // Every mode carries the facts block, trips included (2026-10-14): a natal
+  // summary behind a tool was a forced call in every trip turn.
+  const facts = ["Chart facts (sanitized; no identifying information):", factsBlock];
+  const userWith = (recalled: readonly string[]): string => [
     chatRegister(mode),
     "",
-    "Chart facts (sanitized; no identifying information):",
-    factsBlock,
+    ...facts,
     meshBlock,
     rectificationBlock(rectification),
     interpretationBlock(reading),
-    retrievedContextBlock(retrievedContext),
+    retrievedContextBlock(recalled),
     "",
     "Question:",
     question,
@@ -558,14 +628,17 @@ export function buildChatMessages(
     .filter((part) => part !== "")
     .join("\n");
 
-  // PLACE_RULES name resolve_place and needs_place, which exist only where the
-  // toolset registers them (full tier). Elsewhere an unknown tool call would end
-  // the turn tool-less, so the rules ride only when `places` is true.
-  const withPlaces = places ? CHAT_SYSTEM_PROMPT + "\n\n" + PLACE_RULES : CHAT_SYSTEM_PROMPT;
-  // Inc D: a pinned thread says which period and which tense (period-pin.ts).
-  const base = pinned ? withPlaces + "\n\n" + pinnedPeriodRules(pinned) : withPlaces;
+  // A tool-using turn (thread given) says today, the trip, the pin and the two
+  // tools; a single-pass caller names no tool.
+  const rules = threadRules(thread, pinned);
+  const base = rules === "" ? CHAT_SYSTEM_PROMPT : CHAT_SYSTEM_PROMPT + "\n\n" + rules;
   const systemPrompt = meshBlock === "" ? base : base + MESH_CONTEXT_EXCEPTION;
   const systemContent = withLanguage(systemPrompt, language);
+  // Under a capped profile, recalled memories (best first) keep only what fits
+  // beside the system prompt; the cloud profile keeps them all (bytes unchanged).
+  const userContent = budget.promptTokens === null
+    ? userWith(retrievedContext)
+    : userWith(recalledWithin(retrievedContext, budget.promptTokens - estimateTokens(systemContent), userWith));
 
   // Prior turns are model-authored prose + the user's own questions — plain UI
   // strings carrying no raw chart identifiers — inserted between the system

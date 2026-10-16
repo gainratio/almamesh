@@ -54,6 +54,7 @@ const PUBLIC_ROUTE_PATHS = routeHead?.PUBLIC_ROUTE_PATHS ?? [
   '/privacy',
   '/terms',
   '/data-deletion',
+  '/how-we-test',
 ];
 const SITE_ORIGIN = routeHead?.SITE_ORIGIN ?? 'https://almamesh.com';
 const prerenderOutputFile =

@@ -153,14 +153,14 @@ describe("buildChatMessages — engine predictive context", () => {
   it("carries the delimited predictive block when the chart has one", () => {
     const msgs = buildChatMessages(CHART_WITH_PREDICTIVE, "How is my year ahead?");
     const userTurn = msgs[msgs.length - 1].content ?? "";
-    expect(userTurn).toContain("ENGINE PREDICTIVE CONTEXT");
+    expect(userTurn).toContain("ENGINE TIMING CONTEXT");
     expect(userTurn).toContain("337");
   });
 
   it("is byte-identical to today's prompt when the chart has no predictive context", () => {
     const msgs = buildChatMessages(CHART, "How is my year ahead?");
     const joined = msgs.map((m) => m.content ?? "").join("\n");
-    expect(joined).not.toContain("ENGINE PREDICTIVE CONTEXT");
+    expect(joined).not.toContain("ENGINE TIMING CONTEXT");
   });
 });
 
@@ -168,7 +168,7 @@ describe("buildInterpretationMessages — engine predictive context", () => {
   it("appends the delimited predictive block (not raw JSON) when present", () => {
     const msgs = buildInterpretationMessages(CHART_WITH_PREDICTIVE);
     const userTurn = msgs[msgs.length - 1].content ?? "";
-    expect(userTurn).toContain("ENGINE PREDICTIVE CONTEXT");
+    expect(userTurn).toContain("ENGINE TIMING CONTEXT");
     // The compact block replaces the raw key — no duplicated `predictive` JSON.
     expect(userTurn).not.toContain('"predictive"');
   });
@@ -176,7 +176,7 @@ describe("buildInterpretationMessages — engine predictive context", () => {
   it("emits no predictive block when the chart carries none (graceful absence)", () => {
     const msgs = buildInterpretationMessages(CHART);
     const userTurn = msgs[msgs.length - 1].content ?? "";
-    expect(userTurn).not.toContain("ENGINE PREDICTIVE CONTEXT");
+    expect(userTurn).not.toContain("ENGINE TIMING CONTEXT");
     expect(userTurn).not.toContain('"predictive"');
   });
 });
@@ -194,10 +194,14 @@ const DISCIPLINE_PHRASES = [
   "meta-commentary",
   "chain-of-thought",
   "NEVER pose a question to yourself",
-  "NEVER state a house lordship, sign rulership, dasha",
+  // Contract reworded 2026-10-13 (period reading): the fence stays, and a fact a tool result
+  // states (lordships, yogas, tags, windows) counts as present and must be cited.
+  "DERIVED-FACT FENCE (ABSOLUTE)",
+  "ONLY when the provided engine facts or a tool result",
   "OMIT the claim entirely",
-  "may be narrated ONLY as stated in the provided facts",
-  "a period, a lord, or a window the facts do not state",
+  "do not derive, infer, or guess it",
+  "with their lords and dated windows as stated",
+  "NEVER name a period, a lord, or a window that no fact or tool result states",
   "single authoritative dignity",
   "kendra = houses 1/4/7/10",
 ] as const;

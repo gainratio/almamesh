@@ -38,7 +38,7 @@
     "strength_eyebrow": "Section XI",
     "strength_intro": "Ashtakavarga bindus and the six-fold Ṣaḍbala — the classical strength arithmetic behind every judgement in this report.",
     "domains_eyebrow": "Section XII",
-    "domains_intro": "Seven life domains read deterministically from houses, karakas, vargas, and current timing — the engine's synthesis, not AI narration.",
+    "domains_intro": "Eight life domains read deterministically from houses, karakas, vargas, and current timing — the engine's synthesis, not AI narration.",
     "rectification_eyebrow": "Section XIII",
     "rectification_intro": "How the working birth time of this chart was established, and the dated life events that support it.",
     "lagna_row_name": "Ascendant",
@@ -171,7 +171,7 @@
     "components_note": "Component columns are in virūpas (60 virūpas = 1 rūpa); the total and requirement are in rūpas."
   },
   "domains": {
-    "heading": "Life-Domain Forecasts",
+    "heading": "Life-Domain Themes",
     "windows_heading": "Upcoming windows",
     "windows_empty": "No dated windows inside the next twelve months.",
     "strength_withheld_note": "Stored figure could not be confirmed unchanged — withheld from this report."
@@ -216,7 +216,7 @@
   },
   "predictive_pending": {
     "title": "Timing & strength sections",
-    "body": "Transits, divisional charts, planetary strength and the seven life-domain forecasts can be added to this report. Compute them first — about half a minute, entirely on this device.",
+    "body": "Transits, divisional charts, planetary strength and the eight life-domain themes can be added to this report. Compute them first — about half a minute, entirely on this device.",
     "compute": "Compute timing sections",
     "computing": "Computing on this device — {{elapsed}} elapsed.",
     "engine_warming": "The chart engine is still starting up; computing becomes available once it is ready.",

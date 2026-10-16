@@ -147,9 +147,9 @@ describe("buildSectionMessages — per-section slimming over the budget", () => 
     };
     const remedial = userContent("remedial", withPredictive);
     const upcoming = userContent("upcoming_periods", withPredictive);
-    expect(remedial).not.toContain("ENGINE PREDICTIVE CONTEXT");
+    expect(remedial).not.toContain("ENGINE TIMING CONTEXT");
     expect(remedial).not.toContain("337");
-    expect(upcoming).toContain("ENGINE PREDICTIVE CONTEXT");
+    expect(upcoming).toContain("ENGINE TIMING CONTEXT");
     expect(upcoming).toContain("337");
   });
 });

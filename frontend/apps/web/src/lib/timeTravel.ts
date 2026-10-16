@@ -19,7 +19,12 @@ import { repinThread, startPinnedThread, todayThread } from './timeTravelThreads
 
 export type TravelSource = 'dashboard-sheet' | 'chat-sheet' | 'chat-tool';
 export interface TravelRequest { readonly asOf: ChatThreadAsOf; readonly source: TravelSource; }
-/** 'new': always a new pinned thread. { id }: repin it if pinned, else a new pinned thread. 'latest': the thread chat shows. */
+/**
+ * 'new': always a new pinned thread. { id }: repin it only while it is an empty
+ * trip, else a new trip thread. 'latest': the thread chat shows, same rule.
+ * A trip that holds a conversation is never re-pinned: its answers are about
+ * its own period and place (the Jan 2027 banner over a "today" answer, 2026-10-13).
+ */
 export type TravelThread = 'new' | 'latest' | { readonly id: string };
 export interface TravelTarget {
   readonly profileId: string;
@@ -71,14 +76,17 @@ function threadToMove(target: TravelTarget): string | undefined {
   const id = target.thread === 'latest'
     ? useChatStore.getState().listThreads(target.profileId)[0]?.id
     : target.thread.id;
-  return id && useChatStore.getState().threads[id]?.as_of ? id : undefined;
+  const chat = useChatStore.getState();
+  return id && chat.threads[id]?.as_of && chat.getMessages(id).length === 0 ? id : undefined;
 }
 
-async function pinChat(asOf: ChatThreadAsOf, target: TravelTarget): Promise<string> {
+interface PinnedChat { readonly threadId: string; readonly created: boolean; }
+
+async function pinChat(asOf: ChatThreadAsOf, target: TravelTarget): Promise<PinnedChat> {
   const pinned = threadToMove(target);
-  if (!pinned) return startPinnedThread(target.profileId, target.chartId, asOf);
+  if (!pinned) return { threadId: await startPinnedThread(target.profileId, target.chartId, asOf), created: true };
   await repinThread(pinned, asOf);
-  return pinned;
+  return { threadId: pinned, created: false };
 }
 
 /**
@@ -108,10 +116,16 @@ const SUPERSEDED: TravelOutcome = { threadId: undefined };
 export async function applyTravel(request: TravelRequest, target: TravelTarget, deps: TravelDeps = DEFAULT_DEPS): Promise<TravelOutcome> {
   check(request.asOf, deps.birthYear(target.chartId));
   const isLatest = takeIntent(target.profileId);
-  const threadId = deps.aiConfigured() ? await pinChat(request.asOf, target) : undefined;
-  if (!isLatest() || target.canApply?.() === false) return SUPERSEDED;
+  const chat = deps.aiConfigured() ? await pinChat(request.asOf, target) : undefined;
+  if (!isLatest() || target.canApply?.() === false) {
+    // A trip opened for a move that no longer applies would sit on top of the thread list, empty.
+    if (chat?.created && useChatStore.getState().getMessages(chat.threadId).length === 0) {
+      useChatStore.getState().deleteThread(chat.threadId);
+    }
+    return SUPERSEDED;
+  }
   useTimeTravelStore.getState().setMoment(target.profileId, request.asOf);
-  return { threadId };
+  return { threadId: chat?.threadId };
 }
 
 export async function applyBackToToday(target: Omit<TravelTarget, 'thread'>, deps: TravelDeps = DEFAULT_DEPS): Promise<TravelOutcome> {

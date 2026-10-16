@@ -129,3 +129,17 @@ describe('UpdateBanner', () => {
     expect(screen.getByRole('button', { name: 'update.reload_now' })).toBeTruthy();
   });
 });
+
+describe('UpdateBanner after a failed chunk load (2026-10-13)', () => {
+  it('shows "AlmaMesh was updated, reload to continue" with a reload action when the app is stale', async () => {
+    const { useAppStale } = await import('../../lib/appStale');
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, json: async () => ({}) })));
+    act(() => useAppStale.getState().markStale());
+    render(<UpdateBanner />);
+    expect(await screen.findByText('update.stale')).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: 'update.reload_cta' }));
+    await waitFor(() => expect(applyUpdate).toHaveBeenCalled());
+    act(() => useAppStale.setState({ stale: false }));
+    vi.unstubAllGlobals();
+  });
+});

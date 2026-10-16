@@ -41,7 +41,7 @@
     "strength_eyebrow": "Sección XI",
     "strength_intro": "Los bindus de Ashtakavarga y el Ṣaḍbala de seis componentes — la aritmética clásica de fuerza detrás de cada juicio de este informe.",
     "domains_eyebrow": "Sección XII",
-    "domains_intro": "Siete áreas de vida leídas de forma determinista a partir de casas, karakas, vargas y los tiempos actuales — la síntesis del motor, no narración de IA.",
+    "domains_intro": "Ocho áreas de vida leídas de forma determinista a partir de casas, karakas, vargas y los tiempos actuales — la síntesis del motor, no narración de IA.",
     "rectification_eyebrow": "Sección XIII",
     "rectification_intro": "Cómo se estableció la hora de nacimiento de trabajo de esta carta, y los eventos de vida fechados que la respaldan.",
     "lagna_row_name": "Ascendente",
@@ -174,7 +174,7 @@
     "components_note": "Las columnas de componentes están en virūpas (60 virūpas = 1 rūpa); el total y el requisito están en rūpas."
   },
   "domains": {
-    "heading": "Pronósticos por áreas de vida",
+    "heading": "Temas por áreas de vida",
     "windows_heading": "Ventanas próximas",
     "windows_empty": "No hay ventanas con fecha en los próximos doce meses.",
     "strength_withheld_note": "No se pudo confirmar que la cifra guardada no fue modificada — se omite en este informe."
@@ -219,7 +219,7 @@
   },
   "predictive_pending": {
     "title": "Secciones de tiempos y fuerza",
-    "body": "Los tránsitos, las cartas divisionales, la fuerza planetaria y los pronósticos de las siete áreas de vida pueden añadirse a este informe. Calcúlalos primero — alrededor de medio minuto, todo en este dispositivo.",
+    "body": "Los tránsitos, las cartas divisionales, la fuerza planetaria y los temas de las ocho áreas de vida pueden añadirse a este informe. Calcúlalos primero — alrededor de medio minuto, todo en este dispositivo.",
     "compute": "Calcular secciones de tiempos",
     "computing": "Calculando en este dispositivo — {{elapsed}} transcurrido.",
     "engine_warming": "El motor de cartas aún se está iniciando; el cálculo estará disponible cuando esté listo.",

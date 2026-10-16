@@ -7,7 +7,7 @@
  * (Bengaluru, 08 Aug 1988, 06:44 IST == 01:14 UTC):
  *   a. /dashboard — ONE AlmaMesh wordmark (DOM-counted), IdentityStrip with
  *      Leo lagna, the BIRTH-TIME SENSITIVITY callout naming Cancer with
- *      the "Refine your birth time" link, Life Atlas 7 cards in the designed
+ *      the "Refine your birth time" link, Life Atlas cards (one per life domain) in the designed
  *      pending state with ONE compute affordance, and NO accordion anywhere.
  *   b. Life Atlas compute -> click the career card -> /life/career shows the
  *      labeled engine-forecast + AI-narration sections; back link returns.
@@ -33,6 +33,7 @@ import { Buffer } from 'node:buffer'
 import { chromium } from '@playwright/test'
 import { chartDayReferenceInstant } from './predictiveReference.mjs'
 import { confirmLegacyBackupImport } from './confirmLegacyBackupImport.mjs'
+import { LIFE_DOMAINS } from './lifeDomains.mjs'
 
 const BASE_URL = process.argv[2] ?? 'http://localhost:4173'
 const PROOF_DIR = '/tmp/almamesh-proof-pro-ui'
@@ -341,8 +342,8 @@ async function main() {
   await page.waitForSelector('[data-testid="life-atlas-compute"]', { timeout: 60_000 })
   const computeBtns = await page.locator('[data-testid="life-atlas-compute"]').count()
   record(
-    'A4 — Life Atlas: 7 pending domain cards + ONE compute affordance',
-    pendingCards === 7 && computeBtns === 1 && /computed on demand/i.test(pendingHints),
+    `A4 — Life Atlas: ${LIFE_DOMAINS.length} pending domain cards + ONE compute affordance`,
+    pendingCards === LIFE_DOMAINS.length && computeBtns === 1 && /computed on demand/i.test(pendingHints),
     `pendingCards=${pendingCards} computeButtons=${computeBtns} pendingHint=${/computed on demand/i.test(pendingHints)}`,
   )
 

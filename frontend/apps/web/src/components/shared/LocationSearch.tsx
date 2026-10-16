@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { safeError } from '@almamesh/shared-types';
-import { searchCities, timezoneForCoordinates, type CityMatch } from '../../lib/geo/cityLookup';
+import { placeRegion, searchCities, timezoneForCoordinates, type CityMatch } from '../../lib/geo/cityLookup';
+import { PLACE_SUGGESTION_LIMIT } from '../../lib/geo/cityMatch';
 import { derivedDbStorage, subscribeDerivedDbStorage } from '../../lib/derivedDb';
 
 export interface LocationResult {
@@ -107,7 +108,7 @@ export function LocationSearch({
             setIsLoading(true);
             try {
                 const language = i18n.language.split('-')[0];
-                const matches = await searchCities(searchQuery, 8, { language, signal });
+                const matches = await searchCities(searchQuery, PLACE_SUGGESTION_LIMIT, { language, signal });
                 // A newer keystroke superseded this query — drop its (stale) results
                 // so a slow earlier response can't overwrite newer ones.
                 if (signal?.aborted) return;
@@ -379,21 +380,11 @@ export function LocationSearch({
                                 : 'hover:bg-background-tertiary'
                                 }`}
                         >
-                            <div className="flex items-start justify-between gap-4">
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-text-primary font-medium truncate">
-                                        {match.city}
-                                    </p>
-                                    <p className="text-text-muted text-sm truncate">
-                                        {match.country}
-                                    </p>
-                                </div>
-                                <div className="text-right flex-shrink-0">
-                                    <p className="text-text-muted text-xs font-mono">
-                                        {formatCoords(match.latitude, match.longitude)}
-                                    </p>
-                                </div>
-                            </div>
+                            {/* The same row as every place box: city plainly, "State, Country" muted. */}
+                            <p className="truncate text-text-primary">
+                                <span data-part="city">{match.city}</span>
+                                <span data-part="region" className="text-text-muted-alt">, {placeRegion(match.city, match.state, match.country)}</span>
+                            </p>
                         </button>
                     ))}
                     <div className="px-4 py-2 bg-background-tertiary border-t border-ui-border">

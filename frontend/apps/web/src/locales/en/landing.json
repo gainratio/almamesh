@@ -27,11 +27,11 @@
   },
   "features": {
     "title": "What you can do",
-    "intro": "Cast, rectify, narrate, and predict — every step runs on your device, grounded in the engine's math.",
+    "intro": "Cast, rectify, narrate, and reflect — every step runs on your device, grounded in the engine's math.",
     "rectify": {
       "badge": "The honesty point",
       "title": "Rectify your birth time — the input that makes or breaks everything.",
-      "body": "A few minutes can move your Ascendant to the next sign and shift every prediction with it. Most people don't know their time to the minute. So instead of faking confidence on a rough time like the paid sites do, AlmaMesh helps you rectify it from real life events — an honest chart needs an honest time."
+      "body": "A few minutes can move your Ascendant to the next sign and shift every house and period reading with it. Most people don't know their time to the minute. So instead of faking confidence on a rough time like the paid sites do, AlmaMesh helps you rectify it from real life events — an honest chart needs an honest time."
     },
     "items": [
       {
@@ -48,7 +48,7 @@
       },
       {
         "title": "See your timing",
-        "body": "Transits, dashas, all divisional charts (D1–D60), Ashtakavarga & Shadbala, and per-life-domain forecasts. Deeply predictive — grounded in the math, not vibes."
+        "body": "Transits, dashas, all divisional charts (D1–D60), Ashtakavarga & Shadbala, and per-life-domain themes with dated windows. Specific, grounded in the math, and offered for reflection."
       }
     ]
   },
@@ -76,7 +76,7 @@
       },
       {
         "a": "Open engine, byte-identical to CPython — verifiable",
-        "b": "Black-box \"predictions\""
+        "b": "Black-box readings sold as fate"
       },
       {
         "a": "Honest markers (a band is a convention, never a verdict)",
@@ -149,6 +149,7 @@
     "privacy": "Privacy Policy",
     "terms": "Terms of Service",
     "dataDeletion": "Data Deletion",
+    "howWeTest": "How we test",
     "github": "GitHub"
   }
 }
