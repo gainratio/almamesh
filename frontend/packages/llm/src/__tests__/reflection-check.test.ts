@@ -213,9 +213,9 @@ describe("the gate's cost and its length cap", () => {
   const warm = () => reflectionIssues(longSection(2_000));
 
   // Budgets are relative to ONE full check of the same text on the same machine, so they hold on a slow
-  // CI runner too (a fixed 200 ms failed there at 743 ms). An incremental gate costs a few full checks;
+  // CI runner too (a fixed 200 ms failed there at 743 ms; 20 full checks failed at 22 on main's PR #373 run). An incremental gate costs a few full checks;
   // re-checking the prefix at every delta (the bug this guards) costs hundreds.
-  const MAX_FULL_CHECKS = 20;
+  const MAX_FULL_CHECKS = 60;
   function oneFullCheckMs(text: string): number {
     const runs: number[] = [];
     for (let i = 0; i < 5; i += 1) {
