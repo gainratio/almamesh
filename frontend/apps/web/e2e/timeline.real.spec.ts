@@ -16,7 +16,7 @@ import { sectionUsageRow, type SectionUsageRow } from './sectionUsage';
  * Every OpenRouter response for the upcoming_periods section is saved to
  * test-results/ so a failure carries the raw model output, not just a symptom.
  *
- * The sections STREAM, but a model that hides its reasoning (openai/gpt-6-luna-pro
+ * The sections STREAM, but a model that hides its reasoning (E2E_REAL_MODEL
  * thinks 4-7k tokens, ~85 s, with no visible text) shows no words until it is
  * nearly done. So the spec asserts what the app controls: the elapsed counter is
  * on screen right after the click. It records, without asserting, when the first
