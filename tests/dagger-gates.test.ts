@@ -206,7 +206,7 @@ describe("almamesh ci wiring", () => {
   const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
   const ci = source.slice(source.indexOf("async ci("), source.indexOf("secretScan(commitSha: string)"))
 
-  test("names every product gate once, the five browser shards first (they are the longest)", () => {
+  test("names every product gate once, the seven browser shards first (they are the longest)", () => {
     expect([...PRODUCT_GATES]).toEqual([
       "browserChromium",
       "browserJourneysA",

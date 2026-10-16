@@ -71,3 +71,29 @@ describe("lane identity parsing", () => {
     expect(() => journeyLaneOfGate("browserChromium")).toThrow()
   })
 })
+
+describe("lane wiring in the Dagger module", () => {
+  const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
+
+  test("each lane gate function runs its own lane", () => {
+    for (const lane of JOURNEY_LANES) {
+      const gate = `browserJourneys${lane.toUpperCase()}`
+      expect(source).toContain(`  ${gate}(): Container {\n    return this.browserJourneysRun("${lane}")\n  }`)
+      expect(journeyLaneOfGate(gate)).toBe(lane)
+    }
+  })
+
+  test("the status gate and the evidence job use the caller's own lane, never a fixed one", () => {
+    const status = source.slice(source.indexOf("async browserJourneysStatus("), source.indexOf("private browserJourneysRun("))
+    expect(status).toContain("browserJourneyFetchRequest(parseJourneyLane(lane), repository, runId, commitSha)")
+    expect(status).not.toMatch(/"[abc]"/)
+    const evidence = source.slice(source.indexOf("async browserJourneysEvidence("), source.indexOf("async browserJourneysStatus("))
+    expect(evidence).toContain("this.browserJourneysRun(checked, true)")
+    expect(evidence).not.toMatch(/"[abc]"/)
+  })
+
+  test("the journey list is pinned: 14 steps including the onboarding AI step", () => {
+    expect(JOURNEY_STEPS.length).toBe(14)
+    expect(JOURNEY_STEPS.some((s) => s.command.includes("test:e2e:onboarding-ai"))).toBe(true)
+  })
+})
