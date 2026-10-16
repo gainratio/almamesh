@@ -30,6 +30,12 @@ function describeError(error: unknown): string {
  */
 export const GATE_TIMEOUT_MS = 45 * 60_000
 
+/**
+ * The browserJourneys lane runs ~36 minutes on a normal runner and 46 on a slow
+ * one (main run 38832312848). Its job allows 60 minutes including setup.
+ */
+export const JOURNEYS_GATE_TIMEOUT_MS = 55 * 60_000
+
 class GateTimeoutError extends Error {
   public override readonly name = "GateTimeoutError"
 }

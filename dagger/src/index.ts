@@ -40,6 +40,7 @@ import {
   runPool,
   startGate,
   type ProductGate,
+  JOURNEYS_GATE_TIMEOUT_MS,
 } from "./gates.js"
 import { nightlyRealSkipCheckScript } from "./nightlyRealSkips.js"
 import { pagesUploadLimitsCheckScript as releasePagesUploadLimitsScript } from "./pagesUploadLimits.js"
@@ -591,7 +592,7 @@ exec ${inline.join(" ")}`,
       const exitCode = validateBrowserJourneyExitCode(await completed.exitCode())
       const scanned = await completed.withExec(["bash", "-c", browserJourneyEvidenceScript(exitCode, commitSha)]).sync()
       evidence = scanned.directory(`${WEB}/${BROWSER_JOURNEY_EVIDENCE}`)
-    })])
+    }, JOURNEYS_GATE_TIMEOUT_MS)])
     if (!evidence) throw new Error("Browser journey evidence is unavailable.")
     return evidence
   }
