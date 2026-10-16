@@ -3,7 +3,7 @@
  * (pure selection over the chart's own dasha list) and the transits from the
  * period sky. No astrology here, no AI.
  */
-import type { ReactElement } from 'react';
+import { useEffect, useId, useRef, type ReactElement, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SiderealChart, VimshottariDasha } from '@almamesh/browser/types';
 import { selectDashasForPeriod } from '@almamesh/llm';
@@ -22,6 +22,28 @@ export interface DashboardMomentCardProps {
   readonly sky: MomentSky;
   readonly onRetry: () => void;
   readonly language: string;
+  /** This card is the result of a Go just now: bring it into view and focus it. */
+  readonly arrive?: boolean;
+  readonly onArrived?: () => void;
+}
+
+/**
+ * On a phone the card renders below the fold, so after Go nothing visibly
+ * happened. Scroll the trip (the enclosing `[data-time-travel-trip]`, which
+ * holds the banner with Back to today, else the card) to the top, instantly
+ * under reduced motion, and move focus to the card, so sighted and
+ * screen-reader users both land on the trip.
+ */
+function useArrival(ref: RefObject<HTMLElement | null>, arrive: boolean, onArrived: (() => void) | undefined): void {
+  useEffect(() => {
+    const card = ref.current;
+    if (!arrive || !card) return;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    const trip = card.closest<HTMLElement>('[data-time-travel-trip]') ?? card;
+    trip.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+    card.focus({ preventScroll: true });
+    onArrived?.();
+  }, [ref, arrive, onArrived]);
 }
 
 interface SkyPartProps {
@@ -74,16 +96,20 @@ function SkyBody({ sky, onRetry }: SkyBodyProps): ReactElement | null {
   );
 }
 
-export function DashboardMomentCard({ asOf, dashas, birthYear, sky, onRetry, language }: DashboardMomentCardProps): ReactElement {
+export function DashboardMomentCard({ asOf, dashas, birthYear, sky, onRetry, language, arrive, onArrived }: DashboardMomentCardProps): ReactElement {
   const { t } = useTranslation(['dashboard', 'predictive']);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  useArrival(cardRef, arrive === true, onArrived);
   const period = formatPinLabel(asOf, language);
   const selected = dashas ? selectDashasForPeriod(dashas, momentPeriod(asOf), birthYear) : undefined;
   // Every row that overlaps the moment, in order: a Year can cross a boundary.
   const lords = (rows: readonly { readonly lord: string }[] | undefined): string =>
     rows?.length ? rows.map((row) => t(`predictive:graha.${row.lord.toLowerCase()}`)).join(' → ') : '—';
   return (
-    <div data-testid="time-travel-moment-card" className="mx-4 mt-3 space-y-3 rounded-lg border border-accent-gold/30 p-4">
-      <h2 className="text-base font-semibold text-text-primary">{t('dashboard:time_travel.moment_title')}</h2>
+    <div ref={cardRef} tabIndex={-1} aria-labelledby={titleId} data-testid="time-travel-moment-card"
+      className="mx-4 mt-3 space-y-3 rounded-lg border border-accent-gold/30 p-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60">
+      <h2 id={titleId} className="text-base font-semibold text-text-primary">{t('dashboard:time_travel.moment_title')}</h2>
       <dl data-testid="time-travel-moment-dasha" className="grid grid-cols-2 gap-2 text-sm">
         <dt>{t('dashboard:time_travel.maha')}</dt>
         <dd data-testid="time-travel-moment-maha">{lords(selected?.maha)}</dd>
@@ -108,10 +134,12 @@ export interface DashboardMomentProps {
   readonly engine: ChartEngineContextValue | null;
   readonly birthYear: number | undefined;
   readonly language: string;
+  readonly arrive?: boolean;
+  readonly onArrived?: () => void;
 }
 
 /** The card wired to the period sky. profileKey and birth match the chat's (Dashboard.tsx), so both share one compute. */
-export function DashboardMoment({ asOf, chart, chartId, engine, birthYear, language }: DashboardMomentProps): ReactElement {
+export function DashboardMoment({ asOf, chart, chartId, engine, birthYear, language, arrive, onArrived }: DashboardMomentProps): ReactElement {
   const stored = useChartLibraryStore((s) => (chartId ? s.charts[chartId] : undefined));
   const { sky, retry } = useMomentSky({
     asOf,
@@ -120,5 +148,6 @@ export function DashboardMoment({ asOf, chart, chartId, engine, birthYear, langu
     birth: stored?.birth_data as ProcessedBirthData | undefined,
     engine,
   });
-  return <DashboardMomentCard asOf={asOf} dashas={chart?.dashas} birthYear={birthYear} sky={sky} onRetry={retry} language={language} />;
+  return <DashboardMomentCard asOf={asOf} dashas={chart?.dashas} birthYear={birthYear} sky={sky} onRetry={retry} language={language}
+    arrive={arrive} onArrived={onArrived} />;
 }

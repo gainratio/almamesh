@@ -30,10 +30,17 @@
  * Rejections are COUNTED and surfaced in Assumptions & Provenance, so a drop is
  * never silent even though the text never appears.
  *
+ * NOT A REFLECTION — an interpretation or guidance statement that foretells,
+ *              narrates the tools or guesses what the person lived through
+ *              (the one reflection check, `@almamesh/llm/reflection`, every app
+ *              language). Rejected and counted like a bogus citation.
+ *
  * UN-BYPASSABLE BY CONSTRUCTION: `buildEvidenceLedger` is the only way to build
  * a renderable ledger, and it runs this validation internally. There is no path
  * from raw model output to the document that does not pass through here.
  */
+
+import { reflectionIssues } from '@almamesh/llm/reflection';
 
 /** Raw, untrusted model output. Every field is checked before it is believed. */
 export interface RawAnnotation {
@@ -59,7 +66,8 @@ export type RejectionReason =
   | 'unknown-observation'
   | 'unknown-factor'
   | 'malformed'
-  | 'empty-interpretation';
+  | 'empty-interpretation'
+  | 'not-reflection';
 
 export interface RejectedAnnotation {
   /** What the model claimed to be citing, verbatim, for the provenance count. */
@@ -90,6 +98,9 @@ function validateOne(
   const interpretation = raw.interpretation;
   if (typeof interpretation !== 'string' || interpretation.trim() === '') {
     return { citedId: observationId, reason: 'empty-interpretation' };
+  }
+  if (reflectionIssues(interpretation).length > 0) {
+    return { citedId: observationId, reason: 'not-reflection' };
   }
   if (!observationIds.has(observationId)) {
     return { citedId: observationId, reason: 'unknown-observation' };
@@ -148,11 +159,11 @@ export function validateAnnotations(
     accepted.push(result);
   }
 
-  return {
-    accepted,
-    rejected,
-    generalGuidance: asStringArray(payload.general_guidance)
-      .map((text) => text.trim())
-      .filter((text) => text !== ''),
-  };
+  const generalGuidance: string[] = [];
+  for (const text of asStringArray(payload.general_guidance).map((item) => item.trim())) {
+    if (text === '') continue;
+    if (reflectionIssues(text).length > 0) rejected.push({ citedId: '', reason: 'not-reflection' });
+    else generalGuidance.push(text);
+  }
+  return { accepted, rejected, generalGuidance };
 }

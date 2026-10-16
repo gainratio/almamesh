@@ -5,13 +5,16 @@ import { describe, expect, it, vi } from "vitest";
 
 import { LlmRequestError } from "../client";
 import type { ProviderConfig } from "../config";
-import { ReasoningTimeoutError } from "../reasoning";
+import { REASONING_TIMEOUT_MS, ReasoningTimeoutError } from "../reasoning";
+import { REFLECTION_WITHHELD, reflectionIssues } from "../reflection";
 import {
   ANSWER_TOOL_DESCRIPTION,
   NETWORK_RETRY_DELAY_MS,
+  REFLECTION_PROSE_ATTEMPTS,
   TOOL_LOOP_LIMITS,
   TOOL_TIMEOUT_MS,
   TOOLS_UNAVAILABLE_INSTRUCTION,
+  TURN_MODEL_TIME_CEILING_MS,
   TOOLS_UNAVAILABLE_NOTICE,
   defineTool,
   runToolTurn,
@@ -320,6 +323,24 @@ describe("rule 4: the loop stops on a VALID answer only", () => {
     ]);
   });
 
+  // dashboard.agentic.real 2026-10-15: an answer the reflection check sent back for rewording was
+  // followed by another read, past the turn's three calls. Once a read has completed, the facts are
+  // in hand: the retry round offers only the answer, so a rewording never spends a read.
+  it("after a read, a rejected answer is retried with only the answer tool", async () => {
+    const { fetchImpl, requests } = fakeEndpoint([read("c1"), answer("a1", '{"headline":"Venus rises"}'), answer("a2")]);
+    const { result } = await collect(runToolTurn(options(fetchImpl)));
+    expect(toolsOf(requests[1]).map((t) => t.function.name)).toEqual(["read_period", "answer"]);
+    expect(toolsOf(requests[2]).map((t) => t.function.name)).toEqual(["answer"]);
+    expect(requests[2].body.tool_choice).toEqual({ type: "function", function: { name: "answer" } });
+    expect(result).toEqual({ answer: { headline: "Venus rises", body: "Steady work." } });
+  });
+
+  it("before any read, a rejected answer may still read: the fix can be to read the period first", async () => {
+    const { fetchImpl, requests } = fakeEndpoint([answer("a1", '{"headline":"Venus rises"}'), read("c1"), answer("a2")]);
+    await collect(runToolTurn(options(fetchImpl)));
+    expect(toolsOf(requests[1]).map((t) => t.function.name)).toEqual(["read_period", "answer"]);
+  });
+
   it("makes no request after a valid answer", async () => {
     const { fetchImpl, requests } = fakeEndpoint([read("c1"), answer("a1")]);
     const { result } = await collect(runToolTurn(options(fetchImpl)));
@@ -542,8 +563,10 @@ describe("rule 8: answer streaming and the prose fallback", () => {
     const pieces = ['{"headline":"Venus', ' rises","body":"Steady', ' work."}'];
     const { fetchImpl } = fakeEndpoint([{ calls: [call("a1", "answer", pieces)] }]);
     const { snapshots } = await collect(runToolTurn(options(fetchImpl)));
-    expect(snapshots[0]).toBe(render({ headline: "Venus" }, false));
-    expect(snapshots).toContain(render({ headline: "Venus rises", body: "Steady" }, false));
+    // Northstar, PR #366: a partial answer is shown a whole sentence (or line) at a time, each
+    // only after the reflection check passes it; a word still arriving is never shown.
+    expect(snapshots[0]).toBe("… Venus\n");
+    expect(snapshots).toContain("… Venus rises\n");
     expect(snapshots.at(-1)).toBe(FINAL);
     expect(new Set(snapshots).size).toBe(snapshots.length);
   });
@@ -559,6 +582,81 @@ describe("rule 8: answer streaming and the prose fallback", () => {
     expect(snapshots.at(-1)).toBe("Venus rises; steady work.");
     expect(result).toEqual({ answer: undefined });
     expect(o.rounds.at(-1)).toMatchObject({ round: 3, finishReason: "answer_fallback" });
+  });
+});
+
+// Northstar, PR #366: an answer that foretells, narrates the tools or guesses lived experience
+// never reaches the user unchecked, on any exit path. CONTRACT REVERSED: the prose fallback and
+// the tools-unavailable degrade used to stream the model's text with no check at all.
+describe("rule 8b: every exit path runs the reflection check", () => {
+  const BAD = '{"headline":1}';
+  const FORETELLS = "Venus highlights the 7th house. You will get married in 2027. Saturn rules the 10th.";
+  const REWORDED = "Venus highlights the 7th house and the Saturn chapter asks for patience.";
+  const never = (snapshots: readonly string[], words: string) => expect(snapshots.filter((s) => s.includes(words))).toEqual([]);
+
+  it("the prose fallback rewords a failing text once, and shows the rewording", async () => {
+    const { fetchImpl, requests } = fakeEndpoint([answer("a1", BAD), answer("a2", BAD), { text: FORETELLS }, { text: REWORDED }]);
+    const o = options(fetchImpl, { limits: { maxRounds: 2 } });
+    const { snapshots, result } = await collect(runToolTurn(o));
+    never(snapshots, "married");
+    expect(requests).toHaveLength(4);
+    const retry = messagesOf(requests[3]);
+    expect(retry.some((m) => m.role === "system" && m.content.includes('"You will get"'))).toBe(true);
+    expect(snapshots.at(-1)).toBe(REWORDED);
+    expect(result).toEqual({ answer: undefined });
+    expect(o.rounds.map((r) => r.finishReason).slice(-2)).toEqual(["answer_fallback", "answer_fallback"]);
+  });
+
+  it("the prose fallback withholds a text that still fails after its retry", async () => {
+    const { fetchImpl, requests } = fakeEndpoint([answer("a1", BAD), answer("a2", BAD), { text: FORETELLS }, { text: FORETELLS }]);
+    const o = options(fetchImpl, { limits: { maxRounds: 2 } });
+    const { snapshots, result } = await collect(runToolTurn(o));
+    never(snapshots, "married");
+    expect(requests).toHaveLength(2 + REFLECTION_PROSE_ATTEMPTS);
+    expect(snapshots.at(-1)).toBe(REFLECTION_WITHHELD.en);
+    expect(result).toEqual({ answer: undefined });
+    expect(o.statuses.at(-1)).toEqual({ phase: "complete" });
+  });
+
+  it("withholds in the answer's language", async () => {
+    const { fetchImpl } = fakeEndpoint([answer("a1", BAD), answer("a2", BAD), { text: FORETELLS }, { text: FORETELLS }]);
+    const o = options(fetchImpl, { limits: { maxRounds: 2 } });
+    const { snapshots } = await collect(runToolTurn({ ...o, answer: { ...o.answer, withheld: REFLECTION_WITHHELD.pt } }));
+    expect(snapshots.at(-1)).toBe(REFLECTION_WITHHELD.pt);
+  });
+
+  it("the tools-unavailable degrade rewords, then withholds behind the notice", async () => {
+    const reject: FakeTurn = { status: 400, errorBody: '{"error":{"message":"tools are not supported by this model"}}' };
+    const { fetchImpl, requests } = fakeEndpoint([reject, { text: FORETELLS }, { text: FORETELLS }]);
+    const { snapshots, result } = await collect(runToolTurn(options(fetchImpl)));
+    never(snapshots, "married");
+    expect(requests).toHaveLength(1 + REFLECTION_PROSE_ATTEMPTS);
+    expect(snapshots[0]).toBe(TOOLS_UNAVAILABLE_NOTICE);
+    expect(snapshots.at(-1)).toBe(`${TOOLS_UNAVAILABLE_NOTICE}${REFLECTION_WITHHELD.en}`);
+    expect(result).toEqual({ answer: undefined });
+  });
+
+  it("a streamed answer never shows a rejected sentence, and the corrected answer replaces it", async () => {
+    const Checked = Answer.superRefine((value, ctx) => {
+      if (reflectionIssues(value.body).length > 0) ctx.addIssue({ code: "custom", message: "reword", path: ["body"] });
+    });
+    const pieces = ['{"headline":"Venus rises","body":"Steady work. You will', " get married in 2027.", ' Saturn rules the 10th."}'];
+    const { fetchImpl } = fakeEndpoint([{ calls: [call("a1", "answer", pieces)] }, answer("a2")]);
+    const o = options(fetchImpl);
+    const { snapshots, result } = await collect(runToolTurn({ ...o, answer: { schema: Checked, render } }));
+    never(snapshots, "married");
+    never(snapshots, "You will");
+    expect(snapshots).toContain("… Venus rises\n\nSteady work. ");
+    expect(snapshots.at(-1)).toBe(FINAL);
+    expect(result).toEqual({ answer: { headline: "Venus rises", body: "Steady work." } });
+  });
+
+  it("a validated answer whose rendered text still fails is withheld, not shown", async () => {
+    const { fetchImpl } = fakeEndpoint([answer("a1", '{"headline":"Venus rises","body":"You will get married in 2027."}')]);
+    const { snapshots, result } = await collect(runToolTurn(options(fetchImpl)));
+    never(snapshots, "married");
+    expect(snapshots.at(-1)).toBe(REFLECTION_WITHHELD.en);
+    expect(result).toEqual({ answer: undefined });
   });
 });
 
@@ -968,6 +1066,65 @@ describe("error branches", () => {
     expect(failure).toMatchObject({ name: "AbortError" });
   });
 
+  // Real drive 2026-10-15: deepseek-v4-pro streamed reasoning for about 95 s, then sent its whole
+  // answer call in one burst at 121 s; on a slower provider that crossed the 180 s cap. The
+  // watchdog catches a stalled stream, not a slow thinker: every streamed part, reasoning
+  // included, is progress; 180 s of silence is a stall; 300 s of model time ends a runaway.
+  describe("the stall watchdog", () => {
+    const timed = async <T,>(run: () => Promise<T>, ms: number): Promise<T> => {
+      vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+      try {
+        const pending = run();
+        await vi.advanceTimersByTimeAsync(ms);
+        return await pending;
+      } finally {
+        vi.useRealTimers();
+      }
+    };
+
+    it("pins the windows: 180 s of silence, 300 s of model time a turn", () => {
+      expect([REASONING_TIMEOUT_MS, TURN_MODEL_TIME_CEILING_MS]).toEqual([180_000, 300_000]);
+    });
+
+    it("200 s of streamed reasoning, then the answer, succeeds", async () => {
+      const slow: FakeTurn = { ...answer("a1"), reasoning: { forMs: 200_000, everyMs: 10_000 } };
+      const { fetchImpl } = fakeEndpoint([slow]);
+      const result = await timed(() => collect(runToolTurn(options(fetchImpl))).then((r) => r.result), 201_000);
+      expect(result).toEqual({ answer: { headline: "Venus rises", body: "Steady work." } });
+    });
+
+    it("a stream that goes silent past the idle window fails with the timeout", async () => {
+      const silent: FakeTurn = { ...answer("a1"), reasoning: { forMs: 10_000, everyMs: 10_000, thenSilent: true } };
+      const { fetchImpl } = fakeEndpoint([silent]);
+      const failure = await timed(() => collect(runToolTurn(options(fetchImpl))).catch((e: unknown) => e), 10_000 + REASONING_TIMEOUT_MS + 1_000);
+      expect(failure).toBeInstanceOf(ReasoningTimeoutError);
+      expect((failure as Error).message).toContain("180s");
+    });
+
+    it("a runaway that keeps reasoning still ends at the 300 s ceiling", async () => {
+      const runaway: FakeTurn = { ...answer("a1"), reasoning: { forMs: 3_600_000, everyMs: 10_000 } };
+      const { fetchImpl } = fakeEndpoint([runaway]);
+      const failure = await timed(() => collect(runToolTurn(options(fetchImpl))).catch((e: unknown) => e), TURN_MODEL_TIME_CEILING_MS + 1_000);
+      expect(failure).toBeInstanceOf(ReasoningTimeoutError);
+      expect((failure as Error).message).toContain("300s");
+    });
+
+    it("the ceiling counts model time only: a slow tool between two long rounds does not end the turn", async () => {
+      const slowRead = defineTool<{ readonly start: string }>({
+        name: "read_period",
+        description: "Read a period.",
+        input: z.object({ start: z.string() }),
+        timeoutMs: 150_000,
+        execute: () => new Promise((resolve) => setTimeout(() => resolve({ period: "2019" }), 140_000)),
+      });
+      const first: FakeTurn = { calls: [call("r1", "read_period", '{"start":"2019"}')], reasoning: { forMs: 120_000, everyMs: 10_000 } };
+      const second: FakeTurn = { ...answer("a1"), reasoning: { forMs: 120_000, everyMs: 10_000 } };
+      const { fetchImpl } = fakeEndpoint([first, second]);
+      const result = await timed(() => collect(runToolTurn(options(fetchImpl, { tools: asTools(slowRead) }))).then((r) => r.result), 400_000);
+      expect(result).toEqual({ answer: { headline: "Venus rises", body: "Steady work." } });
+    });
+  });
+
   it("a request that never answers at all also hits the reasoning cap", async () => {
     const { fetchImpl } = fakeEndpoint([{ hangFetch: true }]);
     const failure = await collect(runToolTurn(options(fetchImpl, { reasoningTimeoutMs: 50 }))).catch((e: unknown) => e);
@@ -997,7 +1154,8 @@ describe("error branches", () => {
   it("whitespace before the answer JSON yields nothing until there is an object", async () => {
     const { fetchImpl } = fakeEndpoint([{ calls: [call("a1", "answer", ["  ", '{"headline":"Venus rises","body":"Steady work."}'])] }]);
     const { snapshots } = await collect(runToolTurn(options(fetchImpl)));
-    expect(snapshots).toEqual([render({ headline: "Venus rises", body: "Steady work." }, false), FINAL]);
+    // The partial render's last sentence is held until the answer is whole (reflection gate).
+    expect(snapshots).toEqual(["… Venus rises\n", FINAL]);
   });
 });
 

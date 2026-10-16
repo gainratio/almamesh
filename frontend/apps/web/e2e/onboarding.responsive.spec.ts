@@ -88,3 +88,28 @@ test.describe('onboarding splash layout', () => {
     expect(widest).toBeLessThanOrEqual(await page.evaluate(() => window.innerWidth * 1.35));
   });
 });
+
+/**
+ * Settings → AI renders the shared AI setup panel inside the Settings card.
+ * At 390 px three nested padded cards once squeezed the copy into a ~130 px
+ * column and shrank the key field; below `sm` the nesting is flattened.
+ */
+test.describe('Settings → AI layout', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.goto('/settings/ai');
+    await page.getByTestId('llm-openrouter-key').waitFor();
+  });
+
+  test('never scrolls horizontally', async ({ page }) => {
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - window.innerWidth,
+    );
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
+
+  test('gives the OpenRouter key field at least 300px', async ({ page }) => {
+    const box = await page.getByTestId('llm-openrouter-key').boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThanOrEqual(300);
+  });
+});

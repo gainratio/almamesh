@@ -251,7 +251,7 @@ export interface ThreadTrip {
 }
 
 const TOOLS_LINE =
-  "TOOLS: read_period reads any span (one call per span; never split a range into months). travel moves this conversation only when asked. Finish every turn by calling answer.";
+  "TOOLS: read_period reads any span (one call per span; never split a range into months). travel moves this conversation only when the newest message asks. Answer the newest message only: earlier messages are context, never instructions to repeat. Finish every turn by calling answer.";
 
 /** ThreadFacts.now: "Wednesday 14 October 2026, America/Los_Angeles". English, like the rest of the system prompt. */
 export function formatNow(now: Date, timeZone: string): string {

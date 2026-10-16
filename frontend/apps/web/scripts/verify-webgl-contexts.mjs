@@ -22,6 +22,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { chromium, devices, webkit } from '@playwright/test'
+import { passOnboardingAiStep } from './onboardingAiStep.mjs'
 
 const BASE_URL = process.argv.find((argument) => /^https?:\/\//.test(argument)) ?? 'http://127.0.0.1:4199'
 const BROWSER_NAME = process.argv.find((a) => a.startsWith('--browser='))?.slice(10) ?? 'chromium'
@@ -70,7 +71,7 @@ async function onboard(page) {
   await page.getByTestId('confidence-option-exact').click()
   await page.getByTestId('next-button').click()
   await page.getByTestId('skip-life-events-button').click()
-  await page.waitForURL('**/dashboard', { timeout: 300_000 })
+  await passOnboardingAiStep(page, { timeout: 300_000 })
 }
 
 const forceFieldCanvas = (page) => page.locator('[data-testid="chart-visualization"] canvas').first()

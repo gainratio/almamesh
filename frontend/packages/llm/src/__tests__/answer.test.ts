@@ -16,6 +16,7 @@ import {
   type ChatAnswer,
   type PeriodAnswer,
 } from "../answer";
+import { REFLECTION_WITHHELD } from "../reflection";
 import { runToolTurn, z, type ToolCallEvent } from "../toolLoop";
 import { collect, fakeEndpoint } from "./toolLoopFake";
 
@@ -474,6 +475,7 @@ describe("answerSchema: a period answer says what the chart highlights, never wh
       fix("what happened"),
       fix("predict"),
       fix("will happen"),
+      foretells("raise will"),
     ]);
   });
 
@@ -489,6 +491,54 @@ describe("answerSchema: a period answer says what the chart highlights, never wh
 
   it("passes the reference answer", () => {
     expect(messages(withAnswer({}))).toEqual([]);
+  });
+
+  // Live drive 2026-10-15: a final-round gpt-sol window narrated the reading's limits; deepseek
+  // guessed how the month went. Both go back with the fix; a comparative indicator answer passes.
+  it("sends back a window that narrates what the reading lacks", () => {
+    const windows = [{ date: "2019-09-25", what: "Mars enters Virgo, but the reading supplies no specific life-area interpretation for it." }];
+    expect(messages(withAnswer({ windows }))).toEqual([
+      'Leave out what the reading does not cover: name the indicator and what it highlights, or drop the line (remove "supplies no specific", "no specific life-area interpretation").',
+    ]);
+  });
+
+  it("sends back an opening that guesses how the period went for the person", () => {
+    expect(messages(withAnswer({ opening: "Something stalled began to find forward motion after mid-month." }))).toEqual([
+      'Do not describe what the person went through or felt: say what the indicators highlight (remove "began to find").',
+    ]);
+  });
+
+  it("passes a comparative answer that names its indicators", () => {
+    const opening = "Saturn stations direct on 17 September; the weeks after it carry the Sade Sati theme more strongly than the weeks before, inside a Rahu-Mercury chapter that rules your 1st and 4th houses.";
+    expect(messages(withAnswer({ opening }))).toEqual([]);
+  });
+
+  // Northstar, PR #366: a person-directed future carries no banned word, and the page language
+  // is not the answer's language. The check reads every app language, after normalization.
+  const foretells = (words: string) =>
+    `Reflection, not foretelling: say what the indicators highlight, never what will happen to the person or what is in store (remove "${words}").`;
+
+  it("sends back a person-directed future", () => {
+    expect(messages(withAnswer({ advice: "You will get married in 2027." }))).toEqual([foretells("You will get")]);
+  });
+
+  it("reads Spanish and Portuguese claims on an English page", () => {
+    expect(messages(withAnswer({ advice: "Vas a conseguir un ascenso." }))).toEqual([foretells("Vas a conseguir")]);
+    expect(messages(withAnswer({ advice: "Você vai conseguir um emprego novo." }))).toEqual([`Reflection, not foretelling: say what the indicators highlight, never what will happen to the person or what is in store (remove "Você vai conseguir", "vai conseguir").`]);
+  });
+
+  it("reads through invisible characters", () => {
+    expect(messages(withAnswer({ advice: "It will hap​pen in March." }))).toEqual([fix("will happen")]);
+  });
+
+  it("the chat answer spec withholds a failing text in the answer's language", () => {
+    expect(chatAnswerSpec(grounded(SEPTEMBER), { voice: "layman", language: "es" }).withheld).toBe(REFLECTION_WITHHELD.es);
+    expect(chatAnswerSpec(grounded(SEPTEMBER), { voice: "layman", language: "pt" }).withheld).toBe(REFLECTION_WITHHELD.pt);
+  });
+
+  it("passes a sky fact in the future tense", () => {
+    const opening = "Saturn will station direct on 17 September, and the Jupiter antardasha will begin in March 2027.";
+    expect(messages(withAnswer({ opening }))).toEqual([]);
   });
 });
 
@@ -703,7 +753,8 @@ describe("renderPartialAnswer: snapshots only grow", () => {
         fetchImpl,
       }),
     );
-    expect(snapshots.length).toBeGreaterThan(8);
+    // Released whole sentences at a time through the reflection gate (PR #366), never a partial word.
+    expect(snapshots.length).toBeGreaterThanOrEqual(8);
     for (let i = 1; i < snapshots.length; i += 1) expect(snapshots[i]?.startsWith(snapshots[i - 1] ?? "\u0000")).toBe(true);
     expect(snapshots.at(-1)).toBe(LAYMAN_EN);
   });
@@ -724,7 +775,8 @@ describe("renderPartialAnswer: snapshots only grow", () => {
         fetchImpl,
       }),
     );
-    expect(snapshots.length).toBeGreaterThan(8);
+    // Released whole sentences at a time through the reflection gate (PR #366), never a partial word.
+    expect(snapshots.length).toBeGreaterThanOrEqual(8);
     for (let i = 1; i < snapshots.length; i += 1) expect(snapshots[i]?.startsWith(snapshots[i - 1] ?? "\u0000")).toBe(true);
     expect(snapshots.at(-1)).toBe(LAYMAN_EN);
   });

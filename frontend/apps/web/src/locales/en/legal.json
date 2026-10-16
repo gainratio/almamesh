@@ -156,7 +156,7 @@
   },
   "how_we_test": {
     "title": "How we test",
-    "last_updated": "October 15, 2026",
+    "last_updated": "October 16, 2026",
     "lede": "We check whether a reading picks out the month of a real life event better than random months do. So far it does not. That is why AlmaMesh readings are for reflection: they show what your chart highlights, not what is coming.",
     "chart_title": "Lift over chance, by technique",
     "chart_caption": "1.0 is chance. Each bar is a 95% range, and every range includes 1.0.",
@@ -166,7 +166,8 @@
       "exact_transits": "+ exact transits (a slow planet within 1° of a birth planet)",
       "obstacles": "+ the obstacles theme (legal matters and accidents only)",
       "ashtakavarga": "+ Ashtakavarga strength of transits",
-      "vargas": "+ divisional-chart lords (D9, D10, D30)"
+      "vargas": "+ divisional-chart lords (D9, D10, D30)",
+      "classical_dasha": "+ classical dasha rules (relevance, placement from the parent lord, strength), by area"
     },
     "events": "{{n}} events",
     "what_heading": "What we test",
@@ -176,7 +177,7 @@
     "data_p1": "{{events}} dated events from {{people}} people with reliably recorded birth times, from Astro-Databank, a research database we use under licence. Most of these people are public figures.",
     "data_p2": "The licence allows totals only. We never publish names, birth details, single events or examples, and none of that data is in the app.",
     "result_heading": "What we found",
-    "result_p1": "No lift over chance. The baseline scores {{baseline}}, and none of the four techniques we added moves it: every range above includes 1.0.",
+    "result_p1": "No lift over chance. The baseline scores {{baseline}}, and none of the five techniques we added moves it: every range above includes 1.0. The classical dasha rules are how readings are built now, but this test finds no lift from them (best corrected p-value 0.80).",
     "meaning_heading": "What this means for you",
     "meaning_p1": "Readings stay specific. They name the dasha lords, transits and dated windows behind each theme, compare periods, and say plainly when hard themes such as legal friction or losses stand out.",
     "meaning_p2": "But they are for reflection. Use them to think about a period, not as a reason to expect a particular event.",
@@ -184,6 +185,13 @@
     "bar_p1": "Each test is written down before it runs. A new technique is scored on half of the people first. Only if it beats chance there, after correcting for every test we ran, does it go to the other half, held out and unseen. Only a technique that passes that held-out test can make the app's wording stronger. None has so far.",
     "bar_p2": "One area is being re-tested on held-out data.",
     "rerun_heading": "We keep testing",
-    "rerun_p1": "We re-run this test with every release, so a change to the engine cannot quietly make readings look better than they are."
+    "rerun_p1": "We re-run this test whenever we change how readings are computed, so a change cannot quietly make readings look better than they are.",
+    "areas": {
+      "career": "career",
+      "relationships": "relationships",
+      "family": "family",
+      "health": "health"
+    },
+    "events_areas": "{{n}} events across the four areas"
   }
 }

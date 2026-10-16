@@ -52,7 +52,15 @@ import { ensurePrivacy, isLocalEndpoint, type ProviderConfig } from "./config";
 import { withLanguage, type PromptLanguage } from "./language";
 import { buildPredictiveFactsBlock, buildReportFactsBlock } from "./predictive-facts";
 import { OUTPUT_DISCIPLINE_RULES, PRIVACY_RULE, type ViewMode } from "./prompt";
-import { REFLECTION_RULE } from "./reflection";
+import {
+  jsonReflectionIssues,
+  READING_WITHHELD,
+  REFLECTION_RULE,
+  reflectionGate,
+  reflectionRetry,
+  rewordedOr,
+  withholdFailingValues,
+} from "./reflection";
 import { monthsIn, validateTimelineDates } from "./date-guard";
 import { computeQuarters } from "./quarters";
 import {
@@ -183,9 +191,9 @@ export interface StructuredInterpretationParams {
    */
   readonly promptSet?: ReportPromptSet;
   /**
-   * Report sections only, remote endpoints only: total wall-clock cap per
-   * section in ms (default REPORT_SECTION_TIMEOUT_MS). Local endpoints have no
-   * total cap. Legacy (non-report) sections are never capped.
+   * Remote endpoints only: total wall-clock cap per section in ms (default
+   * REPORT_SECTION_TIMEOUT_MS), for report and legacy sections alike. Local
+   * endpoints have no total cap.
    */
   readonly sectionTimeoutMs?: number;
   /**
@@ -548,6 +556,7 @@ const REMEDIAL_TASK = [
   "    MANAGE a challenge gradually over weeks/months; they do not erase it overnight.",
   "  - technical: gemstones and mantras MAY appear here, but ONLY as optional",
   "    alternatives alongside the universal practices, never as the primary solution.",
+  "    Give each mantra in IAST transliteration (Om Śanaiścarāya Namaḥ); Devanagari is optional.",
   "TARGETING (MANDATORY): every technical remedy must address a SPECIFIC named weak",
   "  placement actually present in the data — a planet whose `dignity` is debilitated,",
   "  or that is `is_combust`, or a yoga whose `grade` is weak. Name that placement as",
@@ -695,6 +704,7 @@ const REMEDIAL_TASK_LITE = [
   "  - technical: name ONE specific weak placement actually in the data (a debilitated or",
   "    combust planet, or a low-strength listed yoga) and a supportive practice for it.",
   "    Gemstones/mantras MAY appear here as optional extras only. Invent no affliction.",
+  "    Give each mantra in IAST transliteration; Devanagari is optional.",
 ].join("\n");
 
 const UPCOMING_PERIODS_TASK_LITE = [
@@ -1536,12 +1546,14 @@ function requestSection<Section extends AnySectionKey>(
   if (!report && !isReportRequest(section, params.promptSet)) return chatCompletionJson(base);
   const prose = createJsonProseExtractor();
   const thinking = createWordCounter();
-  const snapshot = (): SectionProgressSnapshot => ({
+  // The preview shows only prose the reflection check has passed, a sentence at a time (PR #366).
+  const gate = reflectionGate();
+  const snapshot = (final = false): SectionProgressSnapshot => ({
     words: prose.words(),
-    preview: prose.preview(),
+    preview: gate.release(prose.text(), final).slice(-PROSE_PREVIEW_CHARS),
     thinkingWords: thinking.words(),
   });
-  return streamChatCompletionJson({
+  const streamed = streamChatCompletionJson({
     ...base,
     ...(params.reasoningTimeoutMs === undefined ? {} : { reasoningTimeoutMs: params.reasoningTimeoutMs }),
     onDelta: (delta) => {
@@ -1554,6 +1566,10 @@ function requestSection<Section extends AnySectionKey>(
       thinking.push(delta);
       report?.(section, snapshot());
     },
+  });
+  return streamed.then((raw) => {
+    report?.(section, snapshot(true)); // the last sentence ends with the stream
+    return raw;
   });
 }
 
@@ -1568,20 +1584,27 @@ function reasoningBudget(section: AnySectionKey, promptSet: ReportPromptSet | un
 }
 
 /**
- * The time caps for one section. Legacy sections: none (unchanged). Report
- * sections always stream (requestSection), so tokens are observable on every
- * path. Remote: a total cap plus an idle cap from launch. Local: no total cap
- * (a weak device may be slow but still writing); the idle cap starts at the
- * first token, and a generous first-token cap bounds the wait before it
- * (queueing on a single-slot server, cold model load, slow prefill).
+ * The time caps for one section. Report sections always stream
+ * (requestSection), so tokens are observable on every path. Remote: a total
+ * cap plus an idle cap from launch. Local: no total cap (a weak device may be
+ * slow but still writing); the idle cap starts at the first token, and a
+ * generous first-token cap bounds the wait before it (queueing on a
+ * single-slot server, cold model load, slow prefill).
+ *
+ * Legacy (dashboard reading) sections: remote gets the total cap only, since
+ * the non-streaming call has no token to watch. Without it a stalled provider
+ * hung the whole reading (nightly 2026-10-15). Local legacy stays uncapped.
  */
 function sectionLimits<Section extends AnySectionKey>(
   section: Section,
   params: SectionRunParams<Section>,
 ): SectionTimeLimits | null {
-  if (!isReportRequest(section, params.promptSet)) return null;
+  const local = usesLitePrompt(params.config);
+  if (!isReportRequest(section, params.promptSet)) {
+    return local ? null : { totalMs: params.sectionTimeoutMs ?? REPORT_SECTION_TIMEOUT_MS };
+  }
   const idleMs = params.sectionIdleTimeoutMs ?? REPORT_SECTION_IDLE_TIMEOUT_MS;
-  if (usesLitePrompt(params.config)) {
+  if (local) {
     return { idleMs, firstTokenMs: params.sectionFirstTokenTimeoutMs ?? REPORT_LOCAL_FIRST_TOKEN_TIMEOUT_MS };
   }
   return { totalMs: params.sectionTimeoutMs ?? REPORT_SECTION_TIMEOUT_MS, idleMs };
@@ -1618,6 +1641,24 @@ function requestCapped<Section extends AnySectionKey>(
   );
 }
 
+/**
+ * The section's completion through the reflection check (PR #366): a text that foretells,
+ * narrates the tools or guesses lived experience goes back once with the issues named; a value
+ * that still fails is withheld in the reading's language, the rest of the section kept. A reword
+ * request that fails withholds the first text's failing values instead of failing the section.
+ */
+async function reflectedSection<Section extends AnySectionKey>(
+  section: Section,
+  messages: ChatMessage[],
+  params: SectionRunParams<Section>,
+): Promise<string> {
+  const raw = await requestCapped(section, messages, params);
+  const issues = jsonReflectionIssues(raw);
+  if (issues.length === 0) return raw;
+  const retry = await rewordedOr(raw, params.signal, () => requestCapped(section, [...messages, ...reflectionRetry(raw, issues)], params));
+  return withholdFailingValues(retry, READING_WITHHELD[params.language ?? "en"]);
+}
+
 function runOneSection<Section extends AnySectionKey>(
   section: Section,
   chart: SanitizedChart,
@@ -1632,7 +1673,7 @@ function runOneSection<Section extends AnySectionKey>(
     params.language ?? "en",
     params.promptSet,
   );
-  return requestCapped(section, messages, withGuardedPreview(section, chart, params))
+  return reflectedSection(section, messages, withGuardedPreview(section, chart, params))
     .then((raw): SectionOutcome<Section> => ({ section, ok: true, raw }))
     // Keep the ORIGINAL error (not just its message) so the aggregation can
     // preserve the HTTP status/body of a representative failure — the caller

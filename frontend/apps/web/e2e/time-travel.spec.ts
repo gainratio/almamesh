@@ -1501,7 +1501,7 @@ for (const tag of ['', '@iphone15']) {
     const todayDay = new Intl.DateTimeFormat('en-CA').format(new Date());
     await scripted(page, {
       // A trip turn reads before it answers: September 2017 with the trip's own place.
-      [pastQuestion]: (body) => stubCallFor(body, readPeriodArgs('2017-09'), 'The September timing can describe pressure, but cannot identify what happened in your life.'),
+      [pastQuestion]: (body) => stubCallFor(body, readPeriodArgs('2017-09'), 'The September timing can describe pressure, but cannot name the events of your life.'),
       // "Today" inside the trip: the model names today, and the read is today's, not the trip's.
       [todayQuestion]: (body) => stubCallFor(body, readPeriodArgs(todayDay), 'Here is the outlook for today using the calculated timing.'),
     }, seen, [], new Set<string>());
@@ -1520,7 +1520,7 @@ for (const tag of ['', '@iphone15']) {
     await expect(page.getByTestId('time-travel-title')).toHaveText('Sep 2017');
     await page.getByTestId('chat-input').fill(pastQuestion);
     await page.getByTestId('chat-send-button').click();
-    await expect(page.getByTestId('chat-panel').getByText('The September timing can describe pressure, but cannot identify what happened in your life.')).toBeVisible({ timeout: 240_000 });
+    await expect(page.getByTestId('chat-panel').getByText('The September timing can describe pressure, but cannot name the events of your life.')).toBeVisible({ timeout: 240_000 });
     const pastSystem = seen[0]?.messages.find((message) => message.role === 'system')?.content ?? '';
     // No pre-computed timing in the prompt: the trip line names the period, and round 1 must read.
     expect(pastSystem).toContain('THIS THREAD: a trip to September 2017');

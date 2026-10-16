@@ -3,7 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { LlmRequestError } from '@almamesh/llm';
 import i18n from '../i18n/config';
 import {
+  type AiErrorCode,
   aiErrorRegistry,
+  aiErrorText,
   chatErrorMessage,
   classifyConnectionError,
   connectionErrorDetail,
@@ -299,16 +301,16 @@ describe('chatErrorMessage', () => {
 
   it('maps a 429 to the rate-limited copy', () => {
     expect(chatErrorMessage(new FakeLlmRequestError('returned 429 Too Many Requests', 429))).toBe(
-      i18n.t('chat:errors.rate_limited'),
+      "The AI provider is rate-limiting requests. Wait a moment and try again.",
     );
   });
 
   it('maps any 5xx to the server-error copy', () => {
     expect(chatErrorMessage(new FakeLlmRequestError('returned 500 Internal Server Error', 500))).toBe(
-      i18n.t('chat:errors.server_error'),
+      "The AI provider had a server error. Try again shortly.",
     );
     expect(chatErrorMessage(new FakeLlmRequestError('returned 503 Service Unavailable', 503))).toBe(
-      i18n.t('chat:errors.server_error'),
+      "The AI provider had a server error. Try again shortly.",
     );
   });
 
@@ -318,10 +320,46 @@ describe('chatErrorMessage', () => {
     );
   });
 
-  it('surfaces a PrivacyViolationError message verbatim (fail-closed fence)', () => {
-    const err = new Error('refusing to send chart data to non-local endpoint');
+  // CONTRACT REVERSED (was: "surfaces the message verbatim"). The fence's
+  // message is an English log line; showing it verbatim leaked English to es/pt
+  // users. The UI now renders a localized sentence with the endpoint
+  // interpolated, and the English message stays on the error for logs.
+  function privacyError(endpoint?: string): Error {
+    const err = Object.assign(
+      new Error(
+        "PrivacyMode 'local_only' requires a local OpenAI-compatible endpoint " +
+          '(set VITE_LLM_API_BASE to a loopback/private host); refusing to send ' +
+          `chart data to non-local endpoint ${endpoint ?? ''}.`,
+      ),
+      endpoint === undefined ? {} : { endpoint },
+    );
     err.name = 'PrivacyViolationError';
-    expect(chatErrorMessage(err)).toBe('refusing to send chart data to non-local endpoint');
+    return err;
+  }
+
+  it('renders a PrivacyViolationError as localized copy naming the endpoint (en)', () => {
+    const msg = chatErrorMessage(privacyError('https://example.invalid/v1'));
+    expect(msg).toBe(i18n.t('chat:errors.privacy_blocked', { endpoint: 'https://example.invalid/v1' }));
+    expect(msg).toContain('https://example.invalid/v1');
+    expect(msg).not.toContain('refusing to send');
+  });
+
+  it.each([
+    ['es', /no se envió nada/],
+    ['pt', /nada foi enviado/],
+  ])('renders a PrivacyViolationError in %s with no English leak', async (lang, native) => {
+    await i18n.changeLanguage(lang);
+    const msg = chatErrorMessage(privacyError('https://example.invalid/v1'));
+    expect(msg).toMatch(native);
+    expect(msg).toContain('https://example.invalid/v1');
+    expect(msg).not.toMatch(/refusing|requires a local|PrivacyMode|local_only/);
+  });
+
+  it('localizes a PrivacyViolationError that carries no endpoint', async () => {
+    await i18n.changeLanguage('es');
+    const msg = chatErrorMessage(privacyError());
+    expect(msg).toBe(i18n.t('chat:errors.privacy_blocked_no_endpoint'));
+    expect(msg).not.toMatch(/refusing|\{\{/);
   });
 
   it('falls back to the generic request_failed copy for an unknown failure', () => {
@@ -459,7 +497,7 @@ describe('@gainratio/errors adoption (canonical-errors standard)', () => {
     for (const status of [500, 501, 505, 520, 522, 599]) {
       expect(classifyConnectionError(new FakeLlmRequestError(`returned ${status}`, status))).toBe('server');
       expect(chatErrorMessage(new FakeLlmRequestError(`returned ${status}`, status))).toBe(
-        i18n.t('chat:errors.server_error'),
+        "The AI provider had a server error. Try again shortly.",
       );
     }
   });
@@ -521,5 +559,150 @@ describe('runaway reasoning (ai.reasoning_timeout)', () => {
       expect(text).not.toContain('errors.');
       expect(text).toMatch(/3/);
     }
+  });
+});
+
+describe('one translation path: registry.describe with the shipped es/pt resources', () => {
+  // Every code the app registers renders through `aiErrorText`, which is
+  // `aiErrorRegistry.describe(code, params, t)`. Codes whose meaning matches
+  // the library sentence use the shipped @gainratio/errors locales; codes with
+  // product-specific copy keep it through `i18nKey`. Either way, a Spanish or
+  // Portuguese user never gets an English sentence or a raw key.
+  const PARAMS = { endpoint: 'https://example.invalid/v1' };
+  const SHIPPED = ['ai.provider.rate_limited', 'ai.provider.server_error'] as const;
+  const CODES = aiErrorRegistry.codes as readonly AiErrorCode[];
+  const render = (code: AiErrorCode): string =>
+    code === 'ai.privacy.violation' ? aiErrorText(code, PARAMS) : aiErrorText(code);
+
+  it.each(['es', 'pt'])('renders every registered code non-English in %s', async (lang) => {
+    await i18n.changeLanguage('en');
+    const english = new Map(CODES.map((code) => [code, render(code)]));
+    await i18n.changeLanguage(lang);
+    const leaks = CODES.filter((code) => {
+      const text = render(code);
+      const catalogEn = aiErrorRegistry.get(code)?.en;
+      return (
+        text === english.get(code) ||
+        text === catalogEn ||
+        /^(errors|chat)[.:]|\{\{/.test(text) ||
+        text.trim() === ''
+      );
+    });
+    expect(leaks).toEqual([]);
+  });
+
+  it('uses the shipped sentence for codes whose meaning matches (es and pt pinned)', async () => {
+    await i18n.changeLanguage('es');
+    expect(aiErrorText('ai.provider.server_error')).toBe(
+      'Hubo un error en el servidor del proveedor de IA. Vuelve a intentarlo en un momento.',
+    );
+    expect(aiErrorText('ai.provider.rate_limited')).toBe(
+      'El proveedor de IA está limitando las solicitudes. Espera un momento e inténtalo de nuevo.',
+    );
+    await i18n.changeLanguage('pt');
+    expect(aiErrorText('ai.provider.server_error')).toBe(
+      'Ocorreu um erro no servidor do provedor de IA. Tente de novo daqui a pouco.',
+    );
+  });
+
+  it('English for a shipped code comes from the catalog en', async () => {
+    await i18n.changeLanguage('en');
+    for (const code of SHIPPED) {
+      expect(aiErrorText(code)).toBe(starterPack[code].en);
+    }
+  });
+
+  it('keeps product-specific app copy through i18nKey (pinned en literals)', async () => {
+    await i18n.changeLanguage('en');
+    expect(aiErrorText('net.unreachable')).toBe(
+      "Couldn't reach your AI endpoint. Check that it's running and that the address in Settings → AI is correct.",
+    );
+    expect(aiErrorText('ai.provider.out_of_credits')).toContain('openrouter.ai → Credits');
+    await i18n.changeLanguage('es');
+    // The shipped es drops the "Ajustes → IA" pointer for these two; ours keeps it.
+    expect(aiErrorText('ai.model.unavailable')).toContain('Ajustes → IA');
+    expect(aiErrorText('ai.provider.unauthorized')).toContain('Ajustes → IA');
+    await i18n.changeLanguage('en');
+    expect(aiErrorText('ai.privacy.violation', PARAMS)).toContain('nothing was sent to https://example.invalid/v1');
+  });
+
+  it('every i18nKey the catalog points at exists in en, es and pt', () => {
+    // getResource reads ONE language's bundle; i18n.exists would fall back to
+    // en and pass for a key missing from es/pt.
+    const missing: string[] = [];
+    for (const code of aiErrorRegistry.codes) {
+      const key = aiErrorRegistry.get(code)?.i18nKey;
+      if (key === undefined) continue;
+      const [ns = '', path = ''] = key.split(':');
+      for (const lng of ['en', 'es', 'pt']) {
+        if (typeof i18n.getResource(lng, ns, path) !== 'string') missing.push(`${lng}:${key}`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
+});
+
+describe('a namespaced i18nKey with no translation falls back to the English sentence', () => {
+  // Regression for @gainratio/errors 0.3.0: on a miss, i18next answers a
+  // namespaced key ("chat:errors.model_unavailable") with the key WITHOUT its
+  // namespace ("errors.model_unavailable"). 0.3.0 only treated the full key as
+  // a miss, so that bare key reached the screen. 0.3.1 treats both as a miss
+  // and renders the catalog's English instead.
+  const PARAMS = { endpoint: 'https://example.invalid/v1' };
+  const LANGS = ['en', 'es', 'pt'] as const;
+  const originals = new Map<string, Record<string, unknown>>();
+  const keyed = aiErrorRegistry.codes.filter((code) =>
+    aiErrorRegistry.get(code)?.i18nKey?.startsWith('chat:'),
+  ) as AiErrorCode[];
+
+  /** Drop every catalog i18nKey from the chat bundle in all three languages. */
+  function dropCatalogKeysFromChat(): void {
+    for (const lng of LANGS) {
+      const original = structuredClone(i18n.getResourceBundle(lng, 'chat') as Record<string, unknown>);
+      originals.set(lng, original);
+      const stripped = structuredClone(original);
+      const errors = stripped.errors as Record<string, unknown>;
+      for (const code of keyed) {
+        const path = aiErrorRegistry.get(code)?.i18nKey?.split(':')[1] ?? '';
+        delete errors[path.replace(/^errors\./, '')];
+      }
+      i18n.removeResourceBundle(lng, 'chat');
+      i18n.addResourceBundle(lng, 'chat', stripped);
+    }
+  }
+
+  afterEach(() => {
+    for (const [lng, original] of originals) {
+      i18n.removeResourceBundle(lng, 'chat');
+      i18n.addResourceBundle(lng, 'chat', original);
+    }
+    originals.clear();
+  });
+
+  it('covers the namespaced app keys (the guard is not vacuous)', () => {
+    expect(keyed).toContain('ai.model.unavailable');
+    expect(keyed.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it.each(['en', 'es'])('renders English, never the raw key, in %s', async (lang) => {
+    dropCatalogKeysFromChat();
+    await i18n.changeLanguage(lang);
+    for (const code of keyed) {
+      const text = code === 'ai.privacy.violation' ? aiErrorText(code, PARAMS) : aiErrorText(code);
+      // describe() without a translator is the catalog's own English.
+      const english =
+        code === 'ai.privacy.violation'
+          ? aiErrorRegistry.describe(code, PARAMS)
+          : aiErrorRegistry.describe(code);
+      expect(text, code).not.toMatch(/^(chat:)?errors\./);
+      expect(text, code).toBe(english);
+    }
+  });
+
+  it('pins the user-visible text for a missing model_unavailable key', async () => {
+    dropCatalogKeysFromChat();
+    await i18n.changeLanguage('es');
+    expect(aiErrorText('ai.model.unavailable')).toBe(starterPack['ai.model.unavailable'].en);
+    expect(aiErrorText('ai.model.unavailable')).not.toBe('errors.model_unavailable');
   });
 });

@@ -97,12 +97,14 @@ async function successfulToolPairs(requests: ObservedAgentRequest[]) {
     .map((call) => call.id).filter(Boolean));
   for (const { body } of requests) {
     for (const message of body.messages ?? []) {
+      // A rejected answer call comes back to the model with the fix (answer.ts checks, incl. the
+      // reflection check of 2026-10-15) and is resent: it is a retry, not a tool pair.
       if (message.role === 'assistant') {
-        for (const call of message.tool_calls ?? []) calls.set(call.id, call);
+        for (const call of message.tool_calls ?? []) if (call.function.name !== 'answer') calls.set(call.id, call);
       }
       // The first sighting is the full result: later rounds carry it compacted (context budget, 2026-10-13).
       // A tool message carries no name since the tool layer redesign (2026-10-14): the call names it.
-      if (message.role === 'tool' && message.tool_call_id && !results.has(message.tool_call_id)) results.set(message.tool_call_id, message);
+      if (message.role === 'tool' && message.tool_call_id && calls.has(message.tool_call_id) && !results.has(message.tool_call_id)) results.set(message.tool_call_id, message);
     }
   }
   expect(calls.size, 'each turn stays inside the three-call agent budget').toBeLessThanOrEqual(3);
@@ -165,6 +167,25 @@ async function finalAnswer(requests: ObservedAgentRequest[]): Promise<TypedAnswe
   return JSON.parse(answer!.args) as TypedAnswer;
 }
 
+/**
+ * The turn as the provider saw it, one line per round: what was offered, then each tool call with its
+ * raw arguments and the head of its result. Attached to the test so a red run names its reason.
+ */
+function turnTranscript(turn: ObservedAgentRequest[]): string {
+  const last = turn.at(-1)?.body.messages ?? [];
+  const lines = turn.map((request, index) => {
+    const offered = (request.body.tools ?? []).map((tool) => tool.function?.name).join(',');
+    return `request ${index + 1}: tool_choice=${JSON.stringify(request.body.tool_choice)} tools=[${offered}]`;
+  });
+  const start = last.map((message) => message.role).lastIndexOf('user');
+  for (const message of last.slice(start + 1)) {
+    for (const call of message.tool_calls ?? []) lines.push(`  call ${call.function.name} ${call.function.arguments}`);
+    if (message.role === 'tool') lines.push(`  result ${String(message.content).slice(0, 240)}`);
+    if (message.role === 'system') lines.push(`  system ${String(message.content).slice(0, 240)}`);
+  }
+  return lines.join('\n');
+}
+
 const FACT_SUMMARY_REQUEST = 'Answer with kind "period": restate the calculated maha and antar dasha lords covering that period exactly as read_period gave them, then explain the active calculated timing in two short sentences.';
 
 /** The calculated dashas an answer must restate: from the turn's read_period reading. */
@@ -225,6 +246,8 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
 
   const errors: string[] = [];
   page.on('console', (m) => {
+    // Logged as it happens: a failed turn shows only the generic QA_001 bubble (deepseek, 2026-10-15).
+    if (m.type() === 'error') console.log(`[page error] ${m.text().slice(0, 400)}`);
     if (m.type() === 'error') errors.push(m.text());
   });
   page.on('pageerror', (e) => errors.push(String(e)));
@@ -356,8 +379,9 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
   console.log(`[chat answer] ${answerText.replace(/\s+/g, ' ').trim().slice(0, 600)}`);
 
   // Not a placeholder / error bubble.
+  // Whole words: "spending" is not the placeholder "pending" (run 2026-10-15 failed on it).
   for (const placeholder of PLACEHOLDERS) {
-    expect(lower).not.toContain(placeholder);
+    expect(lower).not.toMatch(new RegExp(`\\b${placeholder}\\b`));
   }
 
   // THE CONTEXT + TOOL-PROTOCOL ASSERTIONS: the first live request carries the
@@ -402,6 +426,8 @@ test('[real] dashboard: timer + life phase + exact-day agentic chat', async ({
   }
 });
 
+const TURN_WAIT_MS = 330_000;
+
 test('[real] dashboard: September 2017 tool movement, grounded outlook today, and tool return', async ({ page }) => {
   const key = process.env.OPENROUTER_API_KEY;
   test.skip(!key, 'OPENROUTER_API_KEY not set');
@@ -433,9 +459,13 @@ test('[real] dashboard: September 2017 tool movement, grounded outlook today, an
     await page.getByTestId('chat-input').fill(question);
     await page.getByTestId('chat-send-button').click();
     await expect.poll(() => observed.length, { timeout: 180_000 }).toBeGreaterThan(before);
-    // Disabled for the whole stream AND the final answer/pin persistence barrier.
-    await expect(page.getByTestId('time-travel-button')).toBeEnabled({ timeout: 240_000 });
+    // Disabled for the whole stream AND the final answer/pin persistence barrier. The wait outlasts the
+    // app's own per-turn model ceiling (TURN_MODEL_TIME_CEILING_MS = 300 s in packages/llm/src/toolLoop.ts),
+    // so a stalled provider surfaces as the app's error bubble instead of a bare "still disabled".
+    await expect(page.getByTestId('time-travel-button')).toBeEnabled({ timeout: TURN_WAIT_MS });
     const turn = observed.slice(before);
+    await test.info().attach(`turn ${question.slice(0, 40)}`, { body: turnTranscript(turn), contentType: 'text/plain' });
+    console.log(`[turn] ${question.slice(0, 40)}\n${turnTranscript(turn)}`);
     for (const request of turn) expect(request.body.model).toBe(EXPECTED_CHAT_MODEL);
     return turn;
   };

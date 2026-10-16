@@ -51,6 +51,7 @@ const DOMAIN_NAMES = [
   "spiritual",
   "education",
   "family",
+  "obstacles",
 ] as const;
 
 const CAREER_ASSAY = {
@@ -374,7 +375,7 @@ describe("toDomainsCtx", () => {
     expect(toDomainsCtx(null)).toBeUndefined();
   });
 
-  it("carries every one of the 7 life domains", () => {
+  it("carries every life domain, obstacles included", () => {
     const ctx = toDomainsCtx(domainsRaw);
     expect(ctx?.instant).toBe("2026-06-09T12:00:00Z");
     expect(Object.keys(ctx?.forecasts ?? {}).sort()).toEqual(

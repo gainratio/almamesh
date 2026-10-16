@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { PlaceLookup, ResolvedPlace } from '../geo/placeLookup';
 import { NO_PLACE_PICKER } from '../placePick';
 import { periodAsOfFromDraft } from '../timeTravelSheet';
-import { createTravelTool, TRAVEL_NEEDS_PLACE, TRAVEL_TOOL_NAME, type TravelArgs, type TravelToolInput } from '../travelTool';
+import { createTravelTool, TRAVEL_NEEDS_PLACE, TRAVEL_NOT_ASKED, TRAVEL_NOT_PENDING, TRAVEL_TOOL_NAME, type TravelArgs, type TravelToolInput } from '../travelTool';
 
 // ---------------------------------------------------------------------------
 // travel(to, place?) — chat tool layer redesign, 2026-10-14
@@ -26,7 +26,7 @@ function travelSetup(overrides: Partial<TravelToolInput> = {}) {
   const record = vi.fn();
   const lookup = vi.fn(lookupOf);
   const pick = vi.fn(async (): Promise<ResolvedPlace | undefined | typeof NO_PLACE_PICKER> => SPRINGFIELD_IL);
-  const tool = createTravelTool({ birthYear: 1990, language: 'en', record, threadPlace: undefined, homePlace: HOME, lookup, pick, ...overrides });
+  const tool = createTravelTool({ birthYear: 1990, language: 'en', record, threadPlace: undefined, homePlace: HOME, lookup, pick, grant: { kind: 'asked' }, ...overrides });
   return { tool, record, lookup, pick };
 }
 const go = (tool: ReturnType<typeof createTravelTool>, args: TravelArgs, signal = new AbortController().signal) =>
@@ -42,13 +42,92 @@ describe('travel: the neutral ask for a trip with no place', () => {
   });
 });
 
+// dashboard.agentic.real 2026-10-15 (GPT Luna): "outlook today?" in a September 2017 trip called
+// travel back to today and ended the trip. A turn whose message asks for no move refuses travel.
+describe('travel: only an explicit request moves the conversation', () => {
+  // travel-guard-live 2026-10-15: after this refusal DeepSeek v4.1 flash told the user it had moved
+  // (3 of 20 runs). The note says the conversation stays, forbids the claim, and names how to move.
+  it('pins the refusal to its literal: a typed status the model is told to answer with read_period', () => {
+    expect(TRAVEL_NOT_ASKED).toEqual({
+      status: 'refused',
+      reason: 'not_asked',
+      note: 'The user did not ask to move this conversation, so it stays where it is. Answer their question here: read the time they asked about with read_period. Do not say the conversation moved or the trip ended. If they want to move, they can use the Time travel control, or say "back to today" or "take me to May 2019".',
+    });
+  });
+
+  it.each([
+    [{ to: 'today', place: null }],
+    [{ to: '2019-05', place: 'Pune' }],
+  ])('a turn that did not ask to move refuses %j and records nothing', async (args) => {
+    const { tool, record, lookup } = travelSetup({ grant: { kind: 'none' } });
+    expect(await go(tool, args)).toEqual(TRAVEL_NOT_ASKED);
+    expect(record).not.toHaveBeenCalled();
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it('a turn that asked to move still moves', async () => {
+    const { tool, record } = travelSetup({ grant: { kind: 'asked' } });
+    expect(await go(tool, { to: 'today', place: null })).toEqual({ status: 'queued', action: 'back_to_today' });
+    expect(record).toHaveBeenCalledWith({ kind: 'back_to_today' });
+  });
+
+  // travel-guard-live 2026-10-15 (GPT Luna, round 2): "I'm done with September 2017. Leave this trip
+  // and tell me my outlook today." was answered in place in 4 of 10 runs; leaving is a move to today.
+  it('names leaving a trip as a move back to today', () => {
+    const { tool } = travelSetup();
+    expect(tool.description).toContain('"back to today" or "leave this trip" -> {"to":"today","place":null}.');
+  });
+
+  it('says so in its description: an explicit request only, else read_period', () => {
+    const { tool } = travelSetup();
+    expect(tool.description).toContain('Only when the user asks to move ("take me to ...", "back to today") in this message, or names the place you asked for; a question about another time, today included, is answered here with read_period.');
+  });
+});
+
+// Re-grade of PR #366 (2026-10-15): a pending move granted ANY call on the next turn. With "take me
+// to June 2019" pending, the reply "what's my moon sign?" queued {to:"1990", place:"Lisbon"}, and
+// {to:"today"} queued a return. The grant is now bound: the same `to`, a place, a place answer.
+describe('travel: a reply to a pending move finishes only that move', () => {
+  const finish = (reply = 'Pune') => travelSetup({ grant: { kind: 'finish', to: '2019-05', reply } });
+
+  it('pins the refusal to its literal', () => {
+    expect(TRAVEL_NOT_PENDING).toEqual({
+      status: 'refused',
+      reason: 'not_pending_move',
+      note: 'This reply can only finish the move you asked a place for: the same "to" as that call, with the place the user just named. Nothing moved. Answer their message here; do not say the conversation moved or the trip ended.',
+    });
+  });
+
+  it.each(['Pune', 'Pune.', 'Pune?', 'I lived in Pune then'])('the same `to` with the place from %j queues the move', async (reply) => {
+    const { tool, record } = finish(reply);
+    expect(await go(tool, { to: '2019-05', place: 'Pune' })).toMatchObject({ status: 'queued', action: 'travel', place_label: 'Pune, India' });
+    expect(record).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['another year', 'Pune', { to: '1990', place: 'Pune' }],
+    ['the same year at another precision', 'Pune', { to: '2019', place: 'Pune' }],
+    ['another month', 'Pune', { to: '2019-06', place: 'Pune' }],
+    ['back to today', 'Pune', { to: 'today', place: null }],
+    ['back to today at home', 'Pune', { to: 'today', place: 'home' }],
+    ['no place', 'Pune', { to: '2019-05', place: null }],
+    ['a reply that asks something else', "actually, what's my moon sign?", { to: '2019-05', place: 'Pune' }],
+    ['a reply that asks something else (es)', '¿y mi carrera?', { to: '2019-05', place: 'Pune' }],
+    ['a reply that asks something else (pt)', 'e a minha carreira?', { to: '2019-05', place: 'Pune' }],
+  ])('%s is refused and records nothing', async (_case, reply, args) => {
+    const { tool, record, lookup } = finish(reply);
+    expect(await go(tool, args as TravelArgs)).toEqual(TRAVEL_NOT_PENDING);
+    expect(record).not.toHaveBeenCalled();
+    expect(lookup).not.toHaveBeenCalled();
+  });
+});
+
 describe('travel: the schema the model fills', () => {
   it('is named travel and describes when to move (audit 4.3)', () => {
     const { tool } = travelSetup();
     expect(tool.name).toBe(TRAVEL_TOOL_NAME);
     expect(TRAVEL_TOOL_NAME).toBe('travel');
     expect(tool.description).toContain('Move this conversation and the Dashboard to a day, month or year (a time-travel trip), or back to today.');
-    expect(tool.description).toContain('Only when the user asks to go there; to answer a question about a time, use read_period.');
     expect(tool.description).toContain('"take me to May 2019 in Vadodara" -> {"to":"2019-05","place":"Vadodara"}');
   });
 
@@ -75,6 +154,17 @@ describe('travel: the schema the model fills', () => {
     const { tool } = travelSetup();
     expect(issues(tool, { to: 'today', place: 'Pune' })).toEqual(['to "today" takes no place: send place null']);
     expect(issues(tool, { to: 'today', place: null })).toEqual([]);
+  });
+
+  // travel-guard-live 2026-10-15 (DeepSeek v4.1 flash, "Leave this trip and tell me my outlook
+  // today"): the call {"to":"today","place":"home"} was sent back, the model read today instead,
+  // and the trip stayed. Today is where the user lives now, so "home" says nothing more: accepted.
+  it('back to today accepts place "home": today is where the user lives now', async () => {
+    const { tool, record } = travelSetup();
+    expect(issues(tool, { to: 'today', place: 'home' })).toEqual([]);
+    expect(issues(tool, { to: 'today', place: 'Home' })).toEqual([]);
+    expect(await go(tool, { to: 'today', place: 'home' })).toEqual({ status: 'queued', action: 'back_to_today' });
+    expect(record).toHaveBeenCalledWith({ kind: 'back_to_today' });
   });
 });
 

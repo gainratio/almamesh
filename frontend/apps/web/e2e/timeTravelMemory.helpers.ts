@@ -4,6 +4,7 @@ import { expect, type Browser, type CDPSession, type Page } from '@playwright/te
 
 import { waitForLifeAtlasAsOf } from './lifeAtlas.helpers';
 import type { TimeTravelMemoryPhase } from './memoryBudget';
+import { passOnboardingAiStep } from '../scripts/onboardingAiStep.mjs';
 
 const MiB = 1024 * 1024;
 export type MemoryGranularity = 'day' | 'month';
@@ -30,7 +31,7 @@ export async function waitForMemoryDashboard(page: Page): Promise<void> {
   let watching = true;
   let delay: ReturnType<typeof setTimeout> | undefined;
   let wake: (() => void) | undefined;
-  const navigation = Promise.resolve().then(() => page.waitForURL('**/dashboard', { timeout: 300_000 }));
+  const navigation = Promise.resolve().then(() => passOnboardingAiStep(page, { timeout: 300_000 }));
   const error = (async () => {
     while (watching) {
       const visible = await page.getByText(/CHART_GEN_001/).first().isVisible();

@@ -55,6 +55,11 @@ import { hydrateLlmSettings, openRouterPreset, writeLlmSettings } from '@almames
 import { readLocalPrimaryChart } from '../../lib/localChartRead';
 import DashboardPage from '../Dashboard';
 
+// The chat panel is a lazy chunk (AI SDK + zod). Its first import in a test file can
+// take over findBy's 1 s default under full-suite load (seen in 1 of 4 full gate
+// runs here); the wait is for the import, not for app behavior.
+const LAZY_CHAT = { timeout: 10_000 } as const;
+
 function chartWithZone(timezone: string): StoredChart {
   return {
     chart_id: 'chart-1',
@@ -109,7 +114,7 @@ function renderDashboardWithChatOpen() {
 }
 
 async function ask(question: string): Promise<void> {
-  fireEvent.change(await screen.findByTestId('chat-input'), { target: { value: question } });
+  fireEvent.change(await screen.findByTestId('chat-input', {}, LAZY_CHAT), { target: { value: question } });
   fireEvent.click(screen.getByTestId('chat-send-button'));
 }
 
@@ -151,6 +156,40 @@ describe('Dashboard chat runs one lazy chat turn', () => {
 
     await waitFor(() => expect(screen.getByTestId('chat-panel').textContent).toContain('An answer grounded in the chart.'));
     expect(turnMocks.runChatTurn).toHaveBeenCalledTimes(1);
+  });
+
+  // Northstar on PR #366: "take me to May 2019" -> asked where -> "Delhi" must reach the turn as a pending move.
+  // Re-grade (2026-10-15): pending is the saved needs_place travel call, never the user's text.
+  it('hands the next turn the pending move when the last turn\'s travel call needed a place', async () => {
+    const chart = chartWithZone('Asia/Kolkata');
+    useChartLibraryStore.setState({ charts: { 'chart-1': chart }, hydrated: true });
+    vi.mocked(readLocalPrimaryChart).mockResolvedValue(response(chart));
+    turnMocks.runChatTurn.mockImplementationOnce(async function* (input: { onToolCall?: (row: unknown) => void }) {
+      input.onToolCall?.({ toolCallId: 'n', toolName: 'travel', args: { to: '2019-05', place: null }, status: 'complete', result: { status: 'needs_place', ask: 'Ask where the user lived (or will be) then.' } });
+      yield 'An answer grounded in the chart.';
+    });
+    renderDashboardWithChatOpen();
+
+    await ask('take me to May 2019');
+    await waitFor(() => expect(screen.getByTestId('chat-panel').textContent).toContain('An answer grounded in the chart.'));
+    expect(turnMocks.runChatTurn.mock.calls[0][0].pendingTravel).toBeUndefined();
+    await ask('Delhi');
+    await waitFor(() => expect(turnMocks.runChatTurn).toHaveBeenCalledTimes(2));
+    expect(turnMocks.runChatTurn.mock.calls[1][0].pendingTravel).toEqual({ kind: 'pending_travel', to: '2019-05' });
+  });
+
+  // Contract reversed 2026-10-15 (re-grade of PR #366): this used to be pending from the text alone.
+  it('a move request answered with no travel call hands the next turn nothing pending', async () => {
+    const chart = chartWithZone('Asia/Kolkata');
+    useChartLibraryStore.setState({ charts: { 'chart-1': chart }, hydrated: true });
+    vi.mocked(readLocalPrimaryChart).mockResolvedValue(response(chart));
+    renderDashboardWithChatOpen();
+
+    await ask('take me to May 2019');
+    await waitFor(() => expect(screen.getByTestId('chat-panel').textContent).toContain('An answer grounded in the chart.'));
+    await ask('Delhi');
+    await waitFor(() => expect(turnMocks.runChatTurn).toHaveBeenCalledTimes(2));
+    expect(turnMocks.runChatTurn.mock.calls[1][0].pendingTravel).toBeUndefined();
   });
 
   it('hands the turn the stored chart, the question, the voice and the thread callbacks; pages pass no test seams', async () => {

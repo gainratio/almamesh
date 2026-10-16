@@ -111,5 +111,11 @@
     "reset_hint": "¿Sigue sin funcionar? Borra los datos del motor en caché y recarga para empezar de cero.",
     "still_warming": "El motor en el dispositivo aún se está preparando — espera un momento, tu carta se generará en cuanto esté listo.",
     "help": "Si tu carta ya se generó, la verás en el panel. De lo contrario, intenta generarla de nuevo."
+  },
+  "ai_step": {
+    "title": "Tu carta está lista",
+    "body": "Conecta un modelo de IA para hacer preguntas sobre tu carta. Tu clave se queda en este dispositivo y solo se envía al proveedor que elijas.",
+    "connect": "Conectar IA",
+    "not_now": "Ahora no"
   }
 }

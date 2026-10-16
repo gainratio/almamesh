@@ -40,6 +40,7 @@ import {
   type Native,
 } from './portableInvariants.helpers';
 import { startWebKitDiagnostics, type WebKitDiagnostics } from './webkitDiagnostics';
+import { passOnboardingAiStep } from '../scripts/onboardingAiStep.mjs';
 
 /**
  * Portable-state invariants — the standing guard for "move ALL my data and
@@ -463,7 +464,7 @@ test('onboarding retains captured events with a late observer', async ({ browser
               if (method === 'click') {
                 return async (...args: Parameters<typeof button.click>) => {
                   await button.click(...args);
-                  await page.waitForURL('**/dashboard', { timeout: 240_000 });
+                  await passOnboardingAiStep(page, { timeout: 240_000 });
                   await expectDashboardChart(page, SELF.name);
                   observedAfterDashboard = true;
                 };

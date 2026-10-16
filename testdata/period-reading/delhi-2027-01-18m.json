@@ -1,0 +1,1135 @@
+{
+  "window": {
+    "start": "2027-01-01",
+    "end": "2028-07-01"
+  },
+  "natal_lords": {
+    "sun": {
+      "rules": [
+        3
+      ],
+      "house": 8,
+      "sign": "capricorn",
+      "dignity": "neutral",
+      "strength": "weak",
+      "combust": false,
+      "retro": false,
+      "functional": "malefic",
+      "d9_sign": "capricorn",
+      "d10_sign": "virgo",
+      "vargottama": true,
+      "yogas": [
+        "Vasi Yoga"
+      ]
+    },
+    "moon": {
+      "rules": [
+        2
+      ],
+      "house": 3,
+      "sign": "leo",
+      "dignity": "neutral",
+      "strength": "strong",
+      "combust": false,
+      "retro": false,
+      "functional": "maraka",
+      "d9_sign": "scorpio",
+      "d10_sign": "pisces",
+      "vargottama": false,
+      "yogas": [
+        "Kemadruma Yoga"
+      ]
+    },
+    "mars": {
+      "rules": [
+        6,
+        11
+      ],
+      "house": 6,
+      "sign": "scorpio",
+      "dignity": "own",
+      "strength": "strong",
+      "combust": false,
+      "retro": false,
+      "functional": "malefic",
+      "d9_sign": "aquarius",
+      "d10_sign": "pisces",
+      "vargottama": false,
+      "yogas": [
+        "Vipareeta Raja Yoga"
+      ]
+    },
+    "mercury": {
+      "rules": [
+        1,
+        4
+      ],
+      "house": 7,
+      "sign": "sagittarius",
+      "dignity": "neutral",
+      "strength": "strong",
+      "combust": false,
+      "retro": true,
+      "functional": "benefic",
+      "d9_sign": "virgo",
+      "d10_sign": "taurus",
+      "vargottama": false,
+      "yogas": [
+        "Parivartana Yoga",
+        "Raja Yoga",
+        "Vasi Yoga"
+      ]
+    },
+    "jupiter": {
+      "rules": [
+        7,
+        10
+      ],
+      "house": 1,
+      "sign": "gemini",
+      "dignity": "neutral",
+      "strength": "strong",
+      "combust": false,
+      "retro": true,
+      "functional": "maraka",
+      "d9_sign": "sagittarius",
+      "d10_sign": "virgo",
+      "vargottama": false,
+      "yogas": [
+        "Parivartana Yoga",
+        "Raja Yoga"
+      ]
+    },
+    "venus": {
+      "rules": [
+        5,
+        12
+      ],
+      "house": 8,
+      "sign": "capricorn",
+      "dignity": "neutral",
+      "strength": "weak",
+      "combust": true,
+      "retro": true,
+      "functional": "benefic",
+      "d9_sign": "pisces",
+      "d10_sign": "scorpio",
+      "vargottama": false,
+      "yogas": [
+        "Vipareeta Raja Yoga"
+      ]
+    },
+    "saturn": {
+      "rules": [
+        8,
+        9
+      ],
+      "house": 7,
+      "sign": "sagittarius",
+      "dignity": "neutral",
+      "strength": "weak",
+      "combust": true,
+      "retro": false,
+      "functional": "benefic",
+      "d9_sign": "scorpio",
+      "d10_sign": "cancer",
+      "vargottama": false,
+      "yogas": [
+        "Raja Yoga",
+        "Vasi Yoga"
+      ]
+    },
+    "rahu": {
+      "rules": [],
+      "house": 8,
+      "sign": "capricorn",
+      "dignity": "neutral",
+      "strength": "ordinary",
+      "combust": false,
+      "retro": true,
+      "functional": "neutral",
+      "d9_sign": "leo",
+      "d10_sign": "aries",
+      "vargottama": false,
+      "yogas": []
+    },
+    "ketu": {
+      "rules": [],
+      "house": 2,
+      "sign": "cancer",
+      "dignity": "neutral",
+      "strength": "ordinary",
+      "combust": false,
+      "retro": true,
+      "functional": "neutral",
+      "d9_sign": "aquarius",
+      "d10_sign": "libra",
+      "vargottama": false,
+      "yogas": []
+    }
+  },
+  "dasha_spans": [
+    {
+      "level": "maha",
+      "lord": "rahu",
+      "start": "2027-01-01",
+      "end": "2028-07-01",
+      "from_parent": null,
+      "relation": null
+    },
+    {
+      "level": "antar",
+      "lord": "mercury",
+      "start": "2027-01-01",
+      "end": "2027-11-12",
+      "from_parent": 12,
+      "relation": "friction"
+    },
+    {
+      "level": "antar",
+      "lord": "ketu",
+      "start": "2027-11-12",
+      "end": "2028-07-01",
+      "from_parent": 7,
+      "relation": "support"
+    },
+    {
+      "level": "pratyantar",
+      "lord": "rahu",
+      "start": "2027-01-01",
+      "end": "2027-02-14",
+      "from_parent": 2,
+      "relation": "neutral"
+    },
+    {
+      "level": "pratyantar",
+      "lord": "jupiter",
+      "start": "2027-02-14",
+      "end": "2027-06-18",
+      "from_parent": 7,
+      "relation": "support"
+    },
+    {
+      "level": "pratyantar",
+      "lord": "saturn",
+      "start": "2027-06-18",
+      "end": "2027-11-12",
+      "from_parent": 1,
+      "relation": "support"
+    },
+    {
+      "level": "pratyantar",
+      "lord": "ketu",
+      "start": "2027-11-12",
+      "end": "2027-12-05",
+      "from_parent": 1,
+      "relation": "support"
+    },
+    {
+      "level": "pratyantar",
+      "lord": "venus",
+      "start": "2027-12-05",
+      "end": "2028-02-07",
+      "from_parent": 7,
+      "relation": "support"
+    },
+    {
+      "level": "pratyantar",
+      "lord": "sun",
+      "start": "2028-02-07",
+      "end": "2028-02-26",
+      "from_parent": 7,
+      "relation": "support"
+    },
+    {
+      "level": "pratyantar",
+      "lord": "moon",
+      "start": "2028-02-26",
+      "end": "2028-03-29",
+      "from_parent": 2,
+      "relation": "neutral"
+    },
+    {
+      "level": "pratyantar",
+      "lord": "mars",
+      "start": "2028-03-29",
+      "end": "2028-04-20",
+      "from_parent": 5,
+      "relation": "support"
+    },
+    {
+      "level": "pratyantar",
+      "lord": "rahu",
+      "start": "2028-04-20",
+      "end": "2028-06-17",
+      "from_parent": 7,
+      "relation": "support"
+    },
+    {
+      "level": "pratyantar",
+      "lord": "jupiter",
+      "start": "2028-06-17",
+      "end": "2028-07-01",
+      "from_parent": 12,
+      "relation": "friction"
+    }
+  ],
+  "sookshma": {
+    "lord": "venus",
+    "start": "2026-12-26",
+    "end": "2027-01-18",
+    "from_parent": 1,
+    "relation": "support"
+  },
+  "sandhi": {
+    "level": "antar",
+    "date": "2027-11-12"
+  },
+  "yogini": {
+    "name": "ulka",
+    "lord": "saturn",
+    "start": "2021-05-03",
+    "end": "2027-05-04"
+  },
+  "yogini_antar": {
+    "name": "bhadrika",
+    "lord": "mercury",
+    "start": "2026-07-03",
+    "end": "2027-05-04"
+  },
+  "segments": [
+    {
+      "start": "2027-01-01",
+      "end": "2027-01-24",
+      "maha": "rahu",
+      "antar": "mercury",
+      "pratyantar": "rahu",
+      "events": [
+        "2027-01-10 mars.station.retrograde"
+      ]
+    },
+    {
+      "start": "2027-01-24",
+      "end": "2027-02-14",
+      "maha": "rahu",
+      "antar": "mercury",
+      "pratyantar": "rahu",
+      "events": [
+        "2027-01-24 jupiter.ingress.cancer"
+      ]
+    },
+    {
+      "start": "2027-02-14",
+      "end": "2027-06-02",
+      "maha": "rahu",
+      "antar": "mercury",
+      "pratyantar": "jupiter",
+      "events": [
+        "2027-03-09 mars.ingress.cancer",
+        "2027-04-01 mars.station.direct",
+        "2027-04-12 jupiter.station.direct",
+        "2027-04-26 mars.ingress.leo"
+      ]
+    },
+    {
+      "start": "2027-06-02",
+      "end": "2027-06-18",
+      "maha": "rahu",
+      "antar": "mercury",
+      "pratyantar": "jupiter",
+      "events": [
+        "2027-06-02 saturn.ingress.aries"
+      ]
+    },
+    {
+      "start": "2027-06-18",
+      "end": "2027-06-25",
+      "maha": "rahu",
+      "antar": "mercury",
+      "pratyantar": "saturn",
+      "events": []
+    },
+    {
+      "start": "2027-06-25",
+      "end": "2027-10-20",
+      "maha": "rahu",
+      "antar": "mercury",
+      "pratyantar": "saturn",
+      "events": [
+        "2027-06-25 jupiter.ingress.leo",
+        "2027-07-04 mars.ingress.virgo",
+        "2027-08-09 saturn.station.retrograde",
+        "2027-08-24 mars.ingress.libra",
+        "2027-10-07 mars.ingress.scorpio"
+      ]
+    },
+    {
+      "start": "2027-10-20",
+      "end": "2027-11-12",
+      "maha": "rahu",
+      "antar": "mercury",
+      "pratyantar": "saturn",
+      "events": [
+        "2027-10-20 saturn.ingress.pisces"
+      ]
+    },
+    {
+      "start": "2027-11-12",
+      "end": "2027-11-26",
+      "maha": "rahu",
+      "antar": "ketu",
+      "pratyantar": "ketu",
+      "events": [
+        "2027-11-12 dasha.antar.mercury_to_ketu",
+        "2027-11-18 mars.ingress.sagittarius"
+      ]
+    },
+    {
+      "start": "2027-11-26",
+      "end": "2027-12-05",
+      "maha": "rahu",
+      "antar": "ketu",
+      "pratyantar": "ketu",
+      "events": [
+        "2027-11-26 jupiter.ingress.virgo"
+      ]
+    },
+    {
+      "start": "2027-12-05",
+      "end": "2028-02-07",
+      "maha": "rahu",
+      "antar": "ketu",
+      "pratyantar": "venus",
+      "events": [
+        "2027-12-23 saturn.station.direct",
+        "2027-12-27 mars.ingress.capricorn",
+        "2028-01-11 jupiter.station.retrograde",
+        "2028-02-03 mars.ingress.aquarius"
+      ]
+    },
+    {
+      "start": "2028-02-07",
+      "end": "2028-02-23",
+      "maha": "rahu",
+      "antar": "ketu",
+      "pratyantar": "sun",
+      "events": []
+    },
+    {
+      "start": "2028-02-23",
+      "end": "2028-02-26",
+      "maha": "rahu",
+      "antar": "ketu",
+      "pratyantar": "sun",
+      "events": [
+        "2028-02-23 saturn.ingress.aries"
+      ]
+    },
+    {
+      "start": "2028-02-26",
+      "end": "2028-02-28",
+      "maha": "rahu",
+      "antar": "ketu",
+      "pratyantar": "moon",
+      "events": []
+    },
+    {
+      "start": "2028-02-28",
+      "end": "2028-03-29",
+      "maha": "rahu",
+      "antar": "ketu",
+      "pratyantar": "moon",
+      "events": [
+        "2028-02-28 jupiter.ingress.leo",
+        "2028-03-12 mars.ingress.pisces"
+      ]
+    },
+    {
+      "start": "2028-03-29",
+      "end": "2028-04-20",
+      "maha": "rahu",
+      "antar": "ketu",
+      "pratyantar": "mars",
+      "events": []
+    },
+    {
+      "start": "2028-04-20",
+      "end": "2028-06-17",
+      "maha": "rahu",
+      "antar": "ketu",
+      "pratyantar": "rahu",
+      "events": [
+        "2028-04-20 mars.ingress.aries",
+        "2028-05-13 jupiter.station.direct",
+        "2028-05-30 mars.ingress.taurus"
+      ]
+    },
+    {
+      "start": "2028-06-17",
+      "end": "2028-06-23",
+      "maha": "rahu",
+      "antar": "ketu",
+      "pratyantar": "jupiter",
+      "events": []
+    },
+    {
+      "start": "2028-06-23",
+      "end": "2028-07-01",
+      "maha": "rahu",
+      "antar": "ketu",
+      "pratyantar": "jupiter",
+      "events": [
+        "2028-06-23 rahu.ingress.sagittarius",
+        "2028-06-23 ketu.ingress.gemini"
+      ]
+    }
+  ],
+  "sky": [
+    {
+      "graha": "jupiter",
+      "start": "2027-01-01",
+      "end": "2027-01-24",
+      "sign": "leo",
+      "retro": true,
+      "from_moon": 1,
+      "from_lagna": 3,
+      "sav": 31,
+      "bav": 4,
+      "tags": [
+        "jupiter_from_moon_1"
+      ]
+    },
+    {
+      "graha": "jupiter",
+      "start": "2027-01-24",
+      "end": "2027-04-12",
+      "sign": "cancer",
+      "retro": true,
+      "from_moon": 12,
+      "from_lagna": 2,
+      "sav": 21,
+      "bav": 3,
+      "tags": [
+        "jupiter_from_moon_12"
+      ]
+    },
+    {
+      "graha": "jupiter",
+      "start": "2027-04-12",
+      "end": "2027-06-25",
+      "sign": "cancer",
+      "retro": false,
+      "from_moon": 12,
+      "from_lagna": 2,
+      "sav": 21,
+      "bav": 3,
+      "tags": [
+        "jupiter_from_moon_12"
+      ]
+    },
+    {
+      "graha": "jupiter",
+      "start": "2027-06-25",
+      "end": "2027-11-26",
+      "sign": "leo",
+      "retro": false,
+      "from_moon": 1,
+      "from_lagna": 3,
+      "sav": 31,
+      "bav": 4,
+      "tags": [
+        "jupiter_from_moon_1"
+      ]
+    },
+    {
+      "graha": "jupiter",
+      "start": "2027-11-26",
+      "end": "2028-01-11",
+      "sign": "virgo",
+      "retro": false,
+      "from_moon": 2,
+      "from_lagna": 4,
+      "sav": 33,
+      "bav": 7,
+      "tags": [
+        "jupiter_from_moon_2"
+      ]
+    },
+    {
+      "graha": "jupiter",
+      "start": "2028-01-11",
+      "end": "2028-02-28",
+      "sign": "virgo",
+      "retro": true,
+      "from_moon": 2,
+      "from_lagna": 4,
+      "sav": 33,
+      "bav": 7,
+      "tags": [
+        "jupiter_from_moon_2"
+      ]
+    },
+    {
+      "graha": "jupiter",
+      "start": "2028-02-28",
+      "end": "2028-05-13",
+      "sign": "leo",
+      "retro": true,
+      "from_moon": 1,
+      "from_lagna": 3,
+      "sav": 31,
+      "bav": 4,
+      "tags": [
+        "jupiter_from_moon_1"
+      ]
+    },
+    {
+      "graha": "jupiter",
+      "start": "2028-05-13",
+      "end": "2028-07-01",
+      "sign": "leo",
+      "retro": false,
+      "from_moon": 1,
+      "from_lagna": 3,
+      "sav": 31,
+      "bav": 4,
+      "tags": [
+        "jupiter_from_moon_1"
+      ]
+    },
+    {
+      "graha": "saturn",
+      "start": "2027-01-01",
+      "end": "2027-06-02",
+      "sign": "pisces",
+      "retro": false,
+      "from_moon": 8,
+      "from_lagna": 10,
+      "sav": 27,
+      "bav": 2,
+      "tags": [
+        "ashtama_shani"
+      ]
+    },
+    {
+      "graha": "saturn",
+      "start": "2027-06-02",
+      "end": "2027-08-09",
+      "sign": "aries",
+      "retro": false,
+      "from_moon": 9,
+      "from_lagna": 11,
+      "sav": 35,
+      "bav": 5,
+      "tags": []
+    },
+    {
+      "graha": "saturn",
+      "start": "2027-08-09",
+      "end": "2027-10-20",
+      "sign": "aries",
+      "retro": true,
+      "from_moon": 9,
+      "from_lagna": 11,
+      "sav": 35,
+      "bav": 5,
+      "tags": []
+    },
+    {
+      "graha": "saturn",
+      "start": "2027-10-20",
+      "end": "2027-12-23",
+      "sign": "pisces",
+      "retro": true,
+      "from_moon": 8,
+      "from_lagna": 10,
+      "sav": 27,
+      "bav": 2,
+      "tags": [
+        "ashtama_shani"
+      ]
+    },
+    {
+      "graha": "saturn",
+      "start": "2027-12-23",
+      "end": "2028-02-23",
+      "sign": "pisces",
+      "retro": false,
+      "from_moon": 8,
+      "from_lagna": 10,
+      "sav": 27,
+      "bav": 2,
+      "tags": [
+        "ashtama_shani"
+      ]
+    },
+    {
+      "graha": "saturn",
+      "start": "2028-02-23",
+      "end": "2028-07-01",
+      "sign": "aries",
+      "retro": false,
+      "from_moon": 9,
+      "from_lagna": 11,
+      "sav": 35,
+      "bav": 5,
+      "tags": []
+    },
+    {
+      "graha": "rahu",
+      "start": "2027-01-01",
+      "end": "2028-06-23",
+      "sign": "capricorn",
+      "retro": true,
+      "from_moon": 6,
+      "from_lagna": 8,
+      "sav": 22,
+      "bav": null,
+      "tags": [
+        "rahu_from_lagna_8",
+        "rahu_from_moon_6"
+      ]
+    },
+    {
+      "graha": "rahu",
+      "start": "2028-06-23",
+      "end": "2028-07-01",
+      "sign": "sagittarius",
+      "retro": true,
+      "from_moon": 5,
+      "from_lagna": 7,
+      "sav": 21,
+      "bav": null,
+      "tags": []
+    },
+    {
+      "graha": "ketu",
+      "start": "2027-01-01",
+      "end": "2028-06-23",
+      "sign": "cancer",
+      "retro": true,
+      "from_moon": 12,
+      "from_lagna": 2,
+      "sav": 21,
+      "bav": null,
+      "tags": [
+        "ketu_from_moon_12"
+      ]
+    },
+    {
+      "graha": "ketu",
+      "start": "2028-06-23",
+      "end": "2028-07-01",
+      "sign": "gemini",
+      "retro": true,
+      "from_moon": 11,
+      "from_lagna": 1,
+      "sav": 29,
+      "bav": null,
+      "tags": []
+    }
+  ],
+  "transit_lords": {
+    "rahu": {
+      "sign": "capricorn",
+      "from_moon": 6,
+      "from_lagna": 8,
+      "sav": 22,
+      "bav": null,
+      "retro": true
+    },
+    "mercury": {
+      "sign": "sagittarius",
+      "from_moon": 5,
+      "from_lagna": 7,
+      "sav": 21,
+      "bav": 4,
+      "retro": false
+    },
+    "venus": {
+      "sign": "libra",
+      "from_moon": 3,
+      "from_lagna": 5,
+      "sav": 33,
+      "bav": 7,
+      "retro": false
+    }
+  },
+  "double_transit": [
+    7
+  ],
+  "themes": [
+    {
+      "domain": "health",
+      "houses": [
+        1,
+        6,
+        8
+      ],
+      "direction": "challenging",
+      "strength": "moderate",
+      "strength_pct": 45,
+      "confidence": "high",
+      "agreement": {
+        "vimshottari": true,
+        "yogini": true,
+        "transit": true
+      },
+      "dasha": {
+        "vimshottari": 67,
+        "yogini": 54,
+        "tone": "mixed"
+      },
+      "factors": [
+        "Rahu (maha) occupies the 8th",
+        "Jupiter transits the 1st from the Moon",
+        "Mercury (antar) rules the 1st"
+      ],
+      "windows": [
+        {
+          "date": "2027-01-24",
+          "descriptor": "health.transit.jupiter.ingress.cancer",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-02",
+          "descriptor": "health.transit.saturn.ingress.aries",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-25",
+          "descriptor": "health.transit.jupiter.ingress.leo",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
+      "domain": "family",
+      "houses": [
+        2,
+        4,
+        5,
+        9
+      ],
+      "direction": "mixed",
+      "strength": "strong",
+      "strength_pct": 50,
+      "confidence": "medium",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": true,
+        "transit": true
+      },
+      "dasha": {
+        "vimshottari": 37,
+        "yogini": 54,
+        "tone": "mixed"
+      },
+      "factors": [
+        "Mercury (antar) rules the 4th",
+        "Jupiter transits the 2nd from the lagna",
+        "Ketu (antar) occupies the 2nd"
+      ],
+      "windows": [
+        {
+          "date": "2027-01-24",
+          "descriptor": "family.transit.jupiter.ingress.cancer",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-02",
+          "descriptor": "family.transit.saturn.ingress.aries",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-25",
+          "descriptor": "family.transit.jupiter.ingress.leo",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
+      "domain": "education",
+      "houses": [
+        4,
+        5
+      ],
+      "direction": "mixed",
+      "strength": "strong",
+      "strength_pct": 59,
+      "confidence": "low",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": false,
+        "transit": true
+      },
+      "dasha": {
+        "vimshottari": 22,
+        "yogini": 46,
+        "tone": "mixed"
+      },
+      "factors": [
+        "Mercury (antar) rules the 4th",
+        "Jupiter transits the 4th from the lagna",
+        "Jupiter (pratyantar) is a karaka of education"
+      ],
+      "windows": [
+        {
+          "date": "2027-01-24",
+          "descriptor": "education.transit.jupiter.ingress.cancer",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-25",
+          "descriptor": "education.transit.jupiter.ingress.leo",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-11-26",
+          "descriptor": "education.transit.jupiter.ingress.virgo",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
+      "domain": "spiritual",
+      "houses": [
+        9,
+        12,
+        5
+      ],
+      "direction": "mixed",
+      "strength": "strong",
+      "strength_pct": 51,
+      "confidence": "low",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": false,
+        "transit": true
+      },
+      "dasha": {
+        "vimshottari": 11,
+        "yogini": 46,
+        "tone": "mixed"
+      },
+      "factors": [
+        "Ketu (antar) is a karaka of spiritual",
+        "Jupiter transits the 12th from the Moon",
+        "Jupiter (pratyantar) is a karaka of spiritual"
+      ],
+      "windows": [
+        {
+          "date": "2027-01-24",
+          "descriptor": "spiritual.transit.jupiter.ingress.cancer",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-02",
+          "descriptor": "spiritual.transit.saturn.ingress.aries",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-25",
+          "descriptor": "spiritual.transit.jupiter.ingress.leo",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
+      "domain": "finances",
+      "houses": [
+        2,
+        11
+      ],
+      "direction": "mixed",
+      "strength": "strong",
+      "strength_pct": 50,
+      "confidence": "low",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": false,
+        "transit": true
+      },
+      "dasha": {
+        "vimshottari": 15,
+        "yogini": 0,
+        "tone": "mixed"
+      },
+      "factors": [
+        "Ketu (antar) occupies the 2nd",
+        "Jupiter transits the 2nd from the lagna",
+        "Jupiter (pratyantar) is a karaka of finances"
+      ],
+      "windows": [
+        {
+          "date": "2027-01-24",
+          "descriptor": "finances.transit.jupiter.ingress.cancer",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-02",
+          "descriptor": "finances.transit.saturn.ingress.aries",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-25",
+          "descriptor": "finances.transit.jupiter.ingress.leo",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
+      "domain": "obstacles",
+      "houses": [
+        6,
+        8,
+        12
+      ],
+      "direction": "challenging",
+      "strength": "moderate",
+      "strength_pct": 50,
+      "confidence": "low",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": false,
+        "transit": true
+      },
+      "dasha": {
+        "vimshottari": 44,
+        "yogini": 46,
+        "tone": "mixed"
+      },
+      "factors": [
+        "Rahu (maha) occupies the 8th: unexpected setbacks",
+        "Jupiter transits the 12th from the Moon",
+        "Saturn (pratyantar) rules the 8th: unexpected setbacks"
+      ],
+      "windows": [
+        {
+          "date": "2027-04-26",
+          "descriptor": "obstacles.transit.mars.ingress.leo",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-02",
+          "descriptor": "obstacles.transit.saturn.ingress.aries",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-10-07",
+          "descriptor": "obstacles.transit.mars.ingress.scorpio",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
+      "domain": "career",
+      "houses": [
+        10
+      ],
+      "direction": "challenging",
+      "strength": "moderate",
+      "strength_pct": 48,
+      "confidence": "low",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": false,
+        "transit": true
+      },
+      "dasha": {
+        "vimshottari": 15,
+        "yogini": 8,
+        "tone": "mixed"
+      },
+      "factors": [
+        "Mercury (antar) is a karaka of career",
+        "Saturn transits the 10th from the lagna (ashtama_shani)",
+        "Jupiter (pratyantar) rules the 10th"
+      ],
+      "windows": [
+        {
+          "date": "2027-01-24",
+          "descriptor": "career.transit.jupiter.ingress.cancer",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-02",
+          "descriptor": "career.transit.saturn.ingress.aries",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-25",
+          "descriptor": "career.transit.jupiter.ingress.leo",
+          "severity": "neutral"
+        }
+      ]
+    },
+    {
+      "domain": "relationships",
+      "houses": [
+        7
+      ],
+      "direction": "mixed",
+      "strength": "moderate",
+      "strength_pct": 38,
+      "confidence": "low",
+      "agreement": {
+        "vimshottari": false,
+        "yogini": false,
+        "transit": false
+      },
+      "dasha": {
+        "vimshottari": 26,
+        "yogini": 34,
+        "tone": "mixed"
+      },
+      "factors": [
+        "Mercury (antar) occupies the 7th",
+        "Jupiter (pratyantar) rules the 7th",
+        "Yogini Ulka (Saturn) occupies the 7th"
+      ],
+      "windows": [
+        {
+          "date": "2027-01-24",
+          "descriptor": "relationships.transit.jupiter.ingress.cancer",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-02",
+          "descriptor": "relationships.transit.saturn.ingress.aries",
+          "severity": "neutral"
+        },
+        {
+          "date": "2027-06-25",
+          "descriptor": "relationships.transit.jupiter.ingress.leo",
+          "severity": "neutral"
+        }
+      ]
+    }
+  ],
+  "panchang": {
+    "instant": "2027-01-01T00:00:00Z",
+    "tithi": 24,
+    "tithi_name": "Navami",
+    "paksha": "krishna",
+    "nakshatra": "Chitra",
+    "karana": "Gara",
+    "yoga": "Atiganda",
+    "vara": "Friday"
+  },
+  "rules": [
+    "functional nature (BPHS): yogakaraka; lord of 1/5/9 benefic; else of 3/6/8/11 malefic; else of 2/7 maraka; else neutral. A 12th lord takes its other house's nature, alone neutral",
+    "dasha score 0-100: a lord sitting in or ruling a domain house counts 1, a karaka only 0.5; times strength (strong 1, ordinary 0.75, weak 0.5), maha 3 antar 2 pratyantar 1, by time",
+    "agreement: vimshottari / yogini = that dasha score is 50 or more (Yogini maha 2, antar 1); transit = Jupiter/Saturn in a domain house from the lagna or the Moon",
+    "strength: combust weak; retrograde strong; exalted or own strong; debilitated weak; friend's sign strong and enemy's weak by the Shadbala minimum; else ordinary. Nodes ordinary",
+    "relation: a sub-lord counted from its parent lord; 1/4/5/7/9/10/11 support, 6/8/12 from it friction, 2/3 neutral (BPHS antardasha chapters)",
+    "dasha tone: per tied lord, functional nature + strength + relation; all positive supportive, all negative challenging, else mixed",
+    "confidence = agreeing techniques: 3 high, 2 medium, 0-1 low",
+    "obstacles (6th/8th/12th): karakas Saturn/Mars/Rahu are context only; strength = agreeing techniques + a dated window: 3-4 with the window strong, 2+ moderate, 0-1 weak",
+    "direction = domain transit severity + its window severities, neutral ignored: all supportive, all challenging, else mixed",
+    "whole-sign houses; Saturn 12th/1st/2nd from Moon = sade_sati_phase_1/2/3, 1/4/7/10 = kantaka_shani, 8th = ashtama_shani",
+    "rahu/ketu tags = their 6th/8th/12th from the lagna or Moon (rahu_from_moon_6); obstacles windows date Mars entering a 6th/8th/12th or the natal Moon/lagna sign",
+    "double_transit = houses from lagna Jupiter and Saturn both occupy or aspect now",
+    "sookshma and panchang are for the reference instant; vara is the UTC weekday"
+  ]
+}

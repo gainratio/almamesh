@@ -24,6 +24,15 @@ describe("createJsonProseExtractor", () => {
     expect(prose).toBe("Jupiter period\nA season of growth.\nJupiter MD, Venus AD.");
   });
 
+  // The reflection gate (PR #366) reads the whole prose, not a tail: a tail can cut a failing
+  // sentence in half and show the half the check cannot read.
+  it("keeps the whole prose for the reflection check, past the preview's bound", () => {
+    const long = JSON.stringify({ a: "x".repeat(PROSE_PREVIEW_CHARS * 3), b: "Saturn rules the 10th." });
+    const extractor = feed(long, 50);
+    expect(extractor.text()).toBe(`${"x".repeat(PROSE_PREVIEW_CHARS * 3)}\nSaturn rules the 10th.`);
+    expect(extractor.preview().length).toBe(PROSE_PREVIEW_CHARS);
+  });
+
   it("gives the same prose however the deltas are split", () => {
     for (const every of [1, 2, 3, 7, 13]) {
       expect(feed(DOC, every).preview()).toBe(feed(DOC, 1000).preview());

@@ -21,7 +21,12 @@
  * online request answers with an unreadable body), so CI needs no egress and
  * the console stays clean. Every journey asserts a clean console.
  */
-import { expect, test, type Page } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
+// WebKit gets an on-disk profile, as real Safari does. Playwright's default WebKit
+// context refuses OPFS, so the app ran in memory and every page.goto() below
+// (a full reload) dropped the chart: "Generate your birth chart first".
+import { test } from './webkitProfile';
+import { passOnboardingAiStep } from '../scripts/onboardingAiStep.mjs';
 
 function watchConsole(page: Page): string[] {
   const errors: string[] = [];
@@ -72,7 +77,7 @@ async function generateExact(page: Page): Promise<void> {
   await page.getByTestId('confidence-option-exact').click();
   await page.getByTestId('next-button').click();
   await page.getByTestId('skip-life-events-button').click();
-  await page.waitForURL('**/dashboard', { timeout: 300_000 });
+  await passOnboardingAiStep(page, { timeout: 300_000 });
 }
 
 async function strengthLines(page: Page): Promise<{ lord: string; sunrise: string }> {
@@ -188,7 +193,9 @@ test('a stored chart with no birthplace zone: card -> Settings -> re-select -> s
   await generateExact(page);
   expect(await stripStoredZone(page)).toBe('stripped 1');
   await page.waitForTimeout(1_000); // let the chart library persist the edit
-  await page.reload();
+  // One full document load proves the edit persisted. A reload() followed at once
+  // by goto() cancelled the reloaded page's boot mid-flight; WebKit logs every
+  // cancelled fetch as an "access control checks" console error.
   await page.goto('/predictive?tab=strength');
   const card = page.getByTestId('birth-zone-missing').first();
   await expect(card).toContainText('timezone is missing', { timeout: 120_000 });

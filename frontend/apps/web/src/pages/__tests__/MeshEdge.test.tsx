@@ -29,6 +29,11 @@ import { MESH_EDGE_FRIEND, MESH_EDGE_SPOUSE } from '../../test/meshFixtures';
 import { __resetMemoryForTest, __setMemoryForTest } from '../../lib/chatMemory';
 import { ChartEngineContext, type ChartEngineContextValue } from '../../providers/chartEngineContext';
 
+// The chat panel is a lazy chunk (AI SDK + zod). Its first import in a test file can
+// take over findBy's 1 s default under full-suite load (seen in 1 of 4 full gate
+// runs here); the wait is for the import, not for app behavior.
+const LAZY_CHAT = { timeout: 10_000 } as const;
+
 const llmMocks = vi.hoisted(() => ({ streamChartChat: vi.fn(), runToolTurn: vi.fn() }));
 
 vi.mock('@almamesh/llm', async (importOriginal) => ({
@@ -289,6 +294,10 @@ describe('MeshEdgePage', () => {
     // AI is unconfigured in tests → the honest CTA, never a spinner.
     expect(screen.getByTestId('mesh-reading-cta')).toBeTruthy();
     expect(screen.queryByTestId('mesh-discuss-chat')).toBeNull();
+    // Its button opens the shared AI setup panel in place.
+    fireEvent.click(screen.getByTestId('mesh-reading-connect'));
+    expect(screen.getByRole('dialog', { name: 'Connect AI' })).toBeTruthy();
+    fireEvent.keyDown(document, { key: 'Escape' });
 
     // The engine's read-only promise, verbatim, at the foot.
     expect(screen.getByTestId('mesh-integrity-note').textContent).toContain(
@@ -348,7 +357,7 @@ describe('MeshEdgePage', () => {
     renderAt('/mesh/p-spouse');
 
     fireEvent.click(screen.getByTestId('mesh-discuss-chat'));
-    fireEvent.change(await screen.findByTestId('chat-input'), {
+    fireEvent.change(await screen.findByTestId('chat-input', {}, LAZY_CHAT), {
       target: { value: 'How are our charts working together?' },
     });
     fireEvent.click(screen.getByTestId('chat-send-button'));
@@ -374,6 +383,64 @@ describe('MeshEdgePage', () => {
         'relationship timing is grounded',
       ),
     );
+  });
+
+  // Northstar on PR #366: "take me to May 2019" -> asked where -> "Delhi" names no move. Re-grade
+  // (2026-10-15): this test asserted the defect, a pending request read from the user's text that let
+  // the next turn travel anywhere ({to:"today"} queued). Contract reversed: pending is the saved
+  // needs_place travel call, and it finishes only that call's `to`, with a place.
+  const discussTwoTurns = async (firstTurn: (options: { tools: { name: string; execute: (args: unknown, context: unknown) => Promise<unknown> }[]; onToolCall?: (row: unknown) => void }) => Promise<void>) => {
+    writeLlmSettings(openRouterPreset('sk-or-v1-0000-synthetic-test-key', 'test-org/test-model'));
+    __setMemoryForTest({
+      indexMessage: vi.fn().mockResolvedValue(undefined),
+      retrieve: vi.fn().mockResolvedValue([]),
+      deleteForProfile: vi.fn().mockResolvedValue(undefined),
+      deleteForThread: vi.fn().mockResolvedValue(undefined),
+      clear: vi.fn().mockResolvedValue(undefined),
+    });
+    llmMocks.runToolTurn.mockImplementationOnce(async function* (options) {
+      await firstTurn(options);
+      yield 'Where did you live then?';
+      return { answer: undefined };
+    });
+    llmMocks.runToolTurn.mockImplementationOnce(async function* () {
+      yield 'Noted.';
+      return { answer: undefined };
+    });
+    seedPeople(SPOUSE);
+    seedCharts(SPOUSE);
+    seedEdge(SPOUSE, MESH_EDGE_SPOUSE);
+    renderAt('/mesh/p-spouse');
+    fireEvent.click(screen.getByTestId('mesh-discuss-chat'));
+    const send = async (question: string) => {
+      fireEvent.change(await screen.findByTestId('chat-input'), { target: { value: question } });
+      fireEvent.click(screen.getByTestId('chat-send-button'));
+    };
+    await send('take me to May 2019');
+    await waitFor(() => expect(llmMocks.runToolTurn).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId('chat-panel').textContent).toContain('Where did you live then?'));
+    await send('Delhi');
+    await waitFor(() => expect(llmMocks.runToolTurn).toHaveBeenCalledTimes(2));
+    const travel = llmMocks.runToolTurn.mock.calls[1][0].tools.find((tool: { name: string }) => tool.name === 'travel');
+    return (args: unknown) => travel.execute(args, { now: new Date(), signal: new AbortController().signal });
+  };
+
+  it('relationship chat: "where?" asked with no travel call grants the reply nothing', async () => {
+    const travel = await discussTwoTurns(async () => undefined);
+    expect(await travel({ to: 'today', place: null })).toMatchObject({ status: 'refused', reason: 'not_asked' });
+  });
+
+  it('relationship chat: after a travel call that needed a place, the reply may finish only that move', async () => {
+    const travel = await discussTwoTurns(async (options) => {
+      const tool = options.tools.find((candidate) => candidate.name === 'travel');
+      const args = { to: '2019-05', place: null };
+      const result = await tool?.execute(args, { now: new Date(), signal: new AbortController().signal });
+      expect(result).toEqual({ status: 'needs_place', ask: 'Ask where the user lived (or will be) then.' });
+      options.onToolCall?.({ round: 1, toolCallId: 't1', toolName: 'travel', args, result, status: 'complete', validFirstTry: true });
+    });
+    expect(await travel({ to: 'today', place: null })).toMatchObject({ status: 'refused', reason: 'not_pending_move' });
+    expect(await travel({ to: '1990', place: 'Lisbon' })).toMatchObject({ status: 'refused', reason: 'not_pending_move' });
+    expect(await travel({ to: '2019-05', place: null })).toMatchObject({ status: 'refused', reason: 'not_pending_move' });
   });
 
   // Contract reversed (chat tool layer redesign, Task 6, 2026-10-14): this chat used to be refused,
@@ -409,7 +476,7 @@ describe('MeshEdgePage', () => {
     renderAt('/mesh/p-spouse');
 
     fireEvent.click(screen.getByTestId('mesh-discuss-chat'));
-    fireEvent.change(await screen.findByTestId('chat-input'), {
+    fireEvent.change(await screen.findByTestId('chat-input', {}, LAZY_CHAT), {
       target: { value: 'How are our charts working together?' },
     });
     fireEvent.click(screen.getByTestId('chat-send-button'));
@@ -440,7 +507,7 @@ describe('MeshEdgePage', () => {
     renderAt('/mesh/p-spouse');
 
     fireEvent.click(screen.getByTestId('mesh-discuss-chat'));
-    fireEvent.change(await screen.findByTestId('chat-input'), { target: { value: 'How are we this month?' } });
+    fireEvent.change(await screen.findByTestId('chat-input', {}, LAZY_CHAT), { target: { value: 'How are we this month?' } });
     fireEvent.click(screen.getByTestId('chat-send-button'));
 
     await waitFor(() => expect(llmMocks.runToolTurn).toHaveBeenCalledTimes(1));

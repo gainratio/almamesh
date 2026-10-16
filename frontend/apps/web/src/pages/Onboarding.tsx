@@ -39,6 +39,8 @@ import {
   resolveConfig,
   toPromptLanguage,
 } from "../components/features/rectify/rectifyLlmConfig";
+import { describeLlmStatus } from "@almamesh/llm";
+import { routeAfterChart, type AfterRectifyState } from "../lib/onboardingAiStep";
 
 /**
  * Sentinel marking a transient "engine still warming up" condition (the
@@ -235,6 +237,16 @@ export default function OnboardingPage() {
       setCurrentStepKey(STEP_KEYS[currentStep - 1]);
     }
   }, [currentStep]);
+
+  // Each step starts at its top. On a phone the Next button sits below the
+  // fold, so without this the next step opened wherever the last one was
+  // scrolled. An instant jump, like any page change (no motion to reduce).
+  const shownStepKey = React.useRef(currentStepKey);
+  useEffect(() => {
+    if (shownStepKey.current === currentStepKey) return;
+    shownStepKey.current = currentStepKey;
+    window.scrollTo({ top: 0, behavior: "instant" });
+  }, [currentStepKey]);
 
   // IDEMPOTENCY CHECK: Now handled by OnboardingRoute guard in App.tsx
   // The route guard checks onboarding progress and redirects to /dashboard if has_chart=true.
@@ -469,8 +481,14 @@ export default function OnboardingPage() {
         clearInterval(progressInterval);
 
         reset();
-        const destination = data.timeConfidence === 'unknown' ? `/rectify/${profileId}` : '/dashboard';
-        navigate(destination);
+        // No AI yet: the AI step comes next (directly, or after Rectify when the
+        // birth time is unknown). With AI already set up it is skipped.
+        const next = routeAfterChart(describeLlmStatus().configured);
+        if (data.timeConfidence === 'unknown') {
+          navigate(`/rectify/${profileId}`, { state: { next } satisfies AfterRectifyState });
+        } else {
+          navigate(next);
+        }
       } catch (err) {
         clearInterval(progressInterval);
         throw err;

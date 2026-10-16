@@ -29,6 +29,7 @@ import { birthUtcYearOf, birthYearOf, PeriodSkyUnavailableError, type PeriodChar
 import {
   buildPeriodDetail,
   buildPeriodReading,
+  LAST_RESORT_NOTE,
   MAX_PERIOD_RESULT_BYTES,
   READ_PERIOD_TOOL_NAME,
   windowsOf,
@@ -153,10 +154,15 @@ function spanProblem(args: ReadPeriodArgs): Problem | undefined {
   return rangeProblem(args, span) ?? dayOnlyProblem(args, span);
 }
 
+/** A bare year sent as a JSON number (`"end": 2017`, real runs 2026-10-15) is that year; any other number stays a number and is refused. */
+const yearNumberAsText = (value: unknown): unknown =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 1000 && value <= 9999 ? String(value) : value;
+
 const ARGS_SCHEMA: z.ZodType<ReadPeriodArgs> = z
   .object({
-    start: z.string().regex(DATE, `start ${DATE_MESSAGE}`).describe('First year, month or day: YYYY, YYYY-MM or YYYY-MM-DD.'),
-    end: z.string().regex(DATE, `end ${DATE_MESSAGE}`).nullable()
+    start: z.preprocess(yearNumberAsText, z.string().regex(DATE, `start ${DATE_MESSAGE}`))
+      .describe('First year, month or day: YYYY, YYYY-MM or YYYY-MM-DD.'),
+    end: z.preprocess(yearNumberAsText, z.string().regex(DATE, `end ${DATE_MESSAGE}`).nullable())
       .describe('Last year, month or day, inclusive. null for a single year, month or day.'),
     place: z.string().min(2).max(80).nullable()
       .describe('A city as the user said it ("Pune", "Springfield"), or "trip" / "home". null = this thread\'s place.'),
@@ -640,8 +646,8 @@ function withExtras(reading: PeriodReading, level: ExtrasLevel): ReadPeriodReadi
   return { ...reading, ...level.extras, ...(trimmed.length > 0 ? { trimmed } : {}) };
 }
 
-/** periodReading.ts's last resort: the sky (and its Moon tags) and the windows are gone. */
-const isBare = (reading: PeriodReading): boolean => reading.sky.length === 0 && reading.windows.length === 0;
+/** periodReading.ts's last resort: the windows, segments and most theme detail are gone, the sky is coarse. */
+const isBare = (reading: PeriodReading): boolean => reading.trimmed?.includes(LAST_RESORT_NOTE) ?? false;
 
 interface Fitted {
   readonly reading: PeriodReading;
@@ -670,8 +676,8 @@ function fitLevel(loaded: Loaded, frame: ReadingFrame, level: ExtrasLevel, limit
 }
 
 /**
- * The fullest extras that fit beside a reading that still has its sky or windows. When no level
- * keeps them, the fullest level that fits; when none fits, the leanest (no close-up).
+ * The fullest extras that fit beside a reading the budget did not cut to its last resort. When
+ * every level cuts it that far, the fullest level that fits; when none fits, the leanest (no close-up).
  */
 function compose(loaded: Loaded, frame: ReadingFrame, extras: Extras, language: string): ReadPeriodReading {
   const range = extras.months !== undefined;
@@ -805,6 +811,8 @@ function ordinal(n: number): string {
 
 const listed = (items: readonly string[]): string => (items.length < 2 ? items.join('') : `${items.slice(0, -1).join(', ')} and ${items.at(-1) ?? ''}`);
 
+const PLACEMENT_WORD = { support: 'supportive', friction: 'friction', neutral: 'neutral' } as const;
+
 /** "Jupiter, rules your 2nd and 11th houses"; "Rahu, rules no house"; just "Ketu" when the reading gives no lordship. */
 function lordLine(lord: string, rules: readonly number[] | undefined): string {
   if (rules === undefined) return titled(lord);
@@ -813,9 +821,27 @@ function lordLine(lord: string, rules: readonly number[] | undefined): string {
   return `${titled(lord)}, rules your ${listed(houses)} ${houses.length > 1 ? 'houses' : 'house'}`;
 }
 
+/** ", 7th from Saturn: supportive": where a sub-lord sits from its parent. Empty for a lord that is its own parent. */
+function placementClause(result: ReadPeriodReading, level: 'antar' | 'pratyantar', lord: string): string {
+  const span = result.dashas[level].find((item) => item.lord === lord);
+  const parentLevel = level === 'antar' ? 'maha' : 'antar';
+  const parent = span ? result.dashas[parentLevel].find((item) => item.start <= span.end && item.end >= span.start)?.lord : undefined;
+  if (!span || span.from_parent === undefined || !span.relation || !parent || parent === lord) return '';
+  return `, ${ordinal(span.from_parent)} from ${titled(parent)}: ${PLACEMENT_WORD[span.relation]}`;
+}
+
+/** A level with more lords than this (a long range, or a month where the sub-lord changes) cites no placements: the rows carry them, and the cite must stay small. */
+const MAX_PLACEMENT_LORDS = 1;
+
 function citeLords(result: ReadPeriodReading, level: 'maha' | 'antar' | 'pratyantar'): string[] {
   const lords = [...new Set(result.dashas[level].map((span) => span.lord))];
-  return lords.map((lord) => lordLine(lord, result.lords.find((item) => item.lord === lord)?.rules));
+  return lords.map((lord) => {
+    const item = result.lords.find((entry) => entry.lord === lord);
+    // "ordinary" says nothing, so it is left out (it also keeps the cite inside the tool-result budget).
+    const strength = item?.natal?.strength && item.natal.strength !== 'ordinary' ? `, ${item.natal.strength} natal strength` : '';
+    const placement = level === 'maha' || lords.length > MAX_PLACEMENT_LORDS ? '' : placementClause(result, level, lord);
+    return `${lordLine(lord, item?.rules)}${strength}${placement}`;
+  });
 }
 
 /** The theme windows first (a range has already ranked them by severity), then other dated facts; listed by date. */

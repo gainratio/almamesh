@@ -21,6 +21,13 @@ describe('pinnedPeriodRules is the period and its tense', () => {
     expect(brief).not.toMatch(/get_|read_period|travel|TIME-TRAVEL TRIP|Singapore/);
   });
 
+  // dashboard.agentic.real 2026-10-15: in a September 2017 trip, "outlook today?" was read as
+  // September 2017 again. The pin is the default time, never a cap on the time the user names.
+  it('a message that names another time is read for that time, in its own tense', () => {
+    const brief = pinnedPeriodRules(MAY_2019_SG);
+    expect(brief).toContain('This period is the default when a message names no time. When a message names another time (today, a date, a month, a year), read and answer that time instead, in its own tense.');
+  });
+
   it('a future trip is in the future tense', () => {
     const brief = pinnedPeriodRules({ ...MAY_2019_SG, start: '2027-01-01', end: '2027-01-31', relative: 'future', label: 'January 2027' });
     expect(brief).toContain('2027-01-01 to 2027-01-31 (relative: future)');

@@ -10,6 +10,7 @@ import {
 import {
   LlmRequestError,
   PrivacyViolationError,
+  ReasoningTimeoutError,
 } from '@almamesh/llm';
 import { useChartLibraryStore, useChatStore, type StoredChart } from '@almamesh/store';
 import i18n from '../../i18n/config';
@@ -554,7 +555,9 @@ describe('useChatThread', () => {
     expect(callInput.history).toEqual([{ role: 'user', content: 'Q1' }]);
   });
 
-  it('a privacy violation surfaces its own fail-closed message, never QA_001', async () => {
+  // CONTRACT REVERSED (was: the English fence message verbatim, asserted via
+  // 'local_only'): the bubble now shows localized copy naming the endpoint.
+  it('a privacy violation surfaces localized fail-closed copy, never QA_001', async () => {
     const { memory } = fakeMemory();
     __setMemoryForTest(memory);
     vi.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -562,6 +565,7 @@ describe('useChatThread', () => {
     const failing = vi.fn().mockRejectedValue(
       new PrivacyViolationError(
         'local_only privacy mode refuses to send chart data to https://example.invalid',
+        'https://example.invalid',
       ),
     );
 
@@ -573,7 +577,10 @@ describe('useChatThread', () => {
     await waitFor(() => expect(result.current.messages.length).toBe(2));
     const bubble = result.current.messages[1];
     expect(bubble.error).toBe(true);
-    expect(bubble.content).toContain('local_only');
+    expect(bubble.content).toBe(
+      i18n.t('chat:errors.privacy_blocked', { endpoint: 'https://example.invalid' }),
+    );
+    expect(bubble.content).not.toContain('local_only');
     expect(bubble.content).not.toContain('QA_001');
   });
 
@@ -637,7 +644,7 @@ describe('useChatThread', () => {
     expect(bubble.error).toBe(true);
     // A provider 5xx is out of the user's control — say so and say "try again",
     // never send them to re-check a model/endpoint that is configured correctly.
-    expect(bubble.content).toBe(i18n.t('chat:errors.server_error'));
+    expect(bubble.content).toBe("The AI provider had a server error. Try again shortly.");
     expect(bubble.content).not.toContain('QA_001');
   });
 
@@ -675,9 +682,11 @@ describe('isMappedChatStreamError — the page-catch rethrow contract', () => {
 
 describe('the chat error mapping derives from ONE map (rethrow contract and copy cannot drift)', () => {
   it('covers exactly the typed causes the mapper is contracted to handle', () => {
+    // Contract extended 2026-10-15: ReasoningTimeoutError (the stall watchdog) has its own copy.
     expect(Object.keys(CHAT_STREAM_ERROR_COPY).sort()).toEqual([
       'LlmRequestError',
       'PrivacyViolationError',
+      'ReasoningTimeoutError',
       'TypeError',
     ]);
   });
@@ -727,7 +736,7 @@ describe('describeChatStreamError — coded messages per HTTP status (live-bug f
   it('a 429 shows the rate-limited copy', () => {
     expect(
       describeChatStreamError(new LlmRequestError('LLM endpoint returned 429 Too Many Requests', { status: 429 })),
-    ).toBe(i18n.t('chat:errors.rate_limited'));
+    ).toBe("The AI provider is rate-limiting requests. Wait a moment and try again.");
   });
 
   it('a 404 dead model still shows the model-unavailable copy (regression guard)', () => {
@@ -738,9 +747,18 @@ describe('describeChatStreamError — coded messages per HTTP status (live-bug f
     ).toBe(i18n.t('chat:errors.model_unavailable'));
   });
 
+  // Real drive 2026-10-15 (deepseek-v4-pro, an 18-month answer): the turn hit the 180 s reasoning
+  // cap and the chat showed the generic "Error: QA_001": the copy map is keyed by error name, and
+  // ReasoningTimeoutError was not in it, though its "thought for over 3 minutes" copy exists.
+  it('a reasoning timeout shows the thought-too-long copy, not the generic QA_001', () => {
+    const capped = new ReasoningTimeoutError(180_000);
+    expect(isMappedChatStreamError(capped)).toBe(true);
+    expect(describeChatStreamError(capped)).toBe(i18n.t('chat:errors.reasoning_timeout'));
+  });
+
   it('a 500 shows the server-error copy', () => {
     expect(
       describeChatStreamError(new LlmRequestError('LLM endpoint returned 500', { status: 500 })),
-    ).toBe(i18n.t('chat:errors.server_error'));
+    ).toBe("The AI provider had a server error. Try again shortly.");
   });
 });

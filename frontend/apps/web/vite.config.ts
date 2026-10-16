@@ -6,6 +6,7 @@ import path from 'path'
 import { existsSync, writeFileSync, readFileSync, readdirSync, renameSync, rmSync } from 'fs'
 import { createHash } from 'crypto'
 import { PUBLIC_ROUTE_PATHS, prerenderOutputFile } from './src/seo/routeHead'
+import { SPA_FALLBACK_ALLOWLIST } from './src/seo/spaRoutes'
 import { createBuildIdentity } from './src/lib/buildIdentity'
 import { extractYogaWasm, isYogaWasmModuleId } from './src/lib/yogaWasmAsset'
 import { ortWasmOnlyPlugin } from './src/lib/ortWasmOnly'
@@ -374,13 +375,8 @@ function pwaPlugin(): Plugin[] {
       // returning users with an empty precache + a Chrome error page. `/` is
       // served 200 by CF Pages and by `vite preview`.
       navigateFallback: '/',
-      navigateFallbackAllowlist: [
-        /^\/(?:onboarding|dashboard|predictive|report|edit-birth-details)\/?$/,
-        /^\/life\/(?:career|finances|health|relationships|spiritual|education|family)\/?$/,
-        /^\/mesh(?:\/[^/]+)?\/?$/,
-        /^\/rectify\/[^/]+\/?$/,
-        /^\/settings(?:\/(?:profile|people|ai|preferences|data))?\/?$/,
-      ],
+      // The allowlist lives beside the router contract (src/seo/spaRoutes.ts).
+      navigateFallbackAllowlist: [...SPA_FALLBACK_ALLOWLIST],
       // Raise the 2 MiB default so the offline geocoder data (~2 MB cities) and
       // the larger app-shell chunks precache.
       maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,

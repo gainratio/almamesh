@@ -156,7 +156,7 @@
   },
   "how_we_test": {
     "title": "Cómo lo comprobamos",
-    "last_updated": "15 de octubre de 2026",
+    "last_updated": "16 de octubre de 2026",
     "lede": "Comprobamos si una lectura señala el mes de un hecho real de la vida mejor que meses al azar. Por ahora no lo hace. Por eso las lecturas de AlmaMesh son para reflexionar: muestran lo que destaca tu carta, no lo que viene.",
     "chart_title": "Mejora sobre el azar, por técnica",
     "chart_caption": "1,0 es el azar. Cada barra es un rango del 95 %, y todos los rangos incluyen 1,0.",
@@ -166,7 +166,8 @@
       "exact_transits": "+ tránsitos exactos (un planeta lento a menos de 1° de un planeta natal)",
       "obstacles": "+ el tema de obstáculos (solo asuntos legales y accidentes)",
       "ashtakavarga": "+ fuerza Ashtakavarga de los tránsitos",
-      "vargas": "+ regentes de cartas divisionales (D9, D10, D30)"
+      "vargas": "+ regentes de cartas divisionales (D9, D10, D30)",
+      "classical_dasha": "+ reglas clásicas de dasha (relevancia, posición respecto al regente superior, fuerza), por área"
     },
     "events": "{{n}} eventos",
     "what_heading": "Qué comprobamos",
@@ -176,7 +177,7 @@
     "data_p1": "{{events}} hechos con fecha de {{people}} personas con hora de nacimiento bien registrada, de Astro-Databank, una base de datos de investigación que usamos bajo licencia. La mayoría son personas públicas.",
     "data_p2": "La licencia solo permite publicar totales. Nunca publicamos nombres, datos de nacimiento, hechos sueltos ni ejemplos, y nada de eso está en la app.",
     "result_heading": "Qué encontramos",
-    "result_p1": "Ninguna mejora sobre el azar. La base puntúa {{baseline}} y ninguna de las cuatro técnicas que añadimos la mueve: todos los rangos de arriba incluyen 1,0.",
+    "result_p1": "Ninguna mejora sobre el azar. La base puntúa {{baseline}} y ninguna de las cinco técnicas que añadimos la mueve: todos los rangos de arriba incluyen 1,0. Las reglas clásicas de dasha son ahora la forma de construir las lecturas, pero esta prueba no encuentra mejora alguna con ellas (mejor valor p corregido: 0,80).",
     "meaning_heading": "Qué significa para ti",
     "meaning_p1": "Las lecturas siguen siendo concretas. Nombran los regentes dasha, los tránsitos y las ventanas con fecha detrás de cada tema, comparan periodos y dicen claramente cuándo destacan temas duros como roces legales o pérdidas.",
     "meaning_p2": "Pero son para reflexionar. Úsalas para pensar en un periodo, no como motivo para esperar un hecho concreto.",
@@ -184,6 +185,13 @@
     "bar_p1": "Cada prueba se escribe antes de ejecutarse. Una técnica nueva se puntúa primero con la mitad de las personas. Solo si supera al azar ahí, tras corregir por todas las pruebas hechas, pasa a la otra mitad, reservada y nunca vista. Solo una técnica que supere esa prueba reservada puede hacer más firme el lenguaje de la app. Ninguna lo ha hecho todavía.",
     "bar_p2": "Un área se está volviendo a probar con datos reservados.",
     "rerun_heading": "Seguimos comprobando",
-    "rerun_p1": "Repetimos esta prueba con cada versión, para que un cambio en el motor no pueda hacer que las lecturas parezcan mejores de lo que son."
+    "rerun_p1": "Repetimos esta prueba cada vez que cambiamos cómo se calculan las lecturas, para que un cambio no pueda hacer que parezcan mejores de lo que son.",
+    "areas": {
+      "career": "carrera",
+      "relationships": "relaciones",
+      "family": "familia",
+      "health": "salud"
+    },
+    "events_areas": "{{n}} eventos en las cuatro áreas"
   }
 }

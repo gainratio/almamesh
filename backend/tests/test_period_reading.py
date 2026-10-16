@@ -37,6 +37,7 @@ READING_CASES: dict[str, tuple[datetime, int, date | None]] = {
     "delhi-2019-05.json": (datetime(2019, 5, 1, tzinfo=UTC), 12, date(2019, 5, 31)),
     "delhi-2019-year.json": (datetime(2019, 1, 1, tzinfo=UTC), 12, date(2019, 12, 31)),
     "delhi-2027-01.json": (datetime(2027, 1, 1, tzinfo=UTC), 12, date(2027, 1, 31)),
+    "delhi-2027-01-18m.json": (datetime(2027, 1, 1, tzinfo=UTC), 24, date(2028, 6, 30)),
     "delhi-2019-09-15-day.json": (datetime(2019, 9, 15, tzinfo=UTC), 12, None),
 }
 

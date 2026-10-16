@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { expect, type BrowserContext, type Page, type Route } from '@playwright/test';
 import type { EventDatePrecision, LifeEventCategory } from '@almamesh/shared-types';
 import { generalAnswer, toolCallSse } from './stubChatProvider';
+import { passOnboardingAiStep } from '../scripts/onboardingAiStep.mjs';
 
 /**
  * Helpers for the portable-state invariants suite (portable-invariants.spec.ts).
@@ -268,7 +269,7 @@ export async function onboard(page: Page, native: Native): Promise<void> {
   } else {
     await page.getByTestId('skip-life-events-button').click();
   }
-  await page.waitForURL('**/dashboard', { timeout: 240_000 });
+  await passOnboardingAiStep(page, { timeout: 240_000 });
   await expectDashboardChart(page, native.name);
   if (native.narrative) {
     // The captured-events feedback auto-advances after 1.5 seconds. Inspect
