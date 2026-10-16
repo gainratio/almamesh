@@ -43,7 +43,11 @@ describe("Dagger public orchestration contract", () => {
       expect.arrayContaining([
         "backend",
         "browser-chromium",
-        "browser-journeys",
+        "browser-journeys-a",
+        "browser-journeys-b",
+        "browser-journeys-c",
+        "browser-journeys-evidence",
+        "browser-journeys-status",
         "browser-matrix",
         "browser-suites",
         "browser-webkit-real",

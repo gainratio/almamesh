@@ -18,7 +18,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 REPOSITORY = "gainratio/almamesh"
 RUN_ID = "4242"
-NAME = "browser-journeys-evidence-" + "1" * 40
+NAME = "browser-journeys-evidence-a-" + "1" * 40
 TOKEN = "ghs_fixture_token"
 
 

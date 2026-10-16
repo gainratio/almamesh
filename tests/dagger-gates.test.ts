@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
+import { JOURNEY_STEPS } from "../dagger/src/journeyLanes.ts"
 import {
   assertAllPassed,
   CI_GATES,
   GATE_TIMEOUT_MS,
-  JOURNEYS_GATE_TIMEOUT_MS,
+  JOURNEYS_LANE_TIMEOUT_MS,
   gateVerdict,
   PRODUCT_GATES,
   runConcurrently,
@@ -125,14 +126,21 @@ describe("every gate is time-bounded", () => {
     expect(GATE_TIMEOUT_MS).toBe(45 * 60_000)
   })
 
-  // Main run 38832312848 (fd7b0f23): every journey passed, but the lane took 46
-  // minutes on a slow runner (36 on a normal one) and the 45-minute budget cut
-  // boot-retry off at test 5 of 8. The job allows 60 minutes including setup.
-  test("browserJourneys gets 55 minutes, inside the 60-minute job limit, and uses it", () => {
-    expect(JOURNEYS_GATE_TIMEOUT_MS).toBe(55 * 60_000)
+  // Main run 38832312848 (fd7b0f23): the single journeys lane took 46 minutes on
+  // a slow runner (36 on a normal one) and the 45-minute budget cut boot-retry off
+  // at test 5 of 8. It is now three lanes of about 13 minutes normal and 18 slow
+  // (main runs 38845104492 and 38922748755 give 32 and 45 minutes of tests, split
+  // three ways, plus about two minutes of build). 30 minutes is 50% or more over
+  // the slow figure, and the evidence job allows 40 minutes including setup.
+  test("each browser journey lane gets 30 minutes, inside the 40-minute job limit, and uses it", () => {
+    expect(JOURNEYS_LANE_TIMEOUT_MS).toBe(30 * 60_000)
+    expect(JOURNEYS_LANE_TIMEOUT_MS).toBeGreaterThanOrEqual(1.5 * 18 * 60_000)
+    expect(JOURNEYS_LANE_TIMEOUT_MS).toBeLessThan(GATE_TIMEOUT_MS)
     const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
-    expect(source).toContain("JOURNEYS_GATE_TIMEOUT_MS")
-    expect(source).toMatch(/startGate\("browserJourneys",[\s\S]*?JOURNEYS_GATE_TIMEOUT_MS\)\]\)/)
+    expect(source).toContain("JOURNEYS_LANE_TIMEOUT_MS")
+    expect(source).toMatch(/startGate\(journeyGateOfLane\(checked\),[\s\S]*?JOURNEYS_LANE_TIMEOUT_MS\)\]\)/)
+    const workflow = readFileSync(resolve(root, ".github/workflows/dagger.yml"), "utf8")
+    expect(workflow.match(/timeout-minutes: 40/g)?.length).toBe(3)
   })
 
   test("a gate that never settles fails with its name once the budget runs out", async () => {
@@ -198,10 +206,12 @@ describe("almamesh ci wiring", () => {
   const source = readFileSync(resolve(root, "dagger/src/index.ts"), "utf8")
   const ci = source.slice(source.indexOf("async ci("), source.indexOf("secretScan(commitSha: string)"))
 
-  test("names every product gate once, the five browser shards first (they are the longest)", () => {
+  test("names every product gate once, the seven browser shards first (they are the longest)", () => {
     expect([...PRODUCT_GATES]).toEqual([
       "browserChromium",
-      "browserJourneys",
+      "browserJourneysA",
+      "browserJourneysB",
+      "browserJourneysC",
       "browserSuites",
       "browserWizards",
       "browserWebkitReal",
@@ -349,7 +359,9 @@ describe("browser gate shards", () => {
   for (const command of commands) {
     test(`runs exactly once: ${command}`, () => {
       const literal = command.startsWith('"') ? command : `"${command}"`
-      expect(shards.split(literal).length - 1).toBe(1)
+      // The journey commands live in dagger/src/journeyLanes.ts (three lanes), not in this source.
+      const inLanes = JOURNEY_STEPS.filter((step) => step.command === command).length
+      expect(shards.split(literal).length - 1 + inLanes).toBe(1)
     })
   }
 
