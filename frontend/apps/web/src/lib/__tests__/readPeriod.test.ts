@@ -690,6 +690,38 @@ describe('read_period: cite', () => {
     expect(cite.antar).toEqual(['Mars, rules your 6th house']);
   });
 
+  // Spec 2026-10-15 (live drive, gpt-6-luna x3): the placement and strength facts rode in the
+  // result but not in the cite, and the answers copy the cite, so none of them said it.
+  it('a sub-lord states where it sits from its parent lord and how that reads, and every lord its natal strength', async () => {
+    const base = crossing((await read({ start: '2019-06' })).result as ReadPeriodReading);
+    const cite = readingCite(
+      {
+        ...base,
+        dashas: { ...base.dashas, antar: [{ lord: 'mars', start: '2019-06-01', end: '2019-06-30', from_parent: 7, relation: 'support' }] },
+        lords: [
+          { lord: 'saturn', level: ['maha'], rules: [1, 12], natal: { house: 2, sign: 'aquarius', dignity: 'own', strength: 'strong', combust: false } },
+          { lord: 'jupiter', level: ['maha'], rules: [11, 2] },
+          { lord: 'mars', level: ['antar'], rules: [6] },
+        ],
+      },
+      'en',
+    );
+    expect(cite.maha[0]).toBe('Saturn, rules your 1st and 12th houses, strong natal strength');
+    expect(cite.antar).toEqual(['Mars, rules your 6th house, 7th from Saturn: supportive']);
+  });
+
+  it('a long range (more than one sub-lord) cites no placements, so the 18-month budget holds', async () => {
+    const { result } = await read({ start: '2027-01', end: '2028-06' }, { loadPeriodChart: vi.fn(async () => withReading('delhi-2027-01-18m')) });
+    const cite = (result as ReadPeriodReading).cite!;
+    expect(cite.antar.length).toBeGreaterThan(1);
+    expect(cite.antar.every((line) => !line.includes(' from '))).toBe(true);
+  });
+
+  it('a sub-lord that is its parent lord states no placement (it is trivially the 1st), and an ordinary strength is left out', async () => {
+    const base = (await read({ start: '2019-06' })).result as ReadPeriodReading;
+    expect(readingCite(base, 'en').antar).toEqual(['Rahu, rules no house']);
+  });
+
   it('a lord the reading gives no lordship for is named alone', async () => {
     const base = crossing((await read({ start: '2019-06' })).result as ReadPeriodReading);
     expect(readingCite({ ...base, lords: [] }, 'en').maha).toEqual(['Saturn', 'Jupiter']);
