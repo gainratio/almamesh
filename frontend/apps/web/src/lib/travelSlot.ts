@@ -10,14 +10,26 @@ export const TIME_TRAVEL_STATUS_LABEL = 'Preparing time travel';
 export const TRAVEL_DATE_ERROR = `Use a real date from 1900 through ${SHEET_LAST_YEAR}: YYYY-MM-DD for a day, YYYY-MM for a month, YYYY for a year.`;
 export type TravelAction = { readonly kind: 'travel'; readonly asOf: ChatThreadAsOf } | { readonly kind: 'back_to_today' };
 export type TravelRecorder = (action: TravelAction) => void;
-export interface TravelSlot { readonly record: TravelRecorder; take(): TravelAction | undefined; }
+export interface TravelSlot {
+  readonly record: TravelRecorder;
+  take(): TravelAction | undefined;
+  /** A move the user may confirm with a tap (travelTool.ts offer): never applied by itself. */
+  readonly offer: TravelRecorder;
+  takeOffer(): TravelAction | undefined;
+}
+function copied(action: TravelAction): TravelAction {
+  return action.kind === 'travel' ? { kind: 'travel', asOf: structuredClone(action.asOf) } : { kind: 'back_to_today' };
+}
 const DATE_FOR = { day: /^\d{4}-\d{2}-\d{2}$/, month: /^\d{4}-\d{2}$/, year: /^\d{4}$/ } as const;
 
 export function createTravelSlot(): TravelSlot {
   let pending: TravelAction | undefined;
+  let offered: TravelAction | undefined;
   return {
-    record: (action) => { pending = action.kind === 'travel' ? { kind: 'travel', asOf: structuredClone(action.asOf) } : { kind: 'back_to_today' }; },
+    record: (action) => { pending = copied(action); },
     take: () => { const value = pending; pending = undefined; return value; },
+    offer: (action) => { offered = copied(action); },
+    takeOffer: () => { const value = offered; offered = undefined; return value; },
   };
 }
 

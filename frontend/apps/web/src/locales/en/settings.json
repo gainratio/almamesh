@@ -19,8 +19,6 @@
     "data_description": "Back up or restore your data"
   },
   "layout": {
-    "breadcrumb_aria": "Breadcrumb",
-    "breadcrumb_settings": "Settings",
     "back_to_dashboard": "Back to Dashboard",
     "sidebar_aria": "Settings navigation",
     "mobile_nav_aria": "Settings navigation"

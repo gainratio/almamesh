@@ -134,6 +134,8 @@
       "where_suggestion": "Usar {{place}} (seu local de nascimento)",
       "where_home": "Usar {{place}} (onde você mora agora)"
     },
+    "offer": "Ir para {{period}}?",
+    "offer_today": "Voltar para hoje?",
     "banner": {
       "about": "o que o seu mapa destaca para este período",
       "change": "Mudar",

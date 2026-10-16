@@ -131,6 +131,8 @@
       "where_suggestion": "Use {{place}} (your birth place)",
       "where_home": "Use {{place}} (where you live now)"
     },
+    "offer": "Move to {{period}}?",
+    "offer_today": "Back to today?",
     "banner": {
       "about": "what your chart highlights for this period",
       "change": "Change",

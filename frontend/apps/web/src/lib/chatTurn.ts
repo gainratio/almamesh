@@ -122,6 +122,11 @@ export interface ChatTurnInput {
   /** Records a move; the chat hook applies it after the answer is saved. Absent: no travel tool. */
   readonly onTravel?: TravelRecorder;
   /**
+   * A move the turn did not ask for, offered instead of refused: the chat shows a "Move to…?"
+   * button under the answer (travelTool.ts offer). Absent: such a call is refused.
+   */
+  readonly onTravelOffer?: TravelRecorder;
+  /**
    * The last answer's travel call returned needs_place (travelIntent.ts pendingTravelIn, read from
    * the saved tool result): this turn's place answer ("Delhi") may finish that call's `to`, only.
    */
@@ -203,6 +208,7 @@ function turnTools(input: ChatTurnInput, pin: ChatThreadAsOf | undefined, starts
     ? [createTravelTool({
       ...places, threadPlace: input.asOf?.place, birthYear: birthYearOf(input.birth), language: input.language, record: input.onTravel,
       grant: travelGrant(input.question, input.pendingTravel),
+      ...(input.onTravelOffer ? { offer: input.onTravelOffer } : {}),
     })]
     : [];
   // Under budget pressure a reading goes out as its grounding facts: what the answer is checked against.

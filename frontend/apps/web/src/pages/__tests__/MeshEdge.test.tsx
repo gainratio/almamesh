@@ -425,9 +425,15 @@ describe('MeshEdgePage', () => {
     return (args: unknown) => travel.execute(args, { now: new Date(), signal: new AbortController().signal });
   };
 
-  it('relationship chat: "where?" asked with no travel call grants the reply nothing', async () => {
+  // CONTRACT REVERSED (travel-confirm PR, 2026-10-16): a call the phrase gate closed used to come back
+  // `refused`/`not_asked`. The page now offers it as a "Move to…?" button, so the result is
+  // `needs_confirmation`. What this test guards is unchanged: the reply "Delhi" grants no move, so
+  // nothing is queued (a queued result, or one that is not an offer, fails it).
+  it('relationship chat: "where?" asked with no travel call grants the reply nothing: the call is only offered', async () => {
     const travel = await discussTwoTurns(async () => undefined);
-    expect(await travel({ to: 'today', place: null })).toMatchObject({ status: 'refused', reason: 'not_asked' });
+    const result = await travel({ to: 'today', place: null });
+    expect(result).toMatchObject({ status: 'needs_confirmation', action: 'back_to_today', to: 'today' });
+    expect(result).not.toMatchObject({ status: 'queued' });
   });
 
   it('relationship chat: after a travel call that needed a place, the reply may finish only that move', async () => {
