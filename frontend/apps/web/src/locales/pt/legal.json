@@ -183,6 +183,7 @@
     "meaning_p2": "Mas são para reflexão. Use-as para pensar sobre um período, não como motivo para esperar um acontecimento específico.",
     "bar_heading": "Como uma técnica ganha uma linguagem mais firme",
     "bar_p1": "Cada teste é escrito antes de rodar. Uma técnica nova é pontuada primeiro em metade das pessoas. Só se superar o acaso ali, depois de corrigir por todos os testes feitos, ela vai para a outra metade, reservada e nunca vista. Só uma técnica que passe nesse teste reservado pode deixar a linguagem do app mais firme. Nenhuma passou até agora.",
+    "bar_p2": "Também testamos um padrão exploratório, o momento das mudanças de cidade com trânsitos planetários mais precisos, em dados que tínhamos reservado e nunca olhado. Na metade reservada da amostra (71 eventos de mudança) ele não se replicou: ganho de 0,69 (intervalo de 95 % de 0,08 a 1,95, p = 0,72), onde 1,0 significa não melhor que o acaso. O resultado anterior na metade de desenvolvimento (4,56) não se sustentou. Registramos este teste antes, rodamos uma única vez e não mudamos nada depois. As leituras sobre mudanças continuam apenas para reflexão.",
     "rerun_heading": "Seguimos testando",
     "rerun_p1": "Repetimos este teste sempre que alteramos como as leituras são calculadas, para que uma alteração não as faça parecer melhores do que são.",
     "areas": {

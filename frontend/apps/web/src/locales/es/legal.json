@@ -183,6 +183,7 @@
     "meaning_p2": "Pero son para reflexionar. Úsalas para pensar en un periodo, no como motivo para esperar un hecho concreto.",
     "bar_heading": "Cómo una técnica gana un lenguaje más firme",
     "bar_p1": "Cada prueba se escribe antes de ejecutarse. Una técnica nueva se puntúa primero con la mitad de las personas. Solo si supera al azar ahí, tras corregir por todas las pruebas hechas, pasa a la otra mitad, reservada y nunca vista. Solo una técnica que supere esa prueba reservada puede hacer más firme el lenguaje de la app. Ninguna lo ha hecho todavía.",
+    "bar_p2": "También probamos un patrón exploratorio, el momento de las mudanzas con tránsitos planetarios más precisos, con datos que habíamos reservado y nunca mirado. En la mitad reservada de la muestra (71 eventos de mudanza) no se replicó: mejora de 0,69 (intervalo del 95 % de 0,08 a 1,95, p = 0,72), donde 1,0 significa no mejor que el azar. El resultado anterior en la mitad de desarrollo (4,56) no se sostuvo. Registramos esta prueba de antemano, la ejecutamos una sola vez y no cambiamos nada después. Las lecturas sobre mudanzas siguen siendo solo para reflexión.",
     "rerun_heading": "Seguimos comprobando",
     "rerun_p1": "Repetimos esta prueba cada vez que cambiamos cómo se calculan las lecturas, para que un cambio no pueda hacer que parezcan mejores de lo que son.",
     "areas": {
