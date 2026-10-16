@@ -99,12 +99,14 @@ jobs:
 
   # Fleet rules shell-step / candidate-order / artifact-identity (gainratio/ci):
   # a job is checkout -> Dagger, or checkout -> Dagger -> upload of SHA-bound
-  # bytes. The journeys run ONCE, here; the scanned snapshot (with the original
-  # exit status in its receipt) is uploaded even when a journey failed.
-  browser-journeys-evidence:
-    name: evidence / browserJourneys
+  # bytes. The browser journeys run in three lanes (dagger/src/journeyLanes.ts),
+  # each ONCE, in its own evidence job; the scanned snapshot (with the original
+  # exit status in its receipt) is uploaded even when a journey failed. Each
+  # lane's gate job reads its own receipt back, and fails closed without one.
+  browser-journeys-a-evidence:
+    name: evidence / browserJourneysA
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 40
     permissions:
       contents: read
       packages: read # Pull the private ghcr.io toolchain image.
@@ -121,20 +123,20 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           version: "0.21.8"
-          call: --registry-token=env:GITHUB_TOKEN browser-journeys-evidence --commit-sha=${{ github.sha }} --repository=${{ github.repository }} export --path=candidate
+          call: --registry-token=env:GITHUB_TOKEN browser-journeys-evidence --lane=a --commit-sha=${{ github.sha }} --repository=${{ github.repository }} export --path=candidate
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: browser-journeys-evidence-${{ github.sha }}
+          name: browser-journeys-evidence-a-${{ github.sha }}
           path: candidate
           retention-days: 1
           if-no-files-found: error
 
-  # The browserJourneys gate: Dagger reads this run's receipt back and exits with
-  # the journeys' original status. It runs even if the evidence job failed, and
-  # then fails closed (no receipt), so a red journey is a red Dagger check.
-  browser-journeys:
-    name: gate / browserJourneys
-    needs: [browser-journeys-evidence]
+  # The browserJourneysA gate: Dagger reads this run's lane-a receipt back and
+  # exits with the journeys' original status. It runs even if the evidence job
+  # failed, and then fails closed (no receipt), so a red journey is a red Dagger check.
+  browser-journeys-a:
+    name: gate / browserJourneysA
+    needs: [browser-journeys-a-evidence]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -154,7 +156,117 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           version: "0.21.8"
-          call: browser-journeys-status --github-token=env:GITHUB_TOKEN --commit-sha=${{ github.sha }} --repository=${{ github.repository }} --run-id=${{ github.run_id }}
+          call: browser-journeys-status --lane=a --github-token=env:GITHUB_TOKEN --commit-sha=${{ github.sha }} --repository=${{ github.repository }} --run-id=${{ github.run_id }}
+
+  browser-journeys-b-evidence:
+    name: evidence / browserJourneysB
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: read # Pull the private ghcr.io toolchain image.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        env:
+          # Engine config: pull Docker Hub images via the GHCR mirror (.github/xdg/dagger/engine.json).
+          XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          version: "0.21.8"
+          call: --registry-token=env:GITHUB_TOKEN browser-journeys-evidence --lane=b --commit-sha=${{ github.sha }} --repository=${{ github.repository }} export --path=candidate
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-journeys-evidence-b-${{ github.sha }}
+          path: candidate
+          retention-days: 1
+          if-no-files-found: error
+
+  # The browserJourneysB gate: Dagger reads this run's lane-b receipt back and
+  # exits with the journeys' original status. It runs even if the evidence job
+  # failed, and then fails closed (no receipt), so a red journey is a red Dagger check.
+  browser-journeys-b:
+    name: gate / browserJourneysB
+    needs: [browser-journeys-b-evidence]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read # Read this run's evidence artifact.
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        env:
+          # Engine config: pull Docker Hub images via the GHCR mirror (.github/xdg/dagger/engine.json).
+          XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          version: "0.21.8"
+          call: browser-journeys-status --lane=b --github-token=env:GITHUB_TOKEN --commit-sha=${{ github.sha }} --repository=${{ github.repository }} --run-id=${{ github.run_id }}
+
+  browser-journeys-c-evidence:
+    name: evidence / browserJourneysC
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: read # Pull the private ghcr.io toolchain image.
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        env:
+          # Engine config: pull Docker Hub images via the GHCR mirror (.github/xdg/dagger/engine.json).
+          XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          version: "0.21.8"
+          call: --registry-token=env:GITHUB_TOKEN browser-journeys-evidence --lane=c --commit-sha=${{ github.sha }} --repository=${{ github.repository }} export --path=candidate
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-journeys-evidence-c-${{ github.sha }}
+          path: candidate
+          retention-days: 1
+          if-no-files-found: error
+
+  # The browserJourneysC gate: Dagger reads this run's lane-c receipt back and
+  # exits with the journeys' original status. It runs even if the evidence job
+  # failed, and then fails closed (no receipt), so a red journey is a red Dagger check.
+  browser-journeys-c:
+    name: gate / browserJourneysC
+    needs: [browser-journeys-c-evidence]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read # Read this run's evidence artifact.
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: dagger/dagger-for-github@27b130bf0f79a7f6fbbbe0fbca6760dc9bb40a77 # v8.4.1
+        env:
+          # Engine config: pull Docker Hub images via the GHCR mirror (.github/xdg/dagger/engine.json).
+          XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          version: "0.21.8"
+          call: browser-journeys-status --lane=c --github-token=env:GITHUB_TOKEN --commit-sha=${{ github.sha }} --repository=${{ github.repository }} --run-id=${{ github.run_id }}
 
   browser-suites:
     name: gate / browserSuites
@@ -338,7 +450,7 @@ jobs:
   # required check counts as passing.
   dagger:
     name: Dagger
-    needs: [secret-scan, contracts, browser-chromium, browser-journeys, browser-suites, browser-wizards, browser-webkit-real, browser-matrix, frontend, backend, pdf, privacy]
+    needs: [secret-scan, contracts, browser-chromium, browser-journeys-a, browser-journeys-b, browser-journeys-c, browser-suites, browser-wizards, browser-webkit-real, browser-matrix, frontend, backend, pdf, privacy]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 20

@@ -31,10 +31,12 @@ function describeError(error: unknown): string {
 export const GATE_TIMEOUT_MS = 45 * 60_000
 
 /**
- * The browserJourneys lane runs ~36 minutes on a normal runner and 46 on a slow
- * one (main run 38832312848). Its job allows 60 minutes including setup.
+ * One browser journey lane (dagger/src/journeyLanes.ts) runs ~13 minutes on a
+ * normal runner and ~18 on a slow one (the old single lane took 36 and 48; its
+ * tests split about three ways). 30 minutes is 50% or more over the slow figure.
+ * The evidence job allows 40 minutes including setup and upload.
  */
-export const JOURNEYS_GATE_TIMEOUT_MS = 55 * 60_000
+export const JOURNEYS_LANE_TIMEOUT_MS = 30 * 60_000
 
 class GateTimeoutError extends Error {
   public override readonly name = "GateTimeoutError"
@@ -89,12 +91,14 @@ export async function runPool(gates: readonly Gate[], limit: number): Promise<Ga
 /**
  * The product gates, longest first (the order `ci` starts them in). The old
  * single `browser` gate ran ~28 minutes of serial commands, so it is split into
- * five shards that each serve the same hooked build; in one engine (`ci`) Dagger
+ * seven shards (three of them the journey lanes) that each serve the same hooked build; in one engine (`ci`) Dagger
  * builds it once, and on GitHub each shard runs on its own runner.
  */
 export const PRODUCT_GATES = [
   "browserChromium",
-  "browserJourneys",
+  "browserJourneysA",
+  "browserJourneysB",
+  "browserJourneysC",
   "browserSuites",
   "browserWizards",
   "browserWebkitReal",
