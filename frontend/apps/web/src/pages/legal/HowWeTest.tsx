@@ -2,10 +2,10 @@ import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { LegalPageLayout } from './LegalPageLayout';
-import { RETRODICTION_RESULTS, type TechniqueResult } from './howWeTestResults';
+import { RETRODICTION_RESULTS, type AreaTechniqueResult, type TechniqueResult } from './howWeTestResults';
 
 /** The lift axis: chance (1.0) sits in the middle. */
-const AXIS = { min: 0.5, max: 1.5 } as const;
+const AXIS = { min: 0.25, max: 1.75 } as const;
 const TICKS = [0.5, 1, 1.5] as const;
 
 const at = (value: number): string => `${((value - AXIS.min) / (AXIS.max - AXIS.min)) * 100}%`;
@@ -16,7 +16,7 @@ interface Formats {
 }
 
 /** "1.03 (0.90–1.16)" in the page's number format. */
-function liftText(result: TechniqueResult, lift: Intl.NumberFormat): string {
+function liftText(result: Pick<TechniqueResult, 'lift' | 'low' | 'high'>, lift: Intl.NumberFormat): string {
   return `${lift.format(result.lift)} (${lift.format(result.low)}–${lift.format(result.high)})`;
 }
 
@@ -28,7 +28,7 @@ interface LiftRowProps {
 function LiftRow({ result, formats }: LiftRowProps): ReactElement {
   const { t } = useTranslation('legal');
   return (
-    <li className="grid gap-x-5 gap-y-1.5 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_7.5rem] sm:items-center">
+    <li className="grid gap-x-5 gap-y-1.5 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_11rem] sm:items-center">
       <span className="text-sm leading-snug text-text-primary">
         {t(`how_we_test.techniques.${result.key}`)}
         <span className="block text-xs text-text-muted">
@@ -52,10 +52,43 @@ function LiftRow({ result, formats }: LiftRowProps): ReactElement {
   );
 }
 
+/** The classical dasha rules: one lane per life area, because the run published a lift for each area, not one for all. */
+function AreaRow({ result, formats }: { readonly result: AreaTechniqueResult; readonly formats: Formats }): ReactElement {
+  const { t } = useTranslation('legal');
+  return (
+    <li className="grid gap-x-5 gap-y-1.5 sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_11rem] sm:items-start">
+      <span className="text-sm leading-snug text-text-primary">
+        {t(`how_we_test.techniques.${result.key}`)}
+        <span className="block text-xs text-text-muted">{t('how_we_test.events_areas', { n: formats.count.format(result.events) })}</span>
+      </span>
+      <span aria-hidden="true" className="relative block">
+        {result.areas.map((area) => (
+          <span key={area.area} className="relative block h-5">
+            <span className="absolute inset-x-0 top-1/2 h-px bg-ui-border" />
+            <span className="absolute inset-y-0 border-l border-dashed border-accent-gold/50" style={{ left: at(1) }} />
+            <span
+              className="absolute top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-text-muted"
+              style={{ left: at(area.low), width: `calc(${at(area.high)} - ${at(area.low)})` }}
+            />
+            <span className="absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent-gold ring-2 ring-background-primary" style={{ left: at(area.lift) }} />
+          </span>
+        ))}
+      </span>
+      <span className="block text-sm tabular-nums text-text-secondary sm:text-right">
+        {result.areas.map((area) => (
+          <span key={area.area} className="block h-5 leading-5">
+            {t(`how_we_test.areas.${area.area}`)} {liftText(area, formats.lift)}
+          </span>
+        ))}
+      </span>
+    </li>
+  );
+}
+
 function LiftAxis({ lift }: { readonly lift: Intl.NumberFormat }): ReactElement {
   const { t } = useTranslation('legal');
   return (
-    <div aria-hidden="true" className="grid sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_7.5rem] sm:gap-x-5">
+    <div aria-hidden="true" className="grid sm:grid-cols-[minmax(0,15rem)_minmax(0,1fr)_11rem] sm:gap-x-5">
       <span className="hidden sm:block" />
       <span className="relative h-8 text-xs text-text-muted">
         {TICKS.map((tick) => (
@@ -82,6 +115,7 @@ function LiftChart({ formats }: { readonly formats: Formats }): ReactElement {
         {RETRODICTION_RESULTS.techniques.map((result) => (
           <LiftRow key={result.key} result={result} formats={formats} />
         ))}
+        <AreaRow result={RETRODICTION_RESULTS.classicalDasha} formats={formats} />
       </ul>
       <LiftAxis lift={formats.lift} />
     </figure>
