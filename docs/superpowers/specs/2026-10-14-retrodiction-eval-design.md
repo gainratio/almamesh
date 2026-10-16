@@ -769,3 +769,34 @@ cd backend && uv run almamesh-eval retrodiction --adb ~/.almamesh/retrodiction/a
 cd backend && uv run almamesh-eval scorecard --adb ~/.almamesh/retrodiction/adb/adb_export_<date>.xml --split dev --workers 6
 # -> ~/.almamesh/retrodiction/adb/scorecard/{scorecard.json,scorecard.md}
 ```
+
+### Amendment 2026-10-16 (i): how the (g1) release look is run (written before any HELD-OUT result)
+
+Engine: `origin/main` (cb2f1152, the shipped engine incl. exact transits) merged into
+`feat/exact-transits`; backend gate green (2,084 passed, 99.04% coverage, ruff, mypy).
+Harish authorised the one look on 2026-10-16. Measure only, nothing tuned.
+
+**Command, exactly once** (same flags as the DEV run that produced the lead, no
+`--day-precision-only`, family `exact_transits`, k and window as the card pre-registers):
+
+```bash
+cd backend && uv run almamesh-eval placebo-scorecard --adb ~/.almamesh/retrodiction/adb/adb_export_<date>.xml \
+  --split held-out --release-look --added exact_transits --workers 8 \
+  --out ~/.almamesh/retrodiction/adb/placebo-scorecard-exact_transits-heldout
+```
+
+**Stricter readings, chosen now where (g1) is ambiguous:**
+1. *Holm family.* The card computes 16 tests (8 areas incl. relocation x k in {3,6}), so "every
+   test run at that look" is read as all 16, not as the single hypothesis. Condition (i) needs the
+   relocation k=3 p to pass the Holm step-down at one-sided 0.05 across those 16. The "alone"
+   result (cut 0.05) is reported beside it but does not decide the verdict.
+2. *All three conditions are required*: p, lift CI lower bound > 1, real/chart-swap ratio CI lower
+   bound > 1. The relocation k=3 row of the card is the one tested; no other row can confirm.
+3. *One look.* If the run crashes before writing a result, it may be re-run only after the defect
+   is fixed without reading any partial HELD-OUT output; a completed run is never repeated.
+   Verdict, whatever it is, is final. Nothing is tuned afterwards.
+4. *Void controls.* If the card reports planted/controls not ok (VOID), the verdict is
+   "not confirmed" (a failure to confirm), not a retry.
+5. A pass permits only what (g1) says: designing a relocation area, measured afresh. It promotes
+   nothing and is not a prediction claim. A fail closes the lead.
+6. Aggregates only go in the repo; the look is logged in `docs/eval/holdout-ledger.md`.
