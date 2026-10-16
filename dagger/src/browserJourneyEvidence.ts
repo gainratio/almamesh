@@ -1,3 +1,4 @@
+import { type JourneyLane, parseJourneyLane } from "./journeyLanes.js"
 import { requireAllowedRepository } from "./repositoryIdentity.js"
 
 /** The one closed output tree exported by the browser-journeys CI job. */
@@ -31,10 +32,10 @@ bun scripts/artifactLeakScan.mjs ${BROWSER_JOURNEY_EVIDENCE}`
  */
 export const BROWSER_JOURNEY_STATUS_CHECK = "frontend/apps/web/scripts/browserJourneyStatusCheck.mjs"
 
-/** The evidence job's candidate artifact name, bound to one commit (fleet rule artifact-identity). */
-export function browserJourneyArtifactName(commitSha: string): string {
+/** The evidence job's candidate artifact name, bound to one lane and one commit (fleet rule artifact-identity). */
+export function browserJourneyArtifactName(lane: JourneyLane, commitSha: string): string {
   if (!/^[0-9a-f]{40}$/.test(commitSha)) throw new Error("Browser journey commit is invalid.")
-  return `${BROWSER_JOURNEY_EVIDENCE}-${commitSha}`
+  return `${BROWSER_JOURNEY_EVIDENCE}-${parseJourneyLane(lane)}-${commitSha}`
 }
 
 export const FETCH_RUN_ARTIFACT_SCRIPT = "scripts/fetch_run_artifact.py"
@@ -52,8 +53,8 @@ export interface BrowserJourneyFetchRequest {
  * literal at the withExec call site (gainratio/ci fleet rule arbitrary-command):
  * a whole argv returned from here would read as caller-controlled command structure.
  */
-export function browserJourneyFetchRequest(repository: string, runId: string, commitSha: string): BrowserJourneyFetchRequest {
+export function browserJourneyFetchRequest(lane: JourneyLane, repository: string, runId: string, commitSha: string): BrowserJourneyFetchRequest {
   const allowed = requireAllowedRepository(repository)
   if (!/^[1-9][0-9]{0,19}$/.test(runId)) throw new Error("Browser journey run id is invalid.")
-  return { repository: allowed, runId, artifact: browserJourneyArtifactName(commitSha) }
+  return { repository: allowed, runId, artifact: browserJourneyArtifactName(lane, commitSha) }
 }

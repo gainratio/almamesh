@@ -54,15 +54,17 @@ describe('browser journey evidence remains available on failure', () => {
   });
 
   test('the status gate fetches only this run\'s artifact for this exact SHA', () => {
-    expect(browserJourneyArtifactName(sha)).toBe(`browser-journeys-evidence-${sha}`);
-    expect(browserJourneyFetchRequest('gainratio/almamesh', '987654321', sha)).toEqual({
-      repository: 'gainratio/almamesh', runId: '987654321', artifact: `browser-journeys-evidence-${sha}`,
+    expect(browserJourneyArtifactName('b', sha)).toBe(`browser-journeys-evidence-b-${sha}`);
+    expect(browserJourneyArtifactName('a', sha)).not.toBe(browserJourneyArtifactName('c', sha));
+    expect(() => browserJourneyArtifactName('d' as never, sha)).toThrow('lane');
+    expect(browserJourneyFetchRequest('a', 'gainratio/almamesh', '987654321', sha)).toEqual({
+      repository: 'gainratio/almamesh', runId: '987654321', artifact: `browser-journeys-evidence-a-${sha}`,
     });
     for (const runId of ['', '0', '12a', '1 --name x', '${{ github.run_id }}']) {
-      expect(() => browserJourneyFetchRequest('gainratio/almamesh', runId, sha)).toThrow('run id');
+      expect(() => browserJourneyFetchRequest('a', 'gainratio/almamesh', runId, sha)).toThrow('run id');
     }
-    expect(() => browserJourneyFetchRequest('gainratio/almamesh', '1', 'D'.repeat(40))).toThrow('commit');
-    expect(() => browserJourneyFetchRequest('evil/almamesh', '1', sha)).toThrow();
+    expect(() => browserJourneyFetchRequest('a', 'gainratio/almamesh', '1', 'D'.repeat(40))).toThrow('commit');
+    expect(() => browserJourneyFetchRequest('a', 'evil/almamesh', '1', sha)).toThrow();
   });
 
   // gainratio/ci fleet rule arbitrary-command: a Dagger function's caller input may

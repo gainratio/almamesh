@@ -40,7 +40,7 @@ import {
   runPool,
   startGate,
   type ProductGate,
-  JOURNEYS_GATE_TIMEOUT_MS,
+  JOURNEYS_LANE_TIMEOUT_MS,
 } from "./gates.js"
 import { nightlyRealSkipCheckScript } from "./nightlyRealSkips.js"
 import { pagesUploadLimitsCheckScript as releasePagesUploadLimitsScript } from "./pagesUploadLimits.js"
@@ -55,6 +55,7 @@ import {
   browserJourneyFetchRequest,
   validateBrowserJourneyExitCode,
 } from "./browserJourneyEvidence.js"
+import { type JourneyLane, journeyCommands, journeyGateOfLane, parseJourneyLane } from "./journeyLanes.js"
 import { nativeMacAcceptanceScript } from "./nativeMacAcceptance.js"
 import { fileCrashIssues, githubIssuesPort, parseCrashOutputs } from "./webkitCrashIssues.js"
 import {
@@ -143,6 +144,7 @@ const CONTRACT_TESTS = [
   "tests/dagger-repository-identity.test.ts",
   "tests/dagger-toolchain-contract.test.ts",
   "tests/dagger-workflow-contract.test.ts",
+  "tests/journey-lanes.test.ts",
   "tests/webkit-memory-baseline.test.ts",
   "tests/webkit-crash-issues.test.ts",
 ]
@@ -525,6 +527,9 @@ exec ${inline.join(" ")}`,
           "frontend/apps/web/scripts/webkit-memory-baseline.mjs",
           // The browser-journey receipt contract runs the one status-check script.
           "frontend/apps/web/scripts/browserJourneyStatusCheck.mjs",
+          // The journey-lane partition test checks every spec and script a lane runs exists.
+          "frontend/apps/web/e2e/*.spec.ts",
+          "frontend/apps/web/scripts/*.mjs",
           "frontend/apps/web/playwright.time-travel.config.ts",
           "frontend/apps/web/playwright.portable-invariants.config.ts",
           "frontend/apps/web/playwright.boot-retry.config.ts",
@@ -576,34 +581,44 @@ exec ${inline.join(" ")}`,
       "PORTABLE_INVARIANTS_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:portable-invariants --project=chromium",
     ])
   }
+  // The browser journeys, as three lanes on three runners (see journeyLanes.ts).
   @func()
-  browserJourneys(): Container {
-    return this.browserJourneysRun()
+  browserJourneysA(): Container {
+    return this.browserJourneysRun("a")
   }
-  /** Execute once, retain the original result, and export only a scanned snapshot. */
   @func()
-  async browserJourneysEvidence(commitSha: string, repository: string): Promise<Directory> {
+  browserJourneysB(): Container {
+    return this.browserJourneysRun("b")
+  }
+  @func()
+  browserJourneysC(): Container {
+    return this.browserJourneysRun("c")
+  }
+  /** Execute one lane once, retain the original result, and export only a scanned snapshot. */
+  @func()
+  async browserJourneysEvidence(lane: string, commitSha: string, repository: string): Promise<Directory> {
+    const checked = parseJourneyLane(lane)
     requireAllowedRepository(repository)
     if (!/^[0-9a-f]{40}$/.test(commitSha)) throw new Error("Browser journey commit is invalid.")
     let evidence: Directory | undefined
-    assertAllPassed([await startGate("browserJourneys", async () => {
+    assertAllPassed([await startGate(journeyGateOfLane(checked), async () => {
       await dag.foundation().guard(this.source, requireAllowedRepository(repository), commitSha).sync()
-      const completed = this.browserJourneysRun(true)
+      const completed = this.browserJourneysRun(checked, true)
       const exitCode = validateBrowserJourneyExitCode(await completed.exitCode())
       const scanned = await completed.withExec(["bash", "-c", browserJourneyEvidenceScript(exitCode, commitSha)]).sync()
       evidence = scanned.directory(`${WEB}/${BROWSER_JOURNEY_EVIDENCE}`)
-    }, JOURNEYS_GATE_TIMEOUT_MS)])
+    }, JOURNEYS_LANE_TIMEOUT_MS)])
     if (!evidence) throw new Error("Browser journey evidence is unavailable.")
     return evidence
   }
   /**
-   * The browserJourneys gate on GitHub: read back the receipt this run's evidence
-   * job uploaded (browser-journeys-evidence-<sha>) and exit with the journeys'
-   * original status. A missing, corrupt, or other-commit receipt fails closed.
+   * One browserJourneys lane's gate on GitHub: read back the receipt this run's
+   * evidence job for that lane uploaded (browser-journeys-evidence-<lane>-<sha>)
+   * and exit with the journeys' original status. A missing, corrupt, or other-commit receipt fails closed.
    */
   @func()
-  async browserJourneysStatus(commitSha: string, repository: string, runId: string, githubToken: Secret): Promise<string> {
-    const fetch = browserJourneyFetchRequest(repository, runId, commitSha)
+  async browserJourneysStatus(lane: string, commitSha: string, repository: string, runId: string, githubToken: Secret): Promise<string> {
+    const fetch = browserJourneyFetchRequest(parseJourneyLane(lane), repository, runId, commitSha)
     const evidence = dag
       .container()
       .from(UV_IMAGE)
@@ -620,53 +635,11 @@ exec ${inline.join(" ")}`,
       .withEnvVariable("EXPECTED_SHA", commitSha)
       .withExec(["node", BROWSER_JOURNEY_STATUS_CHECK])
       .sync()
-    return `Browser journeys passed on ${commitSha}.`
+    return `Browser journeys (lane ${lane}) passed on ${commitSha}.`
   }
-  private browserJourneysRun(retainFailure = false): Container {
+  private browserJourneysRun(lane: JourneyLane, retainFailure = false): Container {
     const prepared = this.hookedBuild().withExec(["mkdir", "-p", BROWSER_JOURNEY_ARTIFACTS])
-    return this.localPreview(prepared, "dist-verify", [
-      // A brand-new browser restores a backup from the landing page (Chromium only, as above).
-      "FIRST_RUN_RESTORE_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:first-run-restore --project=chromium",
-      // The landing header fits 320/360/390/414 px phones in en/es/pt: no
-      // sideways scroll, nav CTA fully on screen (Chromium device emulation).
-      "LANDING_RESPONSIVE_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:landing-responsive",
-      "node scripts/verify-exit-gate.mjs http://127.0.0.1:4199",
-      "node scripts/verify-i18n.mjs http://127.0.0.1:4199",
-      "node scripts/verify-browser-parity.mjs http://127.0.0.1:4199 --reference-date=2025-01-01T00:00:00+00:00",
-      // Time handling through the real onboarding UI: DST gap/overlap prompts,
-      // "unknown" computing at noon, and the Vedic weekday lord for Apia
-      // (date-line) and Sydney (east of UTC) births. Chromium only.
-      "TIME_HANDLING_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-handling --project=chromium",
-      // The onboarding AI step (Connect AI / Not now) and the chat's no-AI prompt
-      // through real onboarding. Chromium here; WebKit and an iPhone run on macOS.
-      "ONBOARDING_AI_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:onboarding-ai --project=chromium",
-      // Time travel (spec 2026-10-08), Inc A, B, C and D journeys: June 2019
-      // typed in plain chat, an 18-month period, places, and the Time travel
-      // button (2027 pinned; a Day pin found on the device). A stubbed
-      // provider, the real engine. Chromium here; WebKit and an iPhone run on
-      // macOS (.github/workflows/webkit-macos.yml), as Linux WebKit cannot boot the engine.
-      // Distribute this single spec by test, with one worker in each sequential
-      // command. The full 17-test command exceeded the 900-second watchdog on
-      // slower hosted runners; neither shard changes the test or job budgets.
-      "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=chromium --fully-parallel --workers=1 --shard=1/2 --output=browser-journeys-artifacts/time-travel-shard-1",
-      "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel.spec.ts --project=chromium --fully-parallel --workers=1 --shard=2/2 --output=browser-journeys-artifacts/time-travel-shard-2",
-      // Trip threads (2026-10-13): a new thread per trip with its place, trip-bound
-      // tools, tool-call rows, the thread list, search and layout. Stubbed provider.
-      "TIME_TRAVEL_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:time-travel e2e/time-travel-threads.spec.ts --project=chromium --workers=1 --output=browser-journeys-artifacts/time-travel-threads",
-      // A person added on /mesh survives an immediate full page load (the
-      // write is on disk before the dialog moves on). Chromium only.
-      "MESH_PERSIST_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:mesh-add-persist",
-      // A saved AI key and a finished chat turn survive an immediate full page
-      // load (each save is on disk before the app says it is done). Chromium only.
-      "DURABLE_SAVES_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:durable-saves",
-      // The exit-gate boot fault switch is in this hooks build (the frontend
-      // gate proves the production build lacks it), and with it armed the
-      // first boot's Worker throws a real WebAssembly RuntimeError: one
-      // engine.boot_retry, a chart, no recovery card. Chromium here; the
-      // WebKit project needs macOS OPFS.
-      "node scripts/verify-boot-fault-hook.mjs dist-verify --present",
-      "BOOT_RETRY_E2E_BASE_URL=http://127.0.0.1:4199 bun run test:e2e:boot-retry --project=chromium",
-    ], retainFailure)
+    return this.localPreview(prepared, "dist-verify", journeyCommands(lane), retainFailure)
   }
   // The hooked Playwright suites. Each used to rebuild this same bundle in its
   // own webServer (`tsc -b && vite build`); *_BASE_URL points it at the lane's

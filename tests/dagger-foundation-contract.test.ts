@@ -495,7 +495,7 @@ describe("ci runs independent gates concurrently", () => {
     }
     const module = await ciModule(Object.fromEntries(PRODUCT_GATES.map((name) => [name, gate(name)])))
     await expect(module.ci("1".repeat(40), repository)).resolves.toContain("gates passed")
-    expect(started.slice(0, 2)).toEqual(["browserChromium", "browserJourneys"])
+    expect(started.slice(0, 2)).toEqual(["browserChromium", "browserJourneysA"])
     expect(started.sort()).toEqual([...PRODUCT_GATES].sort())
     expect(peak).toBe(2)
   })
@@ -536,7 +536,8 @@ describe("ci runs independent gates concurrently", () => {
       events.push("guard-complete")
     })
     const evidence = {}
-    Object.assign(module, { browserJourneysRun: (retainFailure: boolean) => {
+    Object.assign(module, { browserJourneysRun: (lane: string, retainFailure: boolean) => {
+      expect(lane).toBe("b")
       expect(retainFailure).toBe(true)
       events.push("execute")
       return {
@@ -549,7 +550,7 @@ describe("ci runs independent gates concurrently", () => {
         },
       }
     } })
-    const pending = module.browserJourneysEvidence("1".repeat(40), repository)
+    const pending = module.browserJourneysEvidence("b", "1".repeat(40), repository)
     try {
       await Promise.resolve()
       expect(events).toEqual(["guard-start"])
@@ -569,7 +570,7 @@ describe("ci runs independent gates concurrently", () => {
       executions += 1
       throw new Error("browser must not execute")
     } })
-    await expect(module.browserJourneysEvidence("1".repeat(40), repository)).rejects.toThrow("source identity rejected")
+    await expect(module.browserJourneysEvidence("a", "1".repeat(40), repository)).rejects.toThrow("source identity rejected")
     expect(executions).toBe(0)
   })
 
@@ -580,10 +581,11 @@ describe("ci runs independent gates concurrently", () => {
       executions += 1
       return { exitCode: async () => -1, withExec: () => { throw new Error("unexpected export") } }
     } })
-    await expect(module.browserJourneysEvidence("invalid", repository)).rejects.toThrow("commit is invalid")
-    await expect(module.browserJourneysEvidence("1".repeat(40), "foreign/repo")).rejects.toThrow("not an allowed repository")
+    await expect(module.browserJourneysEvidence("a", "invalid", repository)).rejects.toThrow("commit is invalid")
+    await expect(module.browserJourneysEvidence("a", "1".repeat(40), "foreign/repo")).rejects.toThrow("not an allowed repository")
     expect(executions).toBe(0)
-    await expect(module.browserJourneysEvidence("1".repeat(40), repository)).rejects.toThrow("exit status is invalid")
+    await expect(module.browserJourneysEvidence("a", "1".repeat(40), repository)).rejects.toThrow("exit status is invalid")
+    await expect(module.browserJourneysEvidence("d", "1".repeat(40), repository)).rejects.toThrow("lane is invalid")
     expect(executions).toBe(1)
   })
 
@@ -603,12 +605,12 @@ describe("ci runs independent gates concurrently", () => {
     const finished: string[] = []
     const module = await ciModule({
       backend: async () => void finished.push("backend"),
-      browserJourneys: async () => {
+      browserJourneysB: async () => {
         throw new Error("verify-exit-gate exited 1")
       },
       privacy: async () => void finished.push("privacy"),
     })
-    await expect(module.ci("1".repeat(40), repository)).rejects.toThrow("browserJourneys: verify-exit-gate exited 1")
+    await expect(module.ci("1".repeat(40), repository)).rejects.toThrow("browserJourneysB: verify-exit-gate exited 1")
     expect(finished.sort()).toEqual(["backend", "privacy"])
   })
 
