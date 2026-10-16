@@ -166,14 +166,16 @@ test('[real] chat: single-pass streaming + self-hosted RAG + persistence + searc
   // Wait for the stream to FULLY settle before any reload — otherwise reloading
   // mid-stream aborts the in-flight OpenRouter request (net::ERR_ABORTED) and
   // the page logs a spurious QA_001 during teardown. "Settled" = the answer text
-  // stops growing across two polls AND the typing indicator is gone.
+  // stops growing across two polls AND the send button is idle again.
   let prevLen = -1;
   await expect
     .poll(
       async () => {
         const txt = (await chatPanel.textContent()) ?? '';
-        const dotsGone = (await page.getByTestId('chat-loading').count()) === 0;
-        const stable = txt.length === prevLen && dotsGone && txt.length > 400;
+        // The send button shows its arrow only when the turn is finished (the
+        // typing dots vanish as soon as the first token lands, mid-stream).
+        const idle = (await page.getByTestId('chat-send-icon').count()) === 1;
+        const stable = txt.length === prevLen && idle && txt.length > 400;
         prevLen = txt.length;
         return stable;
       },
@@ -305,14 +307,16 @@ test('[real] chat: single-pass streaming + self-hosted RAG + persistence + searc
   // Let the follow-up stream FULLY settle before the test ends — otherwise the
   // in-flight OpenRouter request is aborted on context teardown (net::ERR_ABORTED)
   // and the page logs a spurious QA_001 during unload. "Settled" = text stable
-  // across two polls AND the typing indicator is gone.
+  // across two polls AND the send button is idle again.
   let followPrevLen = -1;
   await expect
     .poll(
       async () => {
         const txt = (await afterReload.textContent()) ?? '';
-        const dotsGone = (await page.getByTestId('chat-loading').count()) === 0;
-        const stable = txt.length === followPrevLen && dotsGone && txt.length > baselineLen + 200;
+        // The send button shows its arrow only when the turn is finished (the
+        // typing dots vanish as soon as the first token lands, mid-stream).
+        const idle = (await page.getByTestId('chat-send-icon').count()) === 1;
+        const stable = txt.length === followPrevLen && idle && txt.length > baselineLen + 200;
         followPrevLen = txt.length;
         followAnswer = txt;
         return stable;
