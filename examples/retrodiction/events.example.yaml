@@ -14,13 +14,13 @@ subjects:
   - id: me
     # Birth date and time WITH the birthplace's UTC offset at birth, plus coordinates
     # (copy them from the app's profile settings).
-    birth: {datetime: "1984-07-02T05:40:00+05:30", latitude: 13.08, longitude: 80.27}
+    birth: {datetime: "1990-01-15T09:30:00+00:00", latitude: 51.5, longitude: -0.12}
     events:
       # category: career_change, job_start, job_loss, legal, relationship_start, marriage,
       #   separation, relocation, health, accident, birth_of_child, death_in_family,
       #   financial_gain, financial_loss, education
       # date: YYYY-MM-DD (precision: day), YYYY-MM (month) or YYYY (year; listed as excluded)
-      - {category: job_start, date: "2019-05", precision: month, place: Singapore}
-      - {category: legal, date: "2019-09-12", precision: day, place: Singapore}
-      - {category: relocation, date: "2016-01", precision: month, place: Bengaluru}
-      - {category: education, date: "2006", precision: year}
+      - {category: job_start, date: "2012-03", precision: month, place: Exampleville}
+      - {category: legal, date: "2014-06-10", precision: day, place: Exampleville}
+      - {category: relocation, date: "2016-01", precision: month, place: Sampletown}
+      - {category: education, date: "2008", precision: year}
