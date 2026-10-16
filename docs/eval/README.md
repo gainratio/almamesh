@@ -45,6 +45,10 @@ uv run almamesh-eval adb-summary --adb ~/data/adb_export.zip          # counts o
 uv run almamesh-eval scorecard --adb ~/data/adb_export.zip --split dev --workers 4
 ```
 
+Every scoring command on an export needs `--split dev`; leaving it out is refused, so the
+held-out half cannot be read by omission. If `ALMAMESH_ADB_ZIP_PASSWORD` is unset on macOS the
+tool falls back to a Keychain item of the same name; the value is never printed.
+
 If the export is missing the command stops with `refused: ... no such file` and exit code 2.
 Nothing here uses the network, and CI never runs it: the tests use fake entries only.
 A full run takes minutes to hours depending on `--workers` and `--sample-natives`.
@@ -54,7 +58,8 @@ A full run takes minutes to hours depending on `--workers` and `--sample-natives
 The natives are split once into a DEV half and a HELD-OUT half, pinned by a digest
 (`ADB_SPLIT_DIGEST` in `backend/src/almamesh/retrodiction/split.py`). Exploration uses DEV.
 HELD-OUT needs `--release-look`, and the CLI refuses a split that does not reproduce the
-digest. The held-out look has been used for (g1) and (i), so any further held-out look needs
+digest. `--release-look` is a flag, not a check: the ledger and the pre-registration are the
+human half of the rule. The held-out look has been used for (g1) and (i), so any further held-out look needs
 a new pre-registration. See [holdout-ledger.md](holdout-ledger.md).
 
 ## Where the details are

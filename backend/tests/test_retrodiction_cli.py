@@ -169,18 +169,26 @@ def test_adb_summary_refuses_an_export_inside_a_git_tree(tmp_path: Path) -> None
     assert "git working tree" in result.output
 
 
-def test_an_adb_run_writes_its_report_next_to_the_export(tmp_path: Path) -> None:
-    code, output = _run("--adb", str(_adb_zip(tmp_path)))
+def test_an_adb_run_writes_its_report_next_to_the_export(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    export = _four_native_zip(tmp_path)
+    _pin_the_fake_split(monkeypatch, export)
+    code, output = _run("--adb", str(export), "--split", "dev")
     assert code == 0, output
     report = json.loads((tmp_path / "retrodiction-report" / "report.json").read_text())
     assert report["run"]["kind"] == "public"
     assert "astro-databank" in report["run"]["label"]
 
 
-def test_an_adb_report_may_not_be_written_into_a_git_tree(tmp_path: Path) -> None:
+def test_an_adb_report_may_not_be_written_into_a_git_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
-    code, output = _run("--adb", str(_adb_zip(tmp_path)), "--out", str(repo / "out"))
+    export = _four_native_zip(tmp_path)
+    _pin_the_fake_split(monkeypatch, export)
+    code, output = _run("--adb", str(export), "--split", "dev", "--out", str(repo / "out"))
     assert code == 2
     assert "git working tree" in output
     assert not (repo / "out").exists()
@@ -310,3 +318,21 @@ def test_should_score_classical_dasha_on_the_dev_half(
     assert code == 0, output
     card = json.loads((tmp_path / "c" / "placebo-scorecard.json").read_text())
     assert "[dev, split" in card["setup"]["label"]
+
+
+@pytest.mark.parametrize("command", [["retrodiction"], ["scorecard"], ["placebo-scorecard"]])
+@pytest.mark.parametrize("extra", [[], ["--sample-natives", "2", "--seed", "1"]])
+def test_should_refuse_an_adb_run_with_no_split_so_held_out_is_never_read_by_omission(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, command: list[str], extra: list[str]
+) -> None:
+    # Given the pinned split of an ADB export
+    export = _four_native_zip(tmp_path)
+    _pin_the_fake_split(monkeypatch, export)
+    # When a scoring command names the export but no half
+    result = RUNNER.invoke(
+        app, [*command, "--adb", str(export), *extra, "--out", str(tmp_path / "o")]
+    )
+    # Then it is refused and nothing is written
+    assert result.exit_code == 2, result.output
+    assert "--split dev" in result.output
+    assert not (tmp_path / "o").exists()

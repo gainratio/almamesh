@@ -136,6 +136,10 @@ def _prepare(
     if options.split is not None and adb is None:
         raise RetrodictionInputError("--split applies to an ADB export (--adb)")
     loaded, source, private = _load(events, adb)
+    if adb is not None and options.split is None:
+        raise RetrodictionInputError(
+            "an ADB run needs --split dev (HELD-OUT is spent; see docs/eval/holdout-ledger.md)"
+        )
     half = _half(loaded, options.split, options.release_look)
     return _sampled(half, options), source, private
 

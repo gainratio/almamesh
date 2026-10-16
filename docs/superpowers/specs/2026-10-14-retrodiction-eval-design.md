@@ -109,7 +109,7 @@ engine gains a disputes area; that change is then measured as a before/after on 
 
 | source | timed births | dated events | verdict |
 |---|---|---|---|
-| Astro-Databank (astro.com) | yes, Rodden-rated | yes | **Not usable free.** Terms forbid spidering ("may only be accessed by human readers"); data may be reused non-commercially, text is copyrighted. The only bulk path is the paid research export (200 CHF/yr, `adbexport/adb_license.pdf`). Harish's call: it costs money. If bought, publish ADB ids + aggregates only, never raw rows. |
+| Astro-Databank (astro.com) | yes, Rodden-rated | yes | **Not usable free.** Terms forbid spidering ("may only be accessed by human readers"); data may be reused non-commercially, text is copyrighted. The only bulk path is the paid research export (200 CHF/yr, `adbexport/adb_license.pdf`). Harish's call: it costs money. If bought, publish aggregates only: no ids, no raw rows (amended 2026-10-16). |
 | Wikidata | **no** (0 humans with birth precision finer than a day; no time-of-birth property) | yes, CC0 (P26/P39/P108 with P580) | Usable for events only, useless alone. |
 | CURA Gauquelin archive | yes | no | Not usable: "All rights reserved. Not Creative Commons!" |
 | Open Gauquelin DB (OGDB) | 24.5k (75 certificate-backed) | no, but has Wikidata ids | Unclear: no data licence, derived from CURA's all-rights-reserved files. Not used. |
@@ -147,8 +147,8 @@ published). Code: `retrodiction/adb.py` (rules), `adb_source.py` (zip + XML), `a
   Year-precision events go through the existing rule: they are listed as excluded and never
   scored at month level. No year-granularity scoring is added. Julian-calendar and impossible
   event dates are dropped and counted.
-- **Reporting.** `almamesh-eval adb-summary` prints counts only. Published output is ADB ids
-  and aggregates only, never rows (licence §5).
+- **Reporting.** `almamesh-eval adb-summary` prints counts only. Published output is aggregates
+  only: no ids, no rows (licence §5; amended 2026-10-16 to drop ids).
 
 ### Amendment 2026-10-14 (b): the first real ADB run (pre-registered before it)
 
