@@ -6,6 +6,7 @@ import { ProfileSwitcher } from '../profiles/ProfileSwitcher';
 import { DataRepairNotice } from '../settings/DataRepairNotice';
 import { AiStatusBadge } from './AiStatusBadge';
 import { DroppedWritesNotice } from './DroppedWritesNotice';
+import { AppShellProvider } from './appShellContext';
 import { MeshNavButton } from './MeshNavButton';
 
 export interface AppLayoutProps {
@@ -31,6 +32,7 @@ export function AppLayout({ children, showFooter = false }: AppLayoutProps) {
   return (
     // `min-h-dvh` tracks the visible viewport so the shell is not left sitting
     // behind mobile Safari's collapsing URL bar.
+    <AppShellProvider value>
     <div className="flex min-h-dvh flex-col bg-observatory">
       <header className="sticky top-0 z-40 border-b border-ui-border bg-background-primary/80 backdrop-blur-sm">
         <div className="app-gutter mx-auto flex h-14 w-full max-w-7xl items-center justify-between">
@@ -72,5 +74,6 @@ export function AppLayout({ children, showFooter = false }: AppLayoutProps) {
 
       {showFooter && <Footer />}
     </div>
+    </AppShellProvider>
   );
 }

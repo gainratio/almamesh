@@ -41,6 +41,7 @@ import { ChatThreadList } from './ChatThreadList';
 import { CHAT_TOOLKIT, ToolCallRow, toolListOf } from './chatToolkit';
 import { tripContext } from '../../../lib/tripContext';
 import { TripContextCard } from './TripContextCard';
+import { TravelOffer } from './TravelOffer';
 import { AiSetupDialog } from '../ai/AiSetupDialog';
 
 /** What a page's ask handler gets: the hook's stream input, the reader's voice and the status line. */
@@ -78,7 +79,7 @@ export function ChatPanel({
   hideHeader = false,
 }: ChatPanelProps) {
   const { t } = useTranslation('chat');
-  const { messages, threadId, isStreaming, streamingDraft, submit, openThread, asOf, pin, repin, backToToday } = useChatThread(
+  const { messages, threadId, isStreaming, streamingDraft, submit, openThread, asOf, pin, repin, backToToday, travelOffer, confirmTravelOffer } = useChatThread(
     profileId,
     chartId,
     generateProviderChatSummary,
@@ -362,6 +363,8 @@ export function ChatPanel({
             />
           )}
         </ThreadPrimitive.Messages>
+        {/* Under the newest answer, only while it offers a move: the tap is the user's own request. */}
+        {travelOffer && !isStreaming && <TravelOffer action={travelOffer} language={language} onConfirm={confirmTravelOffer} />}
       </ThreadPrimitive.Viewport>
 
       {/* Input area — or, with no AI configured, the Connect-AI CTA (a typed

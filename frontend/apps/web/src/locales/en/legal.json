@@ -183,7 +183,7 @@
     "meaning_p2": "But they are for reflection. Use them to think about a period, not as a reason to expect a particular event.",
     "bar_heading": "How a technique earns stronger wording",
     "bar_p1": "Each test is written down before it runs. A new technique is scored on half of the people first. Only if it beats chance there, after correcting for every test we ran, does it go to the other half, held out and unseen. Only a technique that passes that held-out test can make the app's wording stronger. None has so far.",
-    "bar_p2": "One area is being re-tested on held-out data.",
+    "bar_p2": "We also tested one exploratory pattern, relocation timing with sharper planetary transits, on data we had set aside and never looked at. On the held-out half of the sample (71 relocation events) it did not replicate: lift 0.69 (95% interval 0.08 to 1.95, p = 0.72), where 1.0 means no better than chance. The earlier result on the development half (4.56) did not hold up. We pre-registered this test, ran it once, and changed nothing afterwards. Relocation readings stay reflective only.",
     "rerun_heading": "We keep testing",
     "rerun_p1": "We re-run this test whenever we change how readings are computed, so a change cannot quietly make readings look better than they are.",
     "areas": {

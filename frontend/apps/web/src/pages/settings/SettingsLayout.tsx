@@ -6,9 +6,7 @@
 
 import { Outlet, Link, Navigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Logo } from '../../components/ui/Logo';
 import { SettingsSidebar } from '../../components/features/settings/SettingsSidebar';
-import { AvatarDropdown } from '../../components/AvatarDropdown';
 import { Footer } from '../../components/Footer';
 
 export default function SettingsLayout() {
@@ -22,42 +20,19 @@ export default function SettingsLayout() {
 
   return (
     <div className="min-h-screen bg-background-primary">
-      {/* Top Navigation Bar */}
-      <header className="border-b border-ui-border bg-background-secondary">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Logo size="md" showText linkToHome />
-            {/* Breadcrumb */}
-            <nav className="flex items-center gap-2 text-sm" aria-label={t('layout.breadcrumb_aria')}>
-              <span className="text-text-muted">/</span>
-              <Link
-                to="/settings"
-                className="text-text-secondary hover:text-text-primary transition-colors"
-              >
-                {t('layout.breadcrumb_settings')}
-              </Link>
-            </nav>
-          </div>
-          <div className="flex items-center gap-4">
-            <Link
-              to="/dashboard"
-              className="text-text-muted hover:text-text-primary transition-colors flex items-center gap-2"
-              data-testid="back-to-dashboard-link"
-            >
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10 19l-7-7m0 0l7-7m-7 7h18"
-                />
-              </svg>
-              <span className="hidden sm:inline">{t('layout.back_to_dashboard')}</span>
-            </Link>
-            <AvatarDropdown />
-          </div>
-        </div>
-      </header>
+      {/* The app shell (AppLayout) owns the one header; Settings adds only its way back. */}
+      <div className="max-w-7xl mx-auto px-4 pt-4 sm:px-6">
+        <Link
+          to="/dashboard"
+          className="inline-flex min-h-11 items-center gap-2 text-text-muted transition-colors hover:text-text-primary"
+          data-testid="back-to-dashboard-link"
+        >
+          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+          </svg>
+          <span>{t('layout.back_to_dashboard')}</span>
+        </Link>
+      </div>
 
       {/* Main Content Area */}
       <main className="max-w-7xl mx-auto py-4 sm:px-6 sm:py-8">

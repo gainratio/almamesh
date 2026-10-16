@@ -50,7 +50,7 @@ import { asOfKey } from '../lib/pinnedPeriod';
 import { waitForStoreSaved } from '../lib/storeSaved';
 import { applyBackToToday, applyTravel, travelIntentVersion, type TravelSource, type TravelThread } from '../lib/timeTravel';
 import { pendingTravelIn, type PendingTravel } from '../lib/travelIntent';
-import { createTravelSlot, type TravelRecorder } from '../lib/travelSlot';
+import { createTravelSlot, type TravelAction, type TravelRecorder } from '../lib/travelSlot';
 import { moveTurnToThread } from '../lib/turnFollowsTravel';
 
 /** Input the caller's stream fn receives; it runs the chat turn (lib/chatTurn.ts) with these. */
@@ -64,6 +64,8 @@ export interface ChatStreamInput {
   readonly asOf?: ChatThreadAsOf;
   /** Record only; the hook applies this turn's last action after its durable answer. */
   readonly onTravel?: TravelRecorder;
+  /** Record only: a move the turn was not asked for, offered to the user as a button (never applied by itself). */
+  readonly onTravelOffer?: TravelRecorder;
   /** The last turn asked to move and was asked where (or when) instead: this turn may finish it. */
   readonly pendingTravel?: PendingTravel;
   /** Each tool call the turn ran; persisted on the answer as tool-call parts. */
@@ -114,6 +116,17 @@ export interface UseChatThreadResult {
   readonly repin: (asOf: ChatThreadAsOf) => Promise<void>;
   /** Open the latest normal thread, or a new one. */
   readonly backToToday: () => Promise<void>;
+  /** The move the newest answer offers ("Move to May 2019?"); gone with the next user turn or another thread. */
+  readonly travelOffer: TravelAction | undefined;
+  /** The user's tap on the offer: the same move path as the Time travel control, to exactly the offered move. */
+  readonly confirmTravelOffer: () => Promise<void>;
+}
+
+/** The offer a turn left, tied to the answer it sits under: it lives only while that answer is the newest message shown (another thread or a new turn changes that). */
+interface HeldOffer {
+  readonly threadId: string;
+  readonly messageId: string;
+  readonly action: TravelAction;
 }
 
 /**
@@ -332,6 +345,7 @@ export function useChatThread(
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamingDraft, setStreamingDraft] = useState('');
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [heldOffer, setHeldOffer] = useState<HeldOffer | undefined>(undefined);
   const ownedSummaryControllers = useRef(new Set<AbortController>());
   // `isStreaming` state only reaches `submit` after a re-render; this ref closes
   // the gap so two sends from the same render never buy two paid answers.
@@ -443,6 +457,7 @@ export function useChatThread(
           retrievedContext,
           ...(askedAsOf ? { asOf: askedAsOf } : {}),
           onTravel: travelSlot.record,
+          onTravelOffer: travelSlot.offer,
           ...(pendingTravel ? { pendingTravel } : {}),
           onToolCall: (record) => { toolCalls.push(toolCallPart(record)); },
           onSnapshot: (text) => {
@@ -511,6 +526,11 @@ export function useChatThread(
         setStreamingDraft('');
         const saved = await settleChatTurn(tid);
         const action = travelSlot.take();
+        const offered = travelSlot.takeOffer();
+        // A move that ran wins; a failed or dropped answer has nothing to offer under.
+        if (offered && !action && answeredId && saved && mounted.current) {
+          setHeldOffer({ threadId: tid, messageId: answeredId, action: offered });
+        }
         try {
           const live = useChatStore.getState().threads[tid];
           if (action && answeredId && saved && mounted.current
@@ -586,6 +606,24 @@ export function useChatThread(
     if (today && canApply()) setSelectedThreadId(today);
   }, [profileId, chartId, selectionIsCurrent, cancelTurn]);
 
+  const lastMessageId = messages.at(-1)?.id;
+  const travelOffer = heldOffer && heldOffer.messageId === lastMessageId ? heldOffer.action : undefined;
+  const confirmTravelOffer = useCallback(async () => {
+    if (!travelOffer) return;
+    // Stays on screen while it saves (the button shows its own wait and failure); spent only on success.
+    // The tapped move opens its trip; the question that prompted it stays in the thread it was asked in.
+    // Pin the shown thread first: the move creates its trip thread before it saves, and the list's
+    // newest thread would otherwise replace this one (and the offer) mid-save.
+    if (threadId) setSelectedThreadId(threadId);
+    if (travelOffer.kind === 'back_to_today') await backToToday();
+    else await go(travelOffer.asOf, 'chat-sheet', threadId ? { id: threadId } : 'new');
+    setHeldOffer(undefined);
+  }, [travelOffer, threadId, go, backToToday]);
+  // Leaving the thread spends the offer: coming back must not revive it (each tap opens a trip).
+  useEffect(() => {
+    if (heldOffer && heldOffer.threadId !== threadId) setHeldOffer(undefined);
+  }, [heldOffer, threadId]);
+
   return {
     messages,
     threadId,
@@ -597,6 +635,8 @@ export function useChatThread(
     pin,
     repin,
     backToToday,
+    travelOffer,
+    confirmTravelOffer,
   };
 }
 

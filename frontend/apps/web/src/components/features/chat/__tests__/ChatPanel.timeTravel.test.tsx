@@ -259,3 +259,51 @@ describe('ChatPanel: the answer follows a chat-initiated trip (2026-10-14)', () 
     expect(pointer.textContent).toBe('Moved to ⏳ Jun 2019 · Delhi, India');
   });
 });
+
+// Harish 2026-10-16: a travel call the phrase gate closed is offered under the answer, one tap away.
+describe('ChatPanel offered move', () => {
+  const MAY = { start: '2019-05-01', end: '2019-05-31', granularity: 'month' } as const;
+  async function ask(text: string, onAsk: ReturnType<typeof renderPanel>) {
+    fireEvent.change(screen.getByTestId('chat-input'), { target: { value: text } });
+    fireEvent.click(screen.getByTestId('chat-send-button'));
+    await waitFor(() => expect(onAsk).toHaveBeenCalled());
+  }
+
+  it('shows "Move to May 2019?" under the answer only when offered; a tap moves there', async () => {
+    const onAsk = renderPanel(vi.fn<AskFn>(async (input) => {
+      input.onTravelOffer?.({ kind: 'travel', asOf: MAY });
+      return 'May 2019 was heavy.';
+    }));
+    expect(screen.queryByTestId('travel-offer')).toBeNull();
+    await ask('how was May 2019?', onAsk);
+    fireEvent.click(await screen.findByRole('button', { name: 'Move to May 2019?' }));
+    expect((await screen.findByTestId('time-travel-title')).textContent?.replace(/\u00a0/g, ' ')).toBe('May 2019');
+    expect(screen.queryByTestId('travel-offer')).toBeNull();
+  });
+
+  it('a tap whose save fails shows the failure and keeps the button', async () => {
+    const onAsk = renderPanel(vi.fn<AskFn>(async (input) => {
+      input.onTravelOffer?.({ kind: 'travel', asOf: MAY });
+      return 'May 2019 was heavy.';
+    }));
+    await ask('how was May 2019?', onAsk);
+    const button = await screen.findByTestId('travel-offer-button');
+    vi.mocked(waitForStoreSaved).mockRejectedValueOnce(new Error('disk full'));
+    fireEvent.click(button);
+    expect((await screen.findByRole('alert')).textContent).toBe("Couldn't save this on your device. Try again.");
+    expect(screen.getByTestId('travel-offer-button')).toBeTruthy();
+  });
+
+  it('is gone after the next question', async () => {
+    let first = true;
+    const onAsk = renderPanel(vi.fn<AskFn>(async (input) => {
+      if (first) input.onTravelOffer?.({ kind: 'travel', asOf: MAY });
+      first = false;
+      return 'An answer.';
+    }));
+    await ask('how was May 2019?', onAsk);
+    await screen.findByTestId('travel-offer-button');
+    await ask('and my career?', onAsk);
+    await waitFor(() => expect(screen.queryByTestId('travel-offer')).toBeNull());
+  });
+});

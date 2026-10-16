@@ -134,6 +134,8 @@
       "where_suggestion": "Usar {{place}} (tu lugar de nacimiento)",
       "where_home": "Usar {{place}} (donde vives ahora)"
     },
+    "offer": "¿Ir a {{period}}?",
+    "offer_today": "¿Volver a hoy?",
     "banner": {
       "about": "lo que destaca tu carta para este periodo",
       "change": "Cambiar",

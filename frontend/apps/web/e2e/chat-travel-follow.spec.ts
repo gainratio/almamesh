@@ -1,9 +1,11 @@
 /**
- * Two chat journeys the dashboard.agentic real spec caught (0/2, 2026-10-14), with a stubbed
+ * Three chat journeys (the first two caught by the dashboard.agentic real spec, 0/2, 2026-10-14), with a stubbed
  * provider and the real engine:
  *
  *  1. "Take me to September 2017 in Mumbai": the travel tool opens a new trip thread and the
  *     answer follows the user there; the thread it was asked in keeps one clickable line.
+ *  3. A model that calls travel without being asked (2026-10-16): the answer carries a "Move to…?" button;
+ *     it moves only on a tap, and expires on the next question.
  *  2. A today question sent before the predictive layer is ready waits ("Preparing your chart…")
  *     and goes out WITH the ENGINE TIMING CONTEXT block once it is.
  *
@@ -106,6 +108,83 @@ test('[contract/stubbed] a chat travel takes its question and answer into the ne
   await pointer.click();
   await expect(page.getByTestId('time-travel-banner')).toBeVisible();
   await expect(panel.getByTestId('chat-message-assistant').last()).toContainText('September 2017 in Mumbai was a turning month.');
+  expect(errors, 'clean console').toEqual([]);
+});
+
+test('[contract/stubbed] a travel call nobody asked for becomes a "Move to…?" button: a tap moves, the next question expires it', async ({ page }) => {
+  const errors = await prepare(page);
+  await page.setViewportSize(DESKTOP);
+  // Each turn's prompt carries the earlier ones as history, so the test says which kind of turn is running.
+  let phase: 'offer' | 'plain' = 'offer';
+  await page.route('**/chat/completions', async (route) => {
+    const chat = chatToolBody(route.request().postData());
+    if (!chat) return fulfillEmpty(route);
+    if (phase === 'plain') return fulfillToolCall(route, { name: 'answer', args: generalAnswer('Plain answer.') });
+    const travelled = chat.messages.some((message) => message.role === 'tool');
+    if (!travelled) return fulfillToolCall(route, { name: 'travel', args: { to: '2017-09', place: 'Mumbai' } }, 'call_travel');
+    return fulfillToolCall(route, { name: 'answer', args: generalAnswer('September 2017 asked for patience. Tap the button if you want to go there.') }, 'call_answer');
+  });
+
+  await bootEngine(page);
+  await seedChart(page);
+  await gotoSettled(page, '/dashboard');
+  await todayOnDashboard(page);
+  await page.getByTestId('floating-chat-button').click({ timeout: 60_000 });
+  const panel = page.getByTestId('chat-panel');
+
+  // Asked about another time, the model called travel anyway: nothing moves, a button is offered.
+  await send(page, 'How was September 2017 for me?');
+  const offer = panel.getByRole('button', { name: 'Move to Sep 2017?' }).or(panel.getByRole('button', { name: 'Move to September 2017?' }));
+  await expect(offer).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByTestId('time-travel-banner')).toHaveCount(0);
+  await expect(panel.getByTestId('chat-message-assistant').last()).not.toContainText('moved');
+  expect((await offer.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+  await shoot(page, 'travel-offer');
+
+  // The next question expires it.
+  phase = 'plain';
+  await send(page, 'Hello');
+  await expect(panel.getByText('Plain answer.')).toBeVisible({ timeout: 60_000 });
+  await expect(panel.getByTestId('travel-offer')).toHaveCount(0);
+  phase = 'offer';
+
+  // A fresh offer: the tap is the request, and it goes to the offered trip only.
+  await send(page, 'How was September 2017 for me?');
+  await expect(offer).toBeVisible({ timeout: 120_000 });
+  await offer.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('time-travel-banner')).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByTestId('time-travel-banner')).toContainText('Mumbai');
+  await expect(panel.getByTestId('travel-offer')).toHaveCount(0);
+  expect(errors, 'clean console').toEqual([]);
+});
+
+test('[contract/stubbed] an unasked travel call with no place moves nothing, even when the next reply names a place', async ({ page }) => {
+  const errors = await prepare(page);
+  await page.setViewportSize(DESKTOP);
+  let turn = 0;
+  await page.route('**/chat/completions', async (route) => {
+    const chat = chatToolBody(route.request().postData());
+    if (!chat) return fulfillEmpty(route);
+    const travelled = chat.messages.some((message) => message.role === 'tool');
+    // Turn 1 and turn 2 both call travel unasked; neither may move anything.
+    if (!travelled) return fulfillToolCall(route, { name: 'travel', args: { to: '2017-09', place: turn === 1 ? 'Mumbai' : null } }, 'call_travel');
+    return fulfillToolCall(route, { name: 'answer', args: generalAnswer('Nothing moved.') }, 'call_answer');
+  });
+  await bootEngine(page);
+  await seedChart(page);
+  await gotoSettled(page, '/dashboard');
+  await todayOnDashboard(page);
+  await page.getByTestId('floating-chat-button').click({ timeout: 60_000 });
+  const panel = page.getByTestId('chat-panel');
+  await send(page, 'How was September 2017 for me?');
+  await expect(panel.getByText('Nothing moved.')).toBeVisible({ timeout: 120_000 });
+  await expect(panel.getByTestId('travel-offer')).toHaveCount(0);
+  turn = 1;
+  await send(page, 'Mumbai');
+  await expect(panel.getByTestId('chat-message-assistant')).toHaveCount(2, { timeout: 120_000 });
+  await page.waitForTimeout(1_000);
+  await expect(page.getByTestId('time-travel-banner')).toHaveCount(0);
   expect(errors, 'clean console').toEqual([]);
 });
 

@@ -1,5 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useInAppShell } from '../../components/features/layout/appShellContext';
 import { Logo } from '../../components/ui/Logo';
 
 interface LegalPageLayoutProps {
@@ -12,42 +13,43 @@ interface LegalPageLayoutProps {
   translationNote?: boolean;
 }
 
-export function LegalPageLayout({ title, lastUpdated, children, lead, translationNote = true }: LegalPageLayoutProps) {
+/** Back to the page the reader came from. */
+function BackButton() {
   const navigate = useNavigate();
+  const { t } = useTranslation('legal');
+  return (
+    <button
+      onClick={() => navigate(-1)}
+      className="text-text-secondary hover:text-text-primary transition-colors text-sm flex items-center gap-1 min-h-11"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+      </svg>
+      {t('layout.back')}
+    </button>
+  );
+}
+
+export function LegalPageLayout({ title, lastUpdated, children, lead, translationNote = true }: LegalPageLayoutProps) {
   const { t, i18n } = useTranslation('legal');
   const isTranslated = translationNote && i18n.language !== 'en';
+  // The app shell already has the one header; a prerendered page has none, so it draws its own.
+  const inShell = useInAppShell();
 
   return (
     <div className="min-h-screen bg-background-primary flex flex-col">
-      {/* Header */}
-      <header className="bg-background-secondary border-b border-ui-border py-4 px-6">
-        <div className="max-w-3xl mx-auto flex items-center justify-between">
-          <Logo size="md" linkToHome />
-          <button
-            onClick={() => navigate(-1)}
-            className="text-text-secondary hover:text-text-primary transition-colors text-sm flex items-center gap-1"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-4 w-4"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M10 19l-7-7m0 0l7-7m-7 7h18"
-              />
-            </svg>
-            {t('layout.back')}
-          </button>
-        </div>
-      </header>
+      {!inShell && (
+        <header className="bg-background-secondary border-b border-ui-border py-4 px-6">
+          <div className="max-w-3xl mx-auto flex items-center justify-between">
+            <Logo size="md" linkToHome />
+            <BackButton />
+          </div>
+        </header>
+      )}
 
       {/* Content */}
       <main className="flex-1 max-w-3xl mx-auto px-6 py-12 w-full">
+        {inShell && <div className="mb-6"><BackButton /></div>}
         {isTranslated && (
           <div
             role="note"
