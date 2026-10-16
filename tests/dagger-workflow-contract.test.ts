@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { CI_GATES } from "../dagger/src/gates.ts"
+import { JOURNEY_GATES, JOURNEY_LANES, journeyLaneOfGate } from "../dagger/src/journeyLanes.ts"
 
 const root = resolve(import.meta.dir, "..")
 const workflowPath = resolve(root, ".github/workflows/dagger.yml")
@@ -52,6 +53,14 @@ function gateJobKey(gate: string): string {
   return gate.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)
 }
 
+function isJourneyGate(gate: string): boolean {
+  return (JOURNEY_GATES as readonly string[]).includes(gate)
+}
+
+function journeyLane(gate: string): string {
+  return journeyLaneOfGate(gate)
+}
+
 function checkoutStep(): Mapping {
   return {
     uses: checkout,
@@ -76,7 +85,7 @@ const uploadAction = "actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3
 const gateEnv = { XDG_CONFIG_HOME: "${{ github.workspace }}/.github/xdg", GITHUB_TOKEN: "${{ github.token }}" }
 
 function expectedGateJob(gate: string): Mapping {
-  if (gate === "browserJourneys") return expectedJourneyStatusJob
+  if (isJourneyGate(gate)) return expectedJourneyStatusJob(journeyLane(gate))
   return {
     name: `gate / ${gate}`,
     "runs-on": "ubuntu-latest",
@@ -99,10 +108,11 @@ function expectedGateJob(gate: string): Mapping {
 // Fleet rule candidate-order / artifact-identity: an upload job is exactly
 // checkout -> Dagger -> upload, its bytes bound to this SHA, kept one day. The
 // journeys run once here; their original exit status rides in the receipt.
-const expectedJourneyEvidenceJob: Mapping = {
-  name: "evidence / browserJourneys",
+function expectedJourneyEvidenceJob(lane: string): Mapping {
+  return {
+  name: `evidence / browserJourneys${lane.toUpperCase()}`,
   "runs-on": "ubuntu-latest",
-  "timeout-minutes": 60,
+  "timeout-minutes": 40,
   permissions: { contents: "read", packages: "read" },
   steps: [
     checkoutStep(),
@@ -111,21 +121,23 @@ const expectedJourneyEvidenceJob: Mapping = {
       env: gateEnv,
       with: {
         version: "0.21.8",
-        call: `${GATE_REGISTRY_TOKEN} browser-journeys-evidence --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }} export --path=candidate`,
+        call: `${GATE_REGISTRY_TOKEN} browser-journeys-evidence --lane=${lane} --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }} export --path=candidate`,
       },
     },
     {
       uses: uploadAction,
-      with: { name: "browser-journeys-evidence-${{ github.sha }}", path: "candidate", "retention-days": 1, "if-no-files-found": "error" },
+      with: { name: `browser-journeys-evidence-${lane}-\${{ github.sha }}`, path: "candidate", "retention-days": 1, "if-no-files-found": "error" },
     },
   ],
+  }
 }
 
 // The browserJourneys gate enforces that receipt in Dagger (fleet rule shell-step:
 // no run steps). It runs even when the evidence job failed, and then fails closed.
-const expectedJourneyStatusJob: Mapping = {
-  name: "gate / browserJourneys",
-  needs: ["browser-journeys-evidence"],
+function expectedJourneyStatusJob(lane: string): Mapping {
+  return {
+  name: `gate / browserJourneys${lane.toUpperCase()}`,
+  needs: [`browser-journeys-${lane}-evidence`],
   if: "${{ !cancelled() }}",
   "runs-on": "ubuntu-latest",
   "timeout-minutes": 20,
@@ -137,10 +149,11 @@ const expectedJourneyStatusJob: Mapping = {
       env: gateEnv,
       with: {
         version: "0.21.8",
-        call: "browser-journeys-status --github-token=env:GITHUB_TOKEN --commit-sha=${{ github.sha }} --repository=${{ github.repository }} --run-id=${{ github.run_id }}",
+        call: `browser-journeys-status --lane=${lane} --github-token=env:GITHUB_TOKEN --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }} --run-id=\${{ github.run_id }}`,
       },
     },
   ],
+  }
 }
 
 // The one required check. `!cancelled()` makes it run (and go red) when a gate
@@ -171,8 +184,11 @@ function exactDaggerWorkflowViolations(source: string): string[] {
     group: "${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.run_id || github.ref }}",
     "cancel-in-progress": "${{ github.ref != 'refs/heads/main' }}",
   })) violations.push("concurrency")
-  if (!sameValue(Object.keys(jobs).sort(), [...CI_GATES.map(gateJobKey), "browser-journeys-evidence", "dagger"].sort())) violations.push("jobs")
-  if (!sameValue(jobs["browser-journeys-evidence"], expectedJourneyEvidenceJob)) violations.push("journey-evidence-job")
+  const evidenceKeys = JOURNEY_LANES.map((lane) => `browser-journeys-${lane}-evidence`)
+  if (!sameValue(Object.keys(jobs).sort(), [...CI_GATES.map(gateJobKey), ...evidenceKeys, "dagger"].sort())) violations.push("jobs")
+  for (const lane of JOURNEY_LANES) {
+    if (!sameValue(jobs[`browser-journeys-${lane}-evidence`], expectedJourneyEvidenceJob(lane))) violations.push(`journey-evidence-job:${lane}`)
+  }
   for (const gate of CI_GATES) {
     if (!sameValue(jobs[gateJobKey(gate)], expectedGateJob(gate))) violations.push(`gate-job:${gate}`)
   }
@@ -281,39 +297,42 @@ function daggerFixture(call: string): string[] {
   ]
 }
 
-const journeyFixture = [
-  "  browser-journeys-evidence:",
-  "    name: evidence / browserJourneys",
-  "    runs-on: ubuntu-latest",
-  "    timeout-minutes: 60",
-  "    permissions:",
-  "      contents: read",
-  "      packages: read",
-  "    steps:",
-  ...checkoutFixture,
-  ...daggerFixture(`${GATE_REGISTRY_TOKEN} browser-journeys-evidence --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }} export --path=candidate`),
-  `      - uses: ${uploadAction} # v7.0.2`,
-  "        with:",
-  "          name: browser-journeys-evidence-${{ github.sha }}",
-  "          path: candidate",
-  "          retention-days: 1",
-  "          if-no-files-found: error",
-  "  browser-journeys:",
-  "    name: gate / browserJourneys",
-  "    needs: [browser-journeys-evidence]",
-  "    if: ${{ !cancelled() }}",
-  "    runs-on: ubuntu-latest",
-  "    timeout-minutes: 20",
-  "    permissions:",
-  "      actions: read",
-  "      contents: read",
-  "    steps:",
-  ...checkoutFixture,
-  ...daggerFixture("browser-journeys-status --github-token=env:GITHUB_TOKEN --commit-sha=${{ github.sha }} --repository=${{ github.repository }} --run-id=${{ github.run_id }}"),
-]
+function journeyFixture(lane: string): string[] {
+  const upper = lane.toUpperCase()
+  return [
+    `  browser-journeys-${lane}-evidence:`,
+    `    name: evidence / browserJourneys${upper}`,
+    "    runs-on: ubuntu-latest",
+    "    timeout-minutes: 40",
+    "    permissions:",
+    "      contents: read",
+    "      packages: read",
+    "    steps:",
+    ...checkoutFixture,
+    ...daggerFixture(`${GATE_REGISTRY_TOKEN} browser-journeys-evidence --lane=${lane} --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }} export --path=candidate`),
+    `      - uses: ${uploadAction} # v7.0.2`,
+    "        with:",
+    `          name: browser-journeys-evidence-${lane}-\${{ github.sha }}`,
+    "          path: candidate",
+    "          retention-days: 1",
+    "          if-no-files-found: error",
+    `  browser-journeys-${lane}:`,
+    `    name: gate / browserJourneys${upper}`,
+    `    needs: [browser-journeys-${lane}-evidence]`,
+    "    if: ${{ !cancelled() }}",
+    "    runs-on: ubuntu-latest",
+    "    timeout-minutes: 20",
+    "    permissions:",
+    "      actions: read",
+    "      contents: read",
+    "    steps:",
+    ...checkoutFixture,
+    ...daggerFixture(`browser-journeys-status --lane=${lane} --github-token=env:GITHUB_TOKEN --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }} --run-id=\${{ github.run_id }}`),
+  ]
+}
 
 function gateJobFixture(gate: string): string[] {
-  if (gate === "browserJourneys") return journeyFixture
+  if (isJourneyGate(gate)) return journeyFixture(journeyLane(gate))
   return [
     `  ${gateJobKey(gate)}:`,
     `    name: gate / ${gate}`,
@@ -458,27 +477,34 @@ describe("atomic hosted Dagger workflow", () => {
     return Bun.YAML.stringify(workflow)
   }
 
-  test.each([
-    ["a second browser execution", (steps: Mapping[]) => { steps.push(structuredClone(steps[1])) }],
-    ["an export failure allowed to pass", (steps: Mapping[]) => { steps[1]["continue-on-error"] = true }],
-    ["another artifact path", (steps: Mapping[]) => { (steps[2].with as Mapping).path = "." }],
-    ["an artifact not bound to the SHA", (steps: Mapping[]) => { (steps[2].with as Mapping).name = "browser-journeys-evidence" }],
-    ["a shell step before upload", (steps: Mapping[]) => { steps.splice(2, 0, { run: "true" }) }],
-  ] as const)("rejects browser-journey evidence bypass: %s", (_name, mutate) => {
-    expect(exactDaggerWorkflowViolations(mutateJobSteps("browser-journeys-evidence", mutate))).toContain("journey-evidence-job")
-  })
+  describe.each([...JOURNEY_LANES])("browser journey lane %s", (lane) => {
+    const upper = lane.toUpperCase()
+    test.each([
+      ["a second browser execution", (steps: Mapping[]) => { steps.push(structuredClone(steps[1])) }],
+      ["an export failure allowed to pass", (steps: Mapping[]) => { steps[1]["continue-on-error"] = true }],
+      ["another artifact path", (steps: Mapping[]) => { (steps[2].with as Mapping).path = "." }],
+      ["an artifact not bound to the SHA", (steps: Mapping[]) => { (steps[2].with as Mapping).name = `browser-journeys-evidence-${lane}` }],
+      ["an artifact not bound to the lane", (steps: Mapping[]) => { (steps[2].with as Mapping).name = "browser-journeys-evidence-${{ github.sha }}" }],
+      ["a lane that runs another lane's journeys", (steps: Mapping[]) => { (steps[1].with as Mapping).call = String((steps[1].with as Mapping).call).replace(`--lane=${lane}`, "--lane=other") }],
+      ["a shell step before upload", (steps: Mapping[]) => { steps.splice(2, 0, { run: "true" }) }],
+    ] as const)("rejects browser-journey evidence bypass: %s", (_name, mutate) => {
+      expect(exactDaggerWorkflowViolations(mutateJobSteps(`browser-journeys-${lane}-evidence`, mutate))).toContain(`journey-evidence-job:${lane}`)
+    })
 
-  test.each([
-    ["missing original-status enforcement", (steps: Mapping[]) => { steps.splice(1, 1) }],
-    ["ignored original failure", (steps: Mapping[]) => { steps[1]["continue-on-error"] = true }],
-    ["status bound to another run", (steps: Mapping[]) => { (steps[1].with as Mapping).call = "browser-journeys-status --github-token=env:GITHUB_TOKEN --commit-sha=${{ github.sha }} --repository=${{ github.repository }} --run-id=1" }],
-    ["status enforced by shell", (steps: Mapping[]) => { steps[1] = { run: "node frontend/apps/web/scripts/browserJourneyStatusCheck.mjs" } }],
-  ] as const)("rejects browser-journey status bypass: %s", (_name, mutate) => {
-    expect(exactDaggerWorkflowViolations(mutateJobSteps("browser-journeys", mutate))).toContain("gate-job:browserJourneys")
-  })
+    test.each([
+      ["missing original-status enforcement", (steps: Mapping[]) => { steps.splice(1, 1) }],
+      ["ignored original failure", (steps: Mapping[]) => { steps[1]["continue-on-error"] = true }],
+      ["status bound to another run", (steps: Mapping[]) => { (steps[1].with as Mapping).call = `browser-journeys-status --lane=${lane} --github-token=env:GITHUB_TOKEN --commit-sha=\${{ github.sha }} --repository=\${{ github.repository }} --run-id=1` }],
+      ["status reading another lane's receipt", (steps: Mapping[]) => { (steps[1].with as Mapping).call = String((steps[1].with as Mapping).call).replace(`--lane=${lane}`, "--lane=other") }],
+      ["status enforced by shell", (steps: Mapping[]) => { steps[1] = { run: "node frontend/apps/web/scripts/browserJourneyStatusCheck.mjs" } }],
+    ] as const)("rejects browser-journey status bypass: %s", (_name, mutate) => {
+      expect(exactDaggerWorkflowViolations(mutateJobSteps(`browser-journeys-${lane}`, mutate))).toContain(`gate-job:browserJourneys${upper}`)
+    })
 
-  test("the browser-journey gate still runs, and fails closed, when its evidence job failed", () => {
-    expect(exactDaggerWorkflowViolations(canonicalFixture.replace("    needs: [browser-journeys-evidence]\n    if: ${{ !cancelled() }}\n", "    needs: [browser-journeys-evidence]\n"))).toContain("gate-job:browserJourneys")
+    test("the gate still runs, and fails closed, when its evidence job failed", () => {
+      const needs = `    needs: [browser-journeys-${lane}-evidence]\n`
+      expect(exactDaggerWorkflowViolations(canonicalFixture.replace(`${needs}    if: \${{ !cancelled() }}\n`, needs))).toContain(`gate-job:browserJourneys${upper}`)
+    })
   })
 
   test("no gate job runs a shell step (fleet rule shell-step)", () => {

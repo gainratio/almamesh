@@ -542,13 +542,13 @@ describe("canonical GitHub ingress contract", () => {
   })
 
   test.each([
-    ["a mutable artifact name", { name: "browser-journeys-evidence" }],
+    ["a mutable artifact name", { name: "browser-journeys-evidence-a" }],
     ["an arbitrary artifact path", { path: "." }],
     ["a long retention", { "retention-days": 14 }],
     ["a silent empty upload", { "if-no-files-found": "warn" }],
   ])("the candidate upload rejects %s", (_name, change) => {
     const jobs = workflow("dagger.yml").jobs as Record<string, { steps: Array<Record<string, unknown>> }>
-    const mutant = structuredClone(jobs["browser-journeys-evidence"].steps)
+    const mutant = structuredClone(jobs["browser-journeys-a-evidence"].steps)
     mutant[2].with = { ...(mutant[2].with as Record<string, unknown>), ...change }
     expect(ingressViolations(mutant)).toEqual(["artifact-identity"])
   })
