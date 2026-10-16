@@ -57,11 +57,11 @@ describe('How we test', () => {
     }
   });
 
-  it.each(['en', 'es', 'pt'] as const)('says the classical dasha rules show no lift and publishes aggregates only (%s)', (language) => {
+  it.each(['en', 'es', 'pt'] as const)('says the classical dasha rules show no lift, with the best corrected p, and publishes aggregates only (%s)', (language) => {
     renderPage(language);
     const text = document.body.textContent ?? '';
     expect(text).toMatch(language === 'es' ? /0,80/ : language === 'pt' ? /0,80/ : /0\.80/);
-    expect(text).toMatch(language === 'en' ? /no predictive support/ : language === 'es' ? /no les da respaldo predictivo/ : /não lhes dá respaldo preditivo/);
+    expect(text).toMatch(language === 'en' ? /finds no lift from them/ : language === 'es' ? /no encuentra mejora alguna con ellas/ : /não encontra ganho algum com elas/);
     expect(text).not.toMatch(/\bp\s*=\s*0[.,]10\b/);
   });
 

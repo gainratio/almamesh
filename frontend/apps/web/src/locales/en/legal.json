@@ -177,7 +177,7 @@
     "data_p1": "{{events}} dated events from {{people}} people with reliably recorded birth times, from Astro-Databank, a research database we use under licence. Most of these people are public figures.",
     "data_p2": "The licence allows totals only. We never publish names, birth details, single events or examples, and none of that data is in the app.",
     "result_heading": "What we found",
-    "result_p1": "No lift over chance. The baseline scores {{baseline}}, and none of the five techniques we added moves it: every range above includes 1.0. The classical dasha rules are how readings are built now, but this test gives them no predictive support (best corrected p-value 0.80).",
+    "result_p1": "No lift over chance. The baseline scores {{baseline}}, and none of the five techniques we added moves it: every range above includes 1.0. The classical dasha rules are how readings are built now, but this test finds no lift from them (best corrected p-value 0.80).",
     "meaning_heading": "What this means for you",
     "meaning_p1": "Readings stay specific. They name the dasha lords, transits and dated windows behind each theme, compare periods, and say plainly when hard themes such as legal friction or losses stand out.",
     "meaning_p2": "But they are for reflection. Use them to think about a period, not as a reason to expect a particular event.",

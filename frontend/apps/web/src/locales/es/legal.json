@@ -177,7 +177,7 @@
     "data_p1": "{{events}} hechos con fecha de {{people}} personas con hora de nacimiento bien registrada, de Astro-Databank, una base de datos de investigación que usamos bajo licencia. La mayoría son personas públicas.",
     "data_p2": "La licencia solo permite publicar totales. Nunca publicamos nombres, datos de nacimiento, hechos sueltos ni ejemplos, y nada de eso está en la app.",
     "result_heading": "Qué encontramos",
-    "result_p1": "Ninguna mejora sobre el azar. La base puntúa {{baseline}} y ninguna de las cinco técnicas que añadimos la mueve: todos los rangos de arriba incluyen 1,0. Las reglas clásicas de dasha son ahora la forma de construir las lecturas, pero esta prueba no les da respaldo predictivo (mejor valor p corregido: 0,80).",
+    "result_p1": "Ninguna mejora sobre el azar. La base puntúa {{baseline}} y ninguna de las cinco técnicas que añadimos la mueve: todos los rangos de arriba incluyen 1,0. Las reglas clásicas de dasha son ahora la forma de construir las lecturas, pero esta prueba no encuentra mejora alguna con ellas (mejor valor p corregido: 0,80).",
     "meaning_heading": "Qué significa para ti",
     "meaning_p1": "Las lecturas siguen siendo concretas. Nombran los regentes dasha, los tránsitos y las ventanas con fecha detrás de cada tema, comparan periodos y dicen claramente cuándo destacan temas duros como roces legales o pérdidas.",
     "meaning_p2": "Pero son para reflexionar. Úsalas para pensar en un periodo, no como motivo para esperar un hecho concreto.",
