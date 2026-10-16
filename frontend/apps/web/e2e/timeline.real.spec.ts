@@ -16,9 +16,12 @@ import { sectionUsageRow, type SectionUsageRow } from './sectionUsage';
  * Every OpenRouter response for the upcoming_periods section is saved to
  * test-results/ so a failure carries the raw model output, not just a symptom.
  *
- * The sections STREAM: something must appear on screen within
- * TIMELINE_TTFT_BUDGET_MS of the click (a reasoning model's "Thinking… N words"
- * or the prose itself), not only when the whole section lands minutes later.
+ * The sections STREAM, but a model that hides its reasoning (openai/gpt-6-luna-pro
+ * thinks 4-7k tokens, ~85 s, with no visible text) shows no words until it is
+ * nearly done. So the spec asserts what the app controls: the elapsed counter is
+ * on screen right after the click. It records, without asserting, when the first
+ * "Thinking… N words" or prose appeared (nightly 2026-10-16 failed a fixed 60 s
+ * budget on that model-side silence).
  * Time-to-first-progress, time-to-first-prose, total time, and the run's cost
  * and reasoning (from OpenRouter's `usage` on every section response) are
  * written to test-results/timeline-real-timing-<model>.json.
@@ -27,7 +30,6 @@ import { sectionUsageRow, type SectionUsageRow } from './sectionUsage';
  */
 
 const MODEL = process.env.TIMELINE_REAL_MODEL ?? E2E_REAL_MODEL;
-const TTFT_BUDGET_MS = Number(process.env.TIMELINE_TTFT_BUDGET_MS ?? 60_000);
 const LIVE = '[data-testid^="timeline-live-"]';
 
 test('[real] current timeline generates The road ahead against live OpenRouter', async ({ page }) => {
@@ -90,9 +92,17 @@ test('[real] current timeline generates The road ahead against live OpenRouter',
   await generate.click();
   const t0 = Date.now();
 
-  // Time to first text: live progress must show up long before the section lands.
-  await expect(page.locator(LIVE).first()).toBeVisible({ timeout: TTFT_BUDGET_MS });
-  const firstProgressMs = Date.now() - t0;
+  // The app's own progress (the elapsed counter) is up as soon as generation starts.
+  await expect(page.getByTestId('timeline-elapsed')).toBeVisible();
+  // First model-driven progress. Recorded, not asserted: a model that hides its
+  // reasoning legitimately shows nothing until it is nearly done.
+  const firstProgress = page
+    .waitForFunction((selector) => document.querySelector(selector) !== null, LIVE, {
+      timeout: 1_200_000,
+      polling: 250,
+    })
+    .then(() => Date.now() - t0)
+    .catch(() => null);
   // First real prose (after any thinking). Recorded, not asserted: a reasoning
   // model may legitimately think for minutes before writing.
   const firstProse = page
@@ -121,6 +131,7 @@ test('[real] current timeline generates The road ahead against live OpenRouter',
   const totalMs = Date.now() - t0;
   // Never wait on prose that streamed past the poller: settled means done.
   const firstProseMs = await Promise.race([firstProse, Promise.resolve(null)]);
+  const firstProgressMs = await Promise.race([firstProgress, Promise.resolve(null)]);
   mkdirSync('test-results', { recursive: true });
   writeFileSync(
     `test-results/timeline-real-timing-${MODEL.replace(/\W/g, '_')}.json`,
