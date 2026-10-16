@@ -212,9 +212,24 @@ describe("the gate's cost and its length cap", () => {
   // The patterns compile on their first use, once per page load; time the checking, not that.
   const warm = () => reflectionIssues(longSection(2_000));
 
-  it("streams a 35k-character section through the gate and the JSON check in under 200 ms", () => {
+  // Budgets are relative to ONE full check of the same text on the same machine, so they hold on a slow
+  // CI runner too (a fixed 200 ms failed there at 743 ms). An incremental gate costs a few full checks;
+  // re-checking the prefix at every delta (the bug this guards) costs hundreds.
+  const MAX_FULL_CHECKS = 20;
+  function oneFullCheckMs(text: string): number {
+    const runs: number[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      const started = performance.now();
+      reflectionIssues(text);
+      runs.push(performance.now() - started);
+    }
+    return Math.max(1, runs.sort((a, b) => a - b)[2]);
+  }
+
+  it("streams a 35k-character section through the gate and the JSON check for a few full checks' cost", () => {
     const text = longSection(35_000);
     warm();
+    const budget = MAX_FULL_CHECKS * oneFullCheckMs(text);
     const started = performance.now();
     const gate = reflectionGate();
     for (let end = 20; end < text.length; end += 20) gate.release(text.slice(0, end), false);
@@ -223,17 +238,18 @@ describe("the gate's cost and its length cap", () => {
     const elapsed = performance.now() - started;
     expect(shown).toBe(text);
     expect(issues).toEqual([]);
-    expect(elapsed).toBeLessThan(200);
+    expect(elapsed).toBeLessThan(budget);
   });
 
   it("stays cheap on a long section after a failed sentence", () => {
     const text = `Saturn rules the 10th. You will get married in 2027. ${longSection(35_000)}`;
     warm();
+    const budget = MAX_FULL_CHECKS * oneFullCheckMs(text);
     const started = performance.now();
     const gate = reflectionGate();
     for (let end = 20; end < text.length; end += 20) gate.release(text.slice(0, end), false);
     expect(gate.release(text, true)).toBe("Saturn rules the 10th. ");
-    expect(performance.now() - started).toBeLessThan(200);
+    expect(performance.now() - started).toBeLessThan(budget);
   });
 
   const words = (count: number): string => Array.from({ length: count }, (_, i) => `Saturn${i % 10} rules`).join(" ");
