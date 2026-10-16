@@ -29,6 +29,9 @@ import {
 } from "./fixtures/reflection-probes";
 import REAL_ANSWERS from "./fixtures/reflection-real-answers.json";
 
+// Streaming tests re-run the gate over thousands of prefixes; a loaded runner must not hit vitest's 5 s default.
+const SLOW_RUNNER_MS = 60_000;
+
 const flagged = (text: string): boolean => reflectionIssues(text).length > 0;
 
 describe("the crafted probe corpus", () => {
@@ -159,7 +162,7 @@ describe("each issue names what it found", () => {
   });
 });
 
-describe("releasing streamed text sentence by sentence", () => {
+describe("releasing streamed text sentence by sentence", { timeout: SLOW_RUNNER_MS }, () => {
   const clean = "Saturn stations direct on 17 September. Mars enters Virgo on the 25th. ";
 
   it("holds an unfinished sentence while the stream runs", () => {
@@ -199,7 +202,7 @@ describe("releasing streamed text sentence by sentence", () => {
 // reading preview calls it on every delta, so a long section cost quadratic time. It now reads only
 // the newly completed text (with a little passed context), and a long run with no sentence end is
 // released at a length cap, still checked, so it does not look frozen.
-describe("the gate's cost and its length cap", () => {
+describe("the gate's cost and its length cap", { timeout: SLOW_RUNNER_MS }, () => {
   const answers = (REAL_ANSWERS as readonly { readonly source: string; readonly text: string }[])
     .filter((answer) => !(answer.source in REAL_VIOLATIONS))
     .map((answer) => answer.text);
@@ -215,7 +218,6 @@ describe("the gate's cost and its length cap", () => {
   // cuts); re-checking the prefix at every delta (the bug this guards) reads O(N^2/delta) characters.
   // No millisecond budget, so a slow runner cannot fail it.
   const MAX_READ_FACTOR = 3;
-  const SLOW_RUNNER_MS = 60_000;
 
   function streamScanned(text: string): { readonly scanned: number; readonly deltas: number; readonly shown: string } {
     let scanned = 0;
@@ -237,7 +239,7 @@ describe("the gate's cost and its length cap", () => {
     expect(jsonReflectionIssues(JSON.stringify({ layman: text }))).toEqual([]);
     expect(scanned).toBeGreaterThan(0);
     expect(scanned).toBeLessThan(MAX_READ_FACTOR * text.length);
-  }, SLOW_RUNNER_MS);
+  });
 
   it("stays cheap on a long section after a failed sentence", () => {
     const text = `Saturn rules the 10th. You will get married in 2027. ${longSection(35_000)}`;
@@ -246,7 +248,7 @@ describe("the gate's cost and its length cap", () => {
     // A held sentence is re-read per delta, but never more than one cap piece with its context: a
     // constant per delta, whatever the text length (a prefix re-check would read ~17,000 per delta).
     expect(scanned).toBeLessThan(deltas * (RELEASE_CAP + 200));
-  }, SLOW_RUNNER_MS);
+  });
 
   const words = (count: number): string => Array.from({ length: count }, (_, i) => `Saturn${i % 10} rules`).join(" ");
 
