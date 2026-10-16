@@ -215,3 +215,24 @@ uv run almamesh-eval placebo-scorecard --adb ~/.almamesh/retrodiction/adb/adb_ex
   --out ~/.almamesh/retrodiction/adb/placebo-scorecard-classical_dasha
 # (h5): the same plus --day-precision-only, --out ...-classical_dasha-dayprecision
 ```
+
+## 2026-10-16: the (g1) release look, relocation under +EXACT on HELD-OUT. NOT CONFIRMED (null)
+
+Run once, as pre-registered in amendment (i) (commit `d808cbab`, 09:46:24 PT; run started 09:46:30
+PT, finished 10:53:18 PT, so 66m48s wall, 8 workers; result files written 10:53 PT). Engine =
+`origin/main` cb2f1152 merged into `feat/exact-transits`; backend gate green. Split pinned
+(`299ec393…`, HELD-OUT half, 5,062 natives). 6,145 events scored; planted and controls ok.
+Aggregates only. Not re-run.
+
+| Row (relocation, area none, k=3, window +/-36) | n | lift [95% CI] | p (one-sided) |
+|---|---|---|---|
+| BASELINE (v1 seven) | 71 | 0.93 [0.25, 2.18] | 0.53 |
+| **+EXACT (tested)** | 71 | **0.69 [0.08, 1.95]** | **0.717** |
+| +EXACT real / chart-swap ratio | 71 | 0.69 [0.07, 3.50] | n/a |
+| (k=6, not the tested row) +EXACT | 71 | 0.83 [0.25, 1.72] | 0.66 |
+
+Decision rule (g1), all three needed: (i) p <= 0.05 (alone) and Holm across the 16 tests of the
+card: FAIL (0.717); (ii) lift CI lower bound above 1: FAIL (0.08); (iii) swap-ratio CI lower
+bound above 1: FAIL (0.07). **Verdict: not confirmed. The lead is closed.** The DEV result
+(4.56 [1.49, 12.30], p = 0.003, n = 73) did not replicate; the HELD-OUT point estimate is below 1.
+No relocation area is designed. Nothing was tuned.
