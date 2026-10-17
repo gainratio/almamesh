@@ -78,6 +78,43 @@ describe('mesh readings store', () => {
     expect(meshReadingIdentityMatches(generatedDifferently, IDENTITY)).toBe(true);
   });
 
+  it('keeps a saved reading across UTC midnight rollover when births, roles, relationship, and window span match', () => {
+    const requestOn = (dayIso: string, years = 2, roleA = 'bride', roleB = 'groom') => {
+      const end = new Date(dayIso);
+      end.setUTCFullYear(end.getUTCFullYear() + years);
+      return JSON.stringify({
+        a: { datetimeUtc: '1990-01-15T12:00:00+00:00', latitude: 28.6139, longitude: 77.209 },
+        b: { datetimeUtc: '1992-06-20T09:30:00+00:00', latitude: 19.076, longitude: 72.8777 },
+        relationship: 'friend',
+        roleA,
+        roleB,
+        windowStart: dayIso,
+        windowEnd: end.toISOString().replace(/\.\d{3}Z$/, 'Z'),
+        referenceInstant: dayIso,
+      });
+    };
+    const storedBeforeMidnight = entry({
+      ...IDENTITY,
+      edgeRequestKey: requestOn('2026-10-16T00:00:00Z', 2),
+    });
+    const wantedAfterMidnight: MeshReadingIdentity = {
+      ...IDENTITY,
+      edgeRequestKey: requestOn('2026-10-17T00:00:00Z', 2),
+    };
+    const wantedDifferentSpan: MeshReadingIdentity = {
+      ...IDENTITY,
+      edgeRequestKey: requestOn('2026-10-17T00:00:00Z', 5),
+    };
+    const wantedFlippedRole: MeshReadingIdentity = {
+      ...IDENTITY,
+      edgeRequestKey: requestOn('2026-10-17T00:00:00Z', 2, 'groom', 'bride'),
+    };
+
+    expect(meshReadingIdentityMatches(storedBeforeMidnight, wantedAfterMidnight)).toBe(true);
+    expect(meshReadingIdentityMatches(storedBeforeMidnight, wantedDifferentSpan)).toBe(false);
+    expect(meshReadingIdentityMatches(storedBeforeMidnight, wantedFlippedRole)).toBe(false);
+  });
+
   it('returns only an exact identity match', async () => {
     await store.getState().saveCompleted(entry());
 
