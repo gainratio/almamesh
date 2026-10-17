@@ -817,9 +817,8 @@ const CURRENT_PERIOD_TASK = [
 
 const YEAR_AHEAD_TASK = [
   "TASK: The Year Ahead — the next twelve months in four quarters.",
-  'Return JSON: { "headline": {layman, technical}, "quarters": [ { "key": "Q1", "layman": string, "technical": string } ], "focus": {layman, technical} }.',
-  '  - quarters: EXACTLY one entry per quarter in the facts. Its "key" is exactly "Q1", "Q2", "Q3", "Q4" in that order; never leave it empty.',
-  "    Never add, rename, or skip a key.",
+  'Return JSON: { "headline": {layman, technical}, "quarters": { "Q1": { "layman": string, "technical": string }, "Q2": { "layman": string, "technical": string }, "Q3": { "layman": string, "technical": string }, "Q4": { "layman": string, "technical": string } }, "focus": {layman, technical} }.',
+  '  - quarters: an object with EXACTLY the four keys "Q1", "Q2", "Q3", "Q4" in that order; never leave a quarter out or add another key.',
   `  - LENGTH: each quarter ${YEAR_AHEAD_QUARTER_WORDS.low}-${YEAR_AHEAD_QUARTER_WORDS.high} words in EACH voice. The technical voice is as long as the layman voice:`,
   "    for that quarter cite every dasha change, transit window and slow-planet hit listed under it (planet,",
   "    house or sign, and month) and what each one activates.",
@@ -831,10 +830,13 @@ const YEAR_AHEAD_TASK = [
 ].join("\n");
 
 function lifeOutlookTask(domains: readonly string[]): string {
+  const shape = domains
+    .map((domain) => `"${domain}": { "outlook": {layman, technical}, "lean_into": string, "watch_for": string }`)
+    .join(", ");
   return [
     `TASK: This Year, by life area — ${domains.join(", ")}.`,
-    'Return JSON: { "domains": [ { "domain": string, "outlook": {layman, technical}, "lean_into": string, "watch_for": string } ] }.',
-    `  - EXACTLY one entry per area in the facts, in that order; "domain" is the key verbatim (${domains.join(", ")}).`,
+    `Return JSON: { "domains": { ${shape} } }.`,
+    `  - "domains" is an object with EXACTLY these keys in that order (${domains.join(", ")}).`,
     "    Never add another area.",
     "  - outlook: this year for that area from ITS facts only: band, key graha and whether it meets its minimum,",
     "    SAV bindus, active dasha significator (levels, lords), Sade Sati, transit severity, its windows, and its",
@@ -856,18 +858,21 @@ const CURRENT_PERIOD_TASK_LITE = [
 const YEAR_AHEAD_TASK_LITE = [
   "TASK: The Year Ahead — four quarters.",
   "Fill in this EXACT JSON shape (replace the ... with real content; keep these keys):",
-  '{ "headline": { "layman": "...", "technical": "..." }, "quarters": [ { "key": "Q1", "layman": "...", "technical": "..." } ] }',
-  '  One quarters entry per quarter in the facts; "key" is exactly "Q1", "Q2", "Q3", "Q4" in that order; never leave it empty.',
+  '{ "headline": { "layman": "...", "technical": "..." }, "quarters": { "Q1": { "layman": "...", "technical": "..." }, "Q2": { "layman": "...", "technical": "..." }, "Q3": { "layman": "...", "technical": "..." }, "Q4": { "layman": "...", "technical": "..." } } }',
+  '  "quarters" is an object with EXACTLY the four keys "Q1", "Q2", "Q3", "Q4" in that order; never leave a quarter out or add another key.',
   "  1-2 short sentences each.",
   "  Use only months written in the facts (YYYY-MM).",
 ].join("\n");
 
 function lifeOutlookTaskLite(domains: readonly string[]): string {
+  const shape = domains
+    .map((domain) => `"${domain}": { "outlook": { "layman": "...", "technical": "..." } }`)
+    .join(", ");
   return [
     `TASK: This Year, by life area — ${domains.join(", ")}.`,
     "Fill in this EXACT JSON shape (replace the ... with real content; keep these keys):",
-    '{ "domains": [ { "domain": "...", "outlook": { "layman": "...", "technical": "..." } } ] }',
-    `  One entry per area (${domains.join(", ")}), domain key verbatim. 1-2 short sentences per field.`,
+    `{ "domains": { ${shape} } }`,
+    `  One key per area (${domains.join(", ")}) verbatim. 1-2 short sentences per field.`,
   ].join("\n");
 }
 

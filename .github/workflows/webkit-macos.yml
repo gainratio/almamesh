@@ -4,6 +4,16 @@ on:
   push:
     branches: [main]
   pull_request:
+    paths:
+      - ".github/workflows/webkit-macos.yml"
+      - "frontend/.bun-version"
+      - "frontend/bun.lock"
+      - "frontend/package.json"
+      - "frontend/apps/web/**"
+      - "frontend/packages/browser/**"
+      - "frontend/packages/memory/**"
+      - "frontend/packages/shared-types/**"
+      - "frontend/packages/store/**"
 
 permissions:
   contents: read
