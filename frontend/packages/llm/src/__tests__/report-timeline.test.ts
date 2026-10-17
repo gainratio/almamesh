@@ -10,6 +10,7 @@ import {
   streamReportTimeline,
   type ReportTimelineEvent,
 } from "../index";
+import { READING_WITHHELD } from "../reflection";
 import { REPORT_AS_OF, REPORT_RAW_CHART } from "./report-fixture";
 
 const OPENROUTER: ProviderConfig = {
@@ -296,18 +297,37 @@ describe("streamReportTimeline: live preview (F3)", () => {
       ...(REPLIES.year_ahead as Record<string, unknown>),
       quarters: ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8"].map((key) => ({ key, ...p(key) })),
     };
+    const fiveQuartersForetelling = {
+      ...(REPLIES.year_ahead as Record<string, unknown>),
+      quarters: ["Q1", "Q2", "Q3", "Q4", "Q5"].map((key) => ({
+        key,
+        layman: "You will get married in 2027-03.",
+        technical: `${key}.`,
+      })),
+    };
+    const fourQuartersForetelling = {
+      ...(REPLIES.year_ahead as Record<string, unknown>),
+      quarters: [
+        { key: "Q1", layman: "You will get married in 2027-03.", technical: "Q1." },
+        { key: "Q2", ...p("Steady work.") },
+        { key: "Q3", ...p("Q3.") },
+        { key: "Q4", ...p("Q4.") },
+      ],
+    };
 
     function yearAheadReplies(first: unknown, second: unknown) {
       let yearCalls = 0;
-      const log: { section: string; body: Record<string, unknown> }[] = [];
+      const log: { section: string; body: { messages?: { role: string; content: string }[] } }[] = [];
       const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
-        const section = sectionOf(String(init.body));
-        log.push({ section, body: {} });
+        const rawBody = String(init.body);
+        const section = sectionOf(rawBody);
+        log.push({ section, body: JSON.parse(rawBody) as { messages?: { role: string; content: string }[] } });
         const reply = section === "year_ahead" ? [first, second][yearCalls++] ?? second : REPLIES[section];
         const content = JSON.stringify(reply);
         return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { headers: { "Content-Type": "application/json" } });
       }) as unknown as typeof fetch;
-      return { fetchImpl, yearCalls: () => log.filter((r) => r.section === "year_ahead").length };
+      const yearBodies = () => log.filter((r) => r.section === "year_ahead").map((r) => r.body);
+      return { fetchImpl, yearCalls: () => yearBodies().length, yearBodies };
     }
 
     it("asks the section once more, and lands it when the second reply parses", async () => {
@@ -322,6 +342,39 @@ describe("streamReportTimeline: live preview (F3)", () => {
       const events = await collect(streamReportTimeline({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl }));
       expect(yearCalls()).toBe(2);
       expect(events).toContainEqual(expect.objectContaining({ type: "error", section: "year_ahead", message: expect.stringContaining("8 quarters returned") }));
+    });
+
+    it("names the parser refusal and any reflection issue in one retry instead of asking to keep the refused shape", async () => {
+      const { fetchImpl, yearCalls, yearBodies } = yearAheadReplies(fiveQuartersForetelling, REPLIES.year_ahead);
+      const events = await collect(streamReportTimeline({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl }));
+      expect(yearCalls()).toBe(2);
+      expect(events.some((e) => e.type === "error")).toBe(false);
+      const retryMessages = yearBodies()[1]?.messages ?? [];
+      expect(retryMessages.at(-2)).toEqual({ role: "assistant", content: JSON.stringify(fiveQuartersForetelling) });
+      expect(retryMessages.at(-1)?.content).toContain("5 quarters returned, 4 sent");
+      expect(retryMessages.at(-1)?.content).toContain('"You will get"');
+      expect(retryMessages.at(-1)?.content).not.toContain("Return the same JSON shape");
+    });
+
+    it("makes only 2 calls (not 4) when both replies are refused even if they also break the reflection rule", async () => {
+      const { fetchImpl, yearCalls } = yearAheadReplies(fiveQuartersForetelling, fiveQuartersForetelling);
+      const events = await collect(streamReportTimeline({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl }));
+      expect(yearCalls()).toBe(2);
+      expect(events).toContainEqual(expect.objectContaining({ type: "error", section: "year_ahead", message: expect.stringContaining("5 quarters returned, 4 sent") }));
+    });
+
+    it("keeps the first reply (with failing values withheld) when the reflection reword is refused by the parser", async () => {
+      const { fetchImpl, yearCalls } = yearAheadReplies(fourQuartersForetelling, eightQuarters);
+      const events = await collect(streamReportTimeline({ chart: REPORT_RAW_CHART, asOf: REPORT_AS_OF, config: OPENROUTER, fetchImpl }));
+      expect(yearCalls()).toBe(2);
+      expect(events.some((e) => e.type === "error")).toBe(false);
+      const complete = events.find((e) => e.type === "complete");
+      expect(complete?.type === "complete" ? complete.timeline.year_ahead?.quarters : null).toEqual([
+        { key: "Q1", layman: READING_WITHHELD.en, technical: "Q1." },
+        { key: "Q2", layman: "Steady work.", technical: "Steady work." },
+        { key: "Q3", layman: "Q3.", technical: "Q3." },
+        { key: "Q4", layman: "Q4.", technical: "Q4." },
+      ]);
     });
   });
 });
