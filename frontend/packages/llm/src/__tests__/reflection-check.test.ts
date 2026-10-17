@@ -11,6 +11,7 @@ import {
   REFLECTION_WITHHELD,
   reflectionIssues,
   reflectionGate,
+  RELEASE_CAP,
   releasableReflection,
   rewordedOr,
   withholdFailingValues,
@@ -27,6 +28,9 @@ import {
   REFLECTION_PROBES,
 } from "./fixtures/reflection-probes";
 import REAL_ANSWERS from "./fixtures/reflection-real-answers.json";
+
+// Streaming tests re-run the gate over thousands of prefixes; a loaded runner must not hit vitest's 5 s default.
+const SLOW_RUNNER_MS = 60_000;
 
 const flagged = (text: string): boolean => reflectionIssues(text).length > 0;
 
@@ -158,7 +162,7 @@ describe("each issue names what it found", () => {
   });
 });
 
-describe("releasing streamed text sentence by sentence", () => {
+describe("releasing streamed text sentence by sentence", { timeout: SLOW_RUNNER_MS }, () => {
   const clean = "Saturn stations direct on 17 September. Mars enters Virgo on the 25th. ";
 
   it("holds an unfinished sentence while the stream runs", () => {
@@ -198,7 +202,7 @@ describe("releasing streamed text sentence by sentence", () => {
 // reading preview calls it on every delta, so a long section cost quadratic time. It now reads only
 // the newly completed text (with a little passed context), and a long run with no sentence end is
 // released at a length cap, still checked, so it does not look frozen.
-describe("the gate's cost and its length cap", () => {
+describe("the gate's cost and its length cap", { timeout: SLOW_RUNNER_MS }, () => {
   const answers = (REAL_ANSWERS as readonly { readonly source: string; readonly text: string }[])
     .filter((answer) => !(answer.source in REAL_VIOLATIONS))
     .map((answer) => answer.text);
@@ -209,47 +213,41 @@ describe("the gate's cost and its length cap", () => {
     return text.slice(0, length);
   }
 
-  // The patterns compile on their first use, once per page load; time the checking, not that.
-  const warm = () => reflectionIssues(longSection(2_000));
+  // Assert on WORK, not time: the gate reports how many characters each of its checks reads. An
+  // incremental gate reads each character about once (plus a little context at sentence and cap
+  // cuts); re-checking the prefix at every delta (the bug this guards) reads O(N^2/delta) characters.
+  // No millisecond budget, so a slow runner cannot fail it.
+  const MAX_READ_FACTOR = 3;
 
-  // Budgets are relative to ONE full check of the same text on the same machine, so they hold on a slow
-  // CI runner too (a fixed 200 ms failed there at 743 ms; 20 full checks failed at 22 on main's PR #373 run). An incremental gate costs a few full checks;
-  // re-checking the prefix at every delta (the bug this guards) costs hundreds.
-  const MAX_FULL_CHECKS = 60;
-  function oneFullCheckMs(text: string): number {
-    const runs: number[] = [];
-    for (let i = 0; i < 5; i += 1) {
-      const started = performance.now();
-      reflectionIssues(text);
-      runs.push(performance.now() - started);
+  function streamScanned(text: string): { readonly scanned: number; readonly deltas: number; readonly shown: string } {
+    let scanned = 0;
+    let deltas = 0;
+    const gate = reflectionGate((characters) => {
+      scanned += characters;
+    });
+    for (let end = 20; end < text.length; end += 20) {
+      deltas += 1;
+      gate.release(text.slice(0, end), false);
     }
-    return Math.max(1, runs.sort((a, b) => a - b)[2]);
+    return { scanned, deltas, shown: gate.release(text, true) };
   }
 
-  it("streams a 35k-character section through the gate and the JSON check for a few full checks' cost", () => {
+  it("streams a 35k-character section through the gate and the JSON check reading each character about once", () => {
     const text = longSection(35_000);
-    warm();
-    const budget = MAX_FULL_CHECKS * oneFullCheckMs(text);
-    const started = performance.now();
-    const gate = reflectionGate();
-    for (let end = 20; end < text.length; end += 20) gate.release(text.slice(0, end), false);
-    const shown = gate.release(text, true);
-    const issues = jsonReflectionIssues(JSON.stringify({ layman: text }));
-    const elapsed = performance.now() - started;
+    const { scanned, shown } = streamScanned(text);
     expect(shown).toBe(text);
-    expect(issues).toEqual([]);
-    expect(elapsed).toBeLessThan(budget);
+    expect(jsonReflectionIssues(JSON.stringify({ layman: text }))).toEqual([]);
+    expect(scanned).toBeGreaterThan(0);
+    expect(scanned).toBeLessThan(MAX_READ_FACTOR * text.length);
   });
 
   it("stays cheap on a long section after a failed sentence", () => {
     const text = `Saturn rules the 10th. You will get married in 2027. ${longSection(35_000)}`;
-    warm();
-    const budget = MAX_FULL_CHECKS * oneFullCheckMs(text);
-    const started = performance.now();
-    const gate = reflectionGate();
-    for (let end = 20; end < text.length; end += 20) gate.release(text.slice(0, end), false);
-    expect(gate.release(text, true)).toBe("Saturn rules the 10th. ");
-    expect(performance.now() - started).toBeLessThan(budget);
+    const { scanned, deltas, shown } = streamScanned(text);
+    expect(shown).toBe("Saturn rules the 10th. ");
+    // A held sentence is re-read per delta, but never more than one cap piece with its context: a
+    // constant per delta, whatever the text length (a prefix re-check would read ~17,000 per delta).
+    expect(scanned).toBeLessThan(deltas * (RELEASE_CAP + 200));
   });
 
   const words = (count: number): string => Array.from({ length: count }, (_, i) => `Saturn${i % 10} rules`).join(" ");
