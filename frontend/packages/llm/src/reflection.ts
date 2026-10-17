@@ -443,8 +443,13 @@ function readFrom(text: string, released: number, sentenceStart: number): number
 /**
  * A gate for one stream. It reads each piece once: a completed sentence alone, or a cap piece with
  * the words around its cut, so a long section costs time in proportion to its length.
+ * `onRead` (tests) is told how many characters each check reads, so the work can be asserted, not the clock.
  */
-export function reflectionGate(): ReflectionGate {
+export function reflectionGate(onRead?: (characters: number) => void): ReflectionGate {
+  const issuesIn = (piece: string): readonly ReflectionIssue[] => {
+    onRead?.(piece.length);
+    return reflectionIssues(piece);
+  };
   let passed = "";
   let sentenceStart = 0; // where the sentence being released began (before it, when a cap cut it)
   const releaseAtCap = (text: string, released: number): number => {
@@ -453,7 +458,7 @@ export function reflectionGate(): ReflectionGate {
       const cut = lastBreak(text, at + 1, at + RELEASE_CAP);
       if (cut <= at) return at;
       const readTo = lastBreak(text, cut, cut + CAP_LOOKAHEAD);
-      if (reflectionIssues(text.slice(readFrom(text, at, sentenceStart), Math.max(readTo, cut))).length > 0) return at;
+      if (issuesIn(text.slice(readFrom(text, at, sentenceStart), Math.max(readTo, cut))).length > 0) return at;
       at = cut;
     }
     return at;
@@ -467,7 +472,7 @@ export function reflectionGate(): ReflectionGate {
       let released = passed.length;
       for (const end of sentenceEnds(text, released, final)) {
         // A sentence that fails is not released; a cap piece read from its start fails too.
-        if (reflectionIssues(text.slice(readFrom(text, released, sentenceStart), end)).length > 0) break;
+        if (issuesIn(text.slice(readFrom(text, released, sentenceStart), end)).length > 0) break;
         released = end;
         sentenceStart = end;
       }
