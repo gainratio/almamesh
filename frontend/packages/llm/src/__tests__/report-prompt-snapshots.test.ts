@@ -63,10 +63,20 @@ describe("report-v2 prompts", () => {
     expect(full).not.toContain("each quarter 160-220");
   });
 
-  it("tells the year ahead, full and lite, the exact quarter keys to echo", () => {
+  it("tells the year ahead, full and lite, the exact object-keyed quarter skeleton", () => {
     for (const lite of [false, true]) {
       const user = buildSectionMessages("year_ahead", REPORT_CHART, "layman", lite, "en", REPORT_PROMPT_SET)[1].content;
-      expect(user).toContain('"key" is exactly "Q1", "Q2", "Q3", "Q4" in that order; never leave it empty');
+      expect(user).toContain('"quarters": { "Q1":');
+      expect(user).toContain('EXACTLY the four keys "Q1", "Q2", "Q3", "Q4" in that order');
+    }
+  });
+
+  it("tells life_outlook_1 and life_outlook_2, full and lite, their exact object-keyed domain skeletons", () => {
+    for (const lite of [false, true]) {
+      const outlook1 = buildSectionMessages("life_outlook_1", REPORT_CHART, "layman", lite, "en", REPORT_PROMPT_SET)[1].content;
+      const outlook2 = buildSectionMessages("life_outlook_2", REPORT_CHART, "layman", lite, "en", REPORT_PROMPT_SET)[1].content;
+      expect(outlook1).toContain('"domains": { "career":');
+      expect(outlook2).toContain('"domains": { "health":');
     }
   });
 

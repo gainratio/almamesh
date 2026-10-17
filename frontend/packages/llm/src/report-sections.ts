@@ -297,14 +297,27 @@ function quarterKeyAt(row: Record<string, unknown>, index: number, sent: readonl
   return key === "" ? (sent[index] ?? "") : key;
 }
 
-export function parseYearAhead(json: unknown, sent: readonly QuarterKey[]): YearAheadSection {
-  const rec = asRecord(json);
-  const rows = Array.isArray(rec.quarters) ? rec.quarters.map(asRecord) : [];
+function parseYearAheadQuarters(rawQuarters: unknown, sent: readonly QuarterKey[]): QuarterProse[] {
+  if (rawQuarters !== null && typeof rawQuarters === "object" && !Array.isArray(rawQuarters)) {
+    const obj = rawQuarters as Record<string, unknown>;
+    for (const key of Object.keys(obj)) {
+      if (!isSentQuarter(key, sent)) {
+        throw new ReportParseError(`year_ahead: quarter key ${JSON.stringify(key)} was not sent (or repeated)`);
+      }
+    }
+    return sent
+      .filter((key) => Object.prototype.hasOwnProperty.call(obj, key))
+      .map((key): QuarterProse => {
+        const row = asRecord(obj[key]);
+        return { key, layman: asLayman(row.layman), technical: asString(row.technical) };
+      });
+  }
+  const rows = Array.isArray(rawQuarters) ? rawQuarters.map(asRecord) : [];
   if (rows.length > sent.length) {
     throw new ReportParseError(`year_ahead: ${rows.length} quarters returned, ${sent.length} sent`);
   }
   const seen = new Set<QuarterKey>();
-  const quarters = rows.map((row, index): QuarterProse => {
+  return rows.map((row, index): QuarterProse => {
     const key = quarterKeyAt(row, index, sent);
     if (!isSentQuarter(key, sent) || seen.has(key)) {
       throw new ReportParseError(`year_ahead: quarter key ${JSON.stringify(key)} was not sent (or repeated)`);
@@ -312,6 +325,11 @@ export function parseYearAhead(json: unknown, sent: readonly QuarterKey[]): Year
     seen.add(key);
     return { key, layman: asLayman(row.layman), technical: asString(row.technical) };
   });
+}
+
+export function parseYearAhead(json: unknown, sent: readonly QuarterKey[]): YearAheadSection {
+  const rec = asRecord(json);
+  const quarters = parseYearAheadQuarters(rec.quarters, sent);
   const focus = parsePersona(rec.focus);
   return { headline: asPersona(rec.headline), quarters, ...(focus ? { focus } : {}) };
 }
@@ -320,8 +338,30 @@ function isGroupDomain(domain: string, group: readonly LifeDomain[]): domain is 
   return (group as readonly string[]).includes(domain);
 }
 
+function parseLifeOutlookDomainRow(domain: LifeDomain, row: Record<string, unknown>): LifeOutlookDomain {
+  const leanInto = asLayman(row.lean_into);
+  const watchFor = asLayman(row.watch_for);
+  return {
+    domain,
+    outlook: asPersona(row.outlook),
+    ...(leanInto ? { lean_into: leanInto } : {}),
+    ...(watchFor ? { watch_for: watchFor } : {}),
+  };
+}
+
 export function parseLifeOutlook(json: unknown, group: readonly LifeDomain[]): LifeOutlookDomain[] {
   const rows = asRecord(json).domains;
+  if (rows !== null && typeof rows === "object" && !Array.isArray(rows)) {
+    const obj = rows as Record<string, unknown>;
+    for (const domain of Object.keys(obj)) {
+      if (!isGroupDomain(domain, group)) {
+        throw new ReportParseError(`life_outlook: domain ${JSON.stringify(domain)} is not in this section`);
+      }
+    }
+    return group
+      .filter((domain) => Object.prototype.hasOwnProperty.call(obj, domain))
+      .map((domain) => parseLifeOutlookDomainRow(domain, asRecord(obj[domain])));
+  }
   const seen = new Set<LifeDomain>();
   return (Array.isArray(rows) ? rows.map(asRecord) : []).map((row) => {
     const domain = asString(row.domain);
@@ -332,13 +372,6 @@ export function parseLifeOutlook(json: unknown, group: readonly LifeDomain[]): L
       throw new ReportParseError(`life_outlook: domain ${JSON.stringify(domain)} repeated`);
     }
     seen.add(domain);
-    const leanInto = asLayman(row.lean_into);
-    const watchFor = asLayman(row.watch_for);
-    return {
-      domain,
-      outlook: asPersona(row.outlook),
-      ...(leanInto ? { lean_into: leanInto } : {}),
-      ...(watchFor ? { watch_for: watchFor } : {}),
-    };
+    return parseLifeOutlookDomainRow(domain, row);
   });
 }

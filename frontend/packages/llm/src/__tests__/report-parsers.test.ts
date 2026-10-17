@@ -66,6 +66,35 @@ describe("parseYearAhead", () => {
     const parsed = parseYearAhead({ headline: p("h"), quarters: [{ key: "Q1", layman: "Saturn moves. Rest.", technical: "Saturn." }] }, KEYS);
     expect(parsed.quarters[0].layman).toBe("Rest.");
   });
+
+  it("parses object-keyed quarters in canonical sent order and strips layman jargon", () => {
+    const parsed = parseYearAhead(
+      {
+        headline: p("A building year."),
+        quarters: {
+          Q2: p("Q2 prose."),
+          Q1: { layman: "Saturn moves. Q1 prose.", technical: "Q1 technical." },
+          Q4: p("Q4 prose."),
+          Q3: p("Q3 prose."),
+        },
+        focus: p("Focus."),
+      },
+      KEYS,
+    );
+    expect(parsed.quarters).toEqual([
+      { key: "Q1", layman: "Q1 prose.", technical: "Q1 technical." },
+      { key: "Q2", ...p("Q2 prose.") },
+      { key: "Q3", ...p("Q3 prose.") },
+      { key: "Q4", ...p("Q4 prose.") },
+    ]);
+    expect(parsed.focus).toEqual(p("Focus."));
+  });
+
+  it("rejects an object-keyed quarters map that includes an unsent key", () => {
+    expect(() =>
+      parseYearAhead({ headline: p("h"), quarters: { Q1: p("a"), Q5: p("b") } }, KEYS),
+    ).toThrow(ReportParseError);
+  });
 });
 
 describe("parseLifeOutlook", () => {
@@ -94,6 +123,31 @@ describe("parseLifeOutlook", () => {
     expect(parseLifeOutlook({ domains: [{ domain: "health", outlook: "Rest." }] }, LIFE_OUTLOOK_GROUPS.life_outlook_2)).toEqual([
       { domain: "health", outlook: { layman: "Rest.", technical: "Rest." } },
     ]);
+  });
+
+  it("parses object-keyed domains in canonical group order", () => {
+    const parsed = parseLifeOutlook(
+      {
+        domains: {
+          finances: { outlook: p("Steady.") },
+          career: { outlook: p("Good."), lean_into: "Ask for more.", watch_for: "Overwork." },
+        },
+      },
+      LIFE_OUTLOOK_GROUPS.life_outlook_1,
+    );
+    expect(parsed).toEqual([
+      { domain: "career", outlook: p("Good."), lean_into: "Ask for more.", watch_for: "Overwork." },
+      { domain: "finances", outlook: p("Steady.") },
+    ]);
+  });
+
+  it("rejects an object-keyed domains map with an unknown or wrong-section domain", () => {
+    expect(() =>
+      parseLifeOutlook({ domains: { career: { outlook: p("x") }, luck: { outlook: p("y") } } }, LIFE_OUTLOOK_GROUPS.life_outlook_1),
+    ).toThrow(ReportParseError);
+    expect(() =>
+      parseLifeOutlook({ domains: { health: { outlook: p("x") } } }, LIFE_OUTLOOK_GROUPS.life_outlook_1),
+    ).toThrow(/not in this section/);
   });
 });
 

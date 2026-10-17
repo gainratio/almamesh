@@ -676,6 +676,21 @@ describe("canonical GitHub ingress contract", () => {
     }
     expect(parsed.permissions).toEqual({ contents: "read" })
     expect(jobs["webkit-crash-issues"]).toEqual(CRASH_ISSUES_JOB)
+    const on = parsed.on as Record<string, Record<string, unknown>>
+    expect(on.push).toEqual({ branches: ["main"] })
+    expect(on.pull_request).toEqual({
+      paths: [
+        ".github/workflows/webkit-macos.yml",
+        "frontend/.bun-version",
+        "frontend/bun.lock",
+        "frontend/package.json",
+        "frontend/apps/web/**",
+        "frontend/packages/browser/**",
+        "frontend/packages/memory/**",
+        "frontend/packages/shared-types/**",
+        "frontend/packages/store/**",
+      ],
+    })
   })
 
   test("memory, travel and portable commands are isolated behind closed modes, with fail-closed evidence snapshots", () => {
