@@ -56,6 +56,7 @@ import {
   jsonReflectionIssues,
   READING_WITHHELD,
   REFLECTION_RULE,
+  reflectionCorrection,
   reflectionGate,
   reflectionRetry,
   rewordedOr,
@@ -1642,50 +1643,82 @@ function requestCapped<Section extends AnySectionKey>(
   );
 }
 
-/**
- * The section's completion through the reflection check (PR #366): a text that foretells,
- * narrates the tools or guesses lived experience goes back once with the issues named; a value
- * that still fails is withheld in the reading's language, the rest of the section kept. A reword
- * request that fails withholds the first text's failing values instead of failing the section.
- */
-async function reflectedSection<Section extends AnySectionKey>(
-  section: Section,
-  messages: ChatMessage[],
-  params: SectionRunParams<Section>,
-): Promise<string> {
-  const raw = await requestCapped(section, messages, params);
-  const issues = jsonReflectionIssues(raw);
-  if (issues.length === 0) return raw;
-  const retry = await rewordedOr(raw, params.signal, () => requestCapped(section, [...messages, ...reflectionRetry(raw, issues)], params));
-  return withholdFailingValues(retry, READING_WITHHELD[params.language ?? "en"]);
-}
-
 /** A reply the parser refuses: not JSON, or naming a quarter or area the app did not send. */
-function isRefusedReply(err: unknown): boolean {
+function isRefusedReply(err: unknown): err is SyntaxError | ReportParseError {
   return err instanceof SyntaxError || err instanceof ReportParseError;
 }
 
-/**
- * Models sometimes answer a section with an extra quarter or broken JSON. The
- * parser stays strict; the section is asked once more, and a second refused
- * reply is returned as is, so applySection reports it as the section's error.
- */
-async function rerequestIfRefused(
-  raw: string,
-  section: AnySectionKey,
-  chart: SanitizedChart,
-  signal: AbortSignal | undefined,
-  request: () => Promise<string>,
-): Promise<string> {
+/** The parser refusal error for `raw`, or null when `applySection` accepts it. */
+function refusalError(section: AnySectionKey, raw: string, chart: SanitizedChart): SyntaxError | ReportParseError | null {
   const scratch = emptyResults();
   scratch.asOfMonth = reportAsOfMonth(chart);
   try {
     applySection(scratch, section, raw, chart);
-    return raw;
+    return null;
   } catch (err) {
-    if (!isRefusedReply(err) || signal?.aborted) return raw;
-    return request();
+    return isRefusedReply(err) ? err : null;
   }
+}
+
+/**
+ * When a reply is valid JSON that the section parser refused (e.g. 5 quarters returned when 4 were
+ * sent), the retry names the parser refusal — and any reflection issue in the same reply — so one
+ * retry fixes both instead of asking the model to keep the refused JSON shape.
+ */
+function refusedReplyRetry(raw: string, err: SyntaxError | ReportParseError): readonly ChatMessage[] {
+  if (!(err instanceof ReportParseError)) return [];
+  const issues = jsonReflectionIssues(raw);
+  const reflection = issues.length > 0 ? ` ${reflectionCorrection(issues)}` : "";
+  return [
+    { role: "assistant", content: raw },
+    {
+      role: "user",
+      content: `Your last reply was not shown (${err.message}).${reflection} Return the exact JSON shape requested in the task with only the sent keys and one entry per sent item.`,
+    },
+  ];
+}
+
+/**
+ * Models sometimes answer a section with an extra quarter or broken JSON. The
+ * parser stays strict; the section is asked once more before the reflection
+ * reword step, and a second refused reply is returned as is so applySection
+ * reports it as the section's error after 2 calls (never 4).
+ */
+async function rerequestIfRefused<Section extends AnySectionKey>(
+  raw: string,
+  section: Section,
+  messages: ChatMessage[],
+  chart: SanitizedChart,
+  params: SectionRunParams<Section>,
+): Promise<string> {
+  const err = refusalError(section, raw, chart);
+  if (err === null || params.signal?.aborted) return raw;
+  return requestCapped(section, [...messages, ...refusedReplyRetry(raw, err)], params);
+}
+
+/**
+ * The section's completion through the parser check and the reflection check (PR #366): a refused
+ * reply is re-requested once first; an accepted reply that foretells, narrates the tools or guesses
+ * lived experience goes back once with the issues named; a value that still fails is withheld in
+ * the reading's language, the rest of the section kept. A reword request that fails or returns a
+ * parser-refused reply withholds the first text's failing values instead of failing the section.
+ */
+async function reflectedSection<Section extends AnySectionKey>(
+  section: Section,
+  messages: ChatMessage[],
+  chart: SanitizedChart,
+  params: SectionRunParams<Section>,
+): Promise<string> {
+  const first = await requestCapped(section, messages, params);
+  const raw = await rerequestIfRefused(first, section, messages, chart, params);
+  if (refusalError(section, raw, chart) !== null) return raw;
+  const issues = jsonReflectionIssues(raw);
+  if (issues.length === 0) return raw;
+  const retry = await rewordedOr(raw, params.signal, () =>
+    requestCapped(section, [...messages, ...reflectionRetry(raw, issues)], params),
+  );
+  const accepted = refusalError(section, retry, chart) === null ? retry : raw;
+  return withholdFailingValues(accepted, READING_WITHHELD[params.language ?? "en"]);
 }
 
 function runOneSection<Section extends AnySectionKey>(
@@ -1702,9 +1735,7 @@ function runOneSection<Section extends AnySectionKey>(
     params.language ?? "en",
     params.promptSet,
   );
-  const request = () => reflectedSection(section, messages, withGuardedPreview(section, chart, params));
-  return request()
-    .then((raw) => rerequestIfRefused(raw, section, chart, params.signal, request))
+  return reflectedSection(section, messages, chart, withGuardedPreview(section, chart, params))
     .then((raw): SectionOutcome<Section> => ({ section, ok: true, raw }))
     // Keep the ORIGINAL error (not just its message) so the aggregation can
     // preserve the HTTP status/body of a representative failure — the caller
