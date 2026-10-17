@@ -62,6 +62,7 @@ dev = [
     # Never imported by `src/almamesh` — tests/test_engine_is_crypto_free.py
     # fails the build if it ever is.
     "avow>=0.5.2",
+    "pytest-xdist>=3.8",
 ]
 
 [project.scripts]
@@ -126,7 +127,9 @@ testpaths = ["tests"]
 pythonpath = ["src"]
 # Coverage floor (ENGINEERING-STANDARDS §2). In addopts so the floor holds for
 # EVERY pytest invocation — a bare `uv run pytest` can't silently skip it.
-addopts = "--cov=almamesh --cov-report=term-missing:skip-covered --cov-fail-under=90"
+# `-n auto` spreads the tests over the runner's cores (xdist; coverage is merged, so the floor
+# is unchanged); `-n 0` runs serially when a debugger or `-s` is needed.
+addopts = "--cov=almamesh --cov-report=term-missing:skip-covered --cov-fail-under=90 -n auto"
 markers = [
     "integration: marks tests as integration tests (require external services)",
 ]

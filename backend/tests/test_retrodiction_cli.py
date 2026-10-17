@@ -253,6 +253,42 @@ def test_should_score_held_out_when_a_release_look_is_declared(
     assert code == 0, output
 
 
+@pytest.mark.parametrize(
+    ("command", "extra", "message"),
+    [
+        (["retrodiction"], ["--window", "24", "--k", "3"], "pre-registered"),
+        (["retrodiction"], ["--sample-natives", "2", "--seed", "1"], "whole half"),
+        (["scorecard"], ["--sample-natives", "2", "--seed", "1"], "whole half"),
+        (["placebo-scorecard"], ["--sample-natives", "2", "--seed", "1"], "whole half"),
+    ],
+)
+def test_should_refuse_a_held_out_look_that_is_not_preregistered_or_is_a_free_draw(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    command: list[str],
+    extra: list[str],
+    message: str,
+) -> None:
+    # Given a declared release look on the pinned split
+    export = _four_native_zip(tmp_path)
+    _pin_the_fake_split(monkeypatch, export)
+    args = [
+        "--adb",
+        str(export),
+        "--split",
+        "held-out",
+        "--release-look",
+        "--out",
+        str(tmp_path / "o"),
+    ]
+    # When the parameters differ from the pre-registration or a seed draws a sample
+    result = RUNNER.invoke(app, [*command, *args, *extra])
+    # Then it is refused before anything is scored or written
+    assert result.exit_code == 2, result.output
+    assert message in result.output
+    assert not (tmp_path / "o").exists()
+
+
 def test_should_refuse_a_split_of_an_event_file(tmp_path: Path) -> None:
     code, output = _run("--events", str(_file(tmp_path)), "--split", "dev")
     assert code == 2

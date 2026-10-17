@@ -141,7 +141,22 @@ def _prepare(
             "an ADB run needs --split dev (HELD-OUT is spent; see docs/eval/holdout-ledger.md)"
         )
     half = _half(loaded, options.split, options.release_look)
+    if options.split == "held-out" and options.sample is not None:
+        raise RetrodictionInputError(
+            "a HELD-OUT look scores the whole half; --sample-natives with a seed is a free draw"
+        )
     return _sampled(half, options), source, private
+
+
+def _require_preregistered(options: _Options, ks: tuple[int, ...]) -> None:
+    """HELD-OUT is scored only at the pre-registered window and k, never at a tuned one."""
+    if options.split == "held-out" and (
+        options.window != PREREGISTERED_WINDOW or ks != PREREGISTERED_KS
+    ):
+        raise RetrodictionInputError(
+            f"HELD-OUT is scored only at the pre-registered window {PREREGISTERED_WINDOW} "
+            f"and k {','.join(map(str, PREREGISTERED_KS))}"
+        )
 
 
 def _report(loaded: EventsFile, options: _Options, ks: tuple[int, ...]) -> Report:
@@ -154,6 +169,7 @@ def _report(loaded: EventsFile, options: _Options, ks: tuple[int, ...]) -> Repor
 def _run(events: Path | None, adb: Path | None, options: _Options) -> str:
     loaded, source, private = _prepare(events, adb, options)
     ks = parse_ks(options.k, options.window)
+    _require_preregistered(options, ks)
     target = _out_dir(source, options.out, private)
     report = _report(loaded, options, ks)
     _write(report, target)

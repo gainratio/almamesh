@@ -92,6 +92,42 @@ function isMeshReadingEntry(value: unknown, pairKey: string): value is MeshReadi
   );
 }
 
+/**
+ * Normalize an `edgeRequestKey` so a durable paid reading survives UTC day
+ * rollover (and backup restore on a later day) when both births, the
+ * relationship, the Melapaka roles, and the synchrony window span (e.g. +2y)
+ * are unchanged.
+ */
+function edgeRequestInputKey(edgeRequestKey: string): string {
+  try {
+    const parsed: unknown = JSON.parse(edgeRequestKey);
+    if (!isRecord(parsed)) return edgeRequestKey;
+    const { windowStart, windowEnd, referenceInstant, ...rest } = parsed;
+    if (
+      typeof windowStart !== 'string' ||
+      typeof windowEnd !== 'string' ||
+      referenceInstant !== windowStart
+    ) {
+      return edgeRequestKey;
+    }
+    const start = new Date(windowStart);
+    const end = new Date(windowEnd);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return edgeRequestKey;
+    }
+    const windowYears = end.getUTCFullYear() - start.getUTCFullYear();
+    if (windowYears <= 0) return edgeRequestKey;
+    const probe = new Date(start.getTime());
+    probe.setUTCFullYear(probe.getUTCFullYear() + windowYears);
+    if (probe.getTime() !== end.getTime()) {
+      return edgeRequestKey;
+    }
+    return JSON.stringify({ ...rest, windowYears });
+  } catch {
+    return edgeRequestKey;
+  }
+}
+
 export function meshReadingIdentityMatches(
   entry: MeshReadingEntry,
   identity: MeshReadingIdentity,
@@ -100,7 +136,7 @@ export function meshReadingIdentityMatches(
     entry.pairKey === identity.pairKey &&
     entry.profileIds[0] === identity.profileIds[0] &&
     entry.profileIds[1] === identity.profileIds[1] &&
-    entry.edgeRequestKey === identity.edgeRequestKey &&
+    edgeRequestInputKey(entry.edgeRequestKey) === edgeRequestInputKey(identity.edgeRequestKey) &&
     entry.language === identity.language
   );
 }

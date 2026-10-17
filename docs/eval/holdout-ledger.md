@@ -12,6 +12,7 @@ Every HELD-OUT look is logged here before it runs. Aggregates only.
 The HELD-OUT half is spent for (g1) and (i): it was looked at once for each, and the result
 was a null. **Any further HELD-OUT look needs a new pre-registration**, committed before the
 run, with its own row in the table above. Looking again under an old amendment, or after
-tuning on what the first look showed, is not a look; it is a second draw. The guard that
-enforces the mechanical part is `--release-look` plus the pinned `ADB_SPLIT_DIGEST`; the
-pre-registration is the human part.
+tuning on what the first look showed, is not a look; it is a second draw. The code enforces
+the mechanical part: `--release-look`, the pinned `ADB_SPLIT_DIGEST`, the pre-registered window
+and k, and the whole half (no `--sample-natives` draw). It does not check this table: matching a
+look to a committed row is the human part.

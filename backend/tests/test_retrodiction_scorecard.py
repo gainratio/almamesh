@@ -21,6 +21,7 @@ from almamesh.retrodiction.scorecard import (
     hit_ratio,
 )
 from almamesh.retrodiction.scorecard_markdown import render_scorecard
+from tests.retrodiction_leaks import leaks
 
 N = 73
 BASE = frozenset({"b"})
@@ -119,6 +120,9 @@ def test_should_write_an_aggregate_only_scorecard_when_run_from_the_cli(tmp_path
     for native in ("n1", "n2", "n3"):
         assert native not in markdown
         assert f'"{native}' not in (tmp_path / "card" / "scorecard.json").read_text()
+    # and no value-level leak: id-shaped key or value, timed date, coordinates, name
+    assert leaks(card) == []
+    assert leaks(markdown) == []
 
 
 def test_should_refuse_a_scorecard_with_no_input(tmp_path: Path) -> None:
