@@ -13,10 +13,10 @@ help = "Install the frontend workspace deps (bun)"
 shell = "cd frontend && bun install"
 
 [tool.poe.tasks.dev-assets]
-help = "Fetch Pyodide dist + sign the dev bundle (skips when already present)"
+help = "Fetch Pyodide dist + sign the dev bundle (rebuilds when backend/src/almamesh changes)"
 shell = """
-if [ -d frontend/apps/web/public/bundle ] && [ -d frontend/apps/web/public/pyodide ]; then
-  echo '==> Dev assets already present — skipping (run: uv run poe dev-assets-fresh to rebuild)'
+if [ -f frontend/apps/web/public/bundle/latest ] && [ -d frontend/apps/web/public/pyodide ] && [ -z "$(find backend/src/almamesh -type f -newer frontend/apps/web/public/bundle/latest 2>/dev/null)" ]; then
+  echo '==> Dev assets already present and up to date — skipping (run: uv run poe dev-assets-fresh to rebuild)'
 else
   bash frontend/apps/web/scripts/setup-dev-assets.sh
 fi

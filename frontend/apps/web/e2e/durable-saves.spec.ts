@@ -100,9 +100,12 @@ test('a saved AI key survives an immediate full page load', async ({ page }) => 
   await page.getByTestId('llm-openrouter-key').fill(DUMMY_KEY);
   // The app's "saved" signal is the header badge flipping to the new provider.
   // Reload from inside the page the instant it flips (no Playwright round trip).
-  const reload = page.evaluate(reloadWhenBadgeFlips);
+  const navigated = page.waitForEvent('framenavigated', (frame) => frame === page.mainFrame());
+  const reload = page.evaluate(reloadWhenBadgeFlips).catch((err: Error) => {
+    if (!/Execution context was destroyed/i.test(err.message)) throw err;
+  });
   await page.getByTestId('llm-save').click();
-  await reload;
+  await Promise.all([navigated, reload]);
   await page.waitForLoadState('domcontentloaded');
 
   await expect(page.getByTestId('ai-status-badge')).toHaveText(/AI:\s*OpenRouter/);
@@ -136,15 +139,19 @@ test('a finished chat turn survives an immediate full page load', async ({ page 
     timeout: 120_000,
   });
   await expect(page.getByTestId('chat-reanchor-status')).toHaveCount(0);
-  await page.getByTestId('chat-input').fill(QUESTION);
-  await page.getByTestId('chat-send-button').click();
+  await expect(panel).toBeVisible();
 
   // The app's "done" signal: the answer is shown and the turn has ended. The
   // reload starts from inside the page in the same DOM mutation that shows it,
   // like a user hitting refresh the instant the spinner stops (a Playwright
   // round trip here would add tens of ms and hide the race).
-  await expect(panel).toBeVisible();
-  await page.evaluate(reloadWhenTurnEnds, ANSWER);
+  const navigated = page.waitForEvent('framenavigated', (frame) => frame === page.mainFrame());
+  const reload = page.evaluate(reloadWhenTurnEnds, ANSWER).catch((err: Error) => {
+    if (!/Execution context was destroyed/i.test(err.message)) throw err;
+  });
+  await page.getByTestId('chat-input').fill(QUESTION);
+  await page.getByTestId('chat-send-button').click();
+  await Promise.all([navigated, reload]);
   await page.waitForURL(/\/dashboard/);
   await page.waitForLoadState('domcontentloaded');
 

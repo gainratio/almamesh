@@ -178,3 +178,34 @@ export async function applyServiceWorkerUpdate(
   }
   waiting.postMessage(SKIP_WAITING_MESSAGE);
 }
+
+/**
+ * Check at page boot/reload whether a newer service worker is available on the
+ * origin, and if so activate it immediately (`SKIP_WAITING` + reload on
+ * `controllerchange`). No-op on a first visit (not yet controlled) or when the
+ * active worker is already current (`waitingWorker` returns null).
+ */
+export async function activatePendingUpdateOnBoot(
+  options: ServiceWorkerUpdateOptions = {},
+): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) {
+    return false;
+  }
+  const registration = await currentRegistration();
+  if (!registration || !registration.active) {
+    return false;
+  }
+  const hadController = Boolean(navigator.serviceWorker.controller);
+  const waiting = await waitingWorker(registration);
+  if (!waiting) {
+    return false;
+  }
+  if (hadController) {
+    const reload = options.reload ?? reloadPage;
+    armReload(reload, options.onStatus ?? (() => undefined));
+  }
+  waiting.postMessage(SKIP_WAITING_MESSAGE);
+  return true;
+}
+
+
