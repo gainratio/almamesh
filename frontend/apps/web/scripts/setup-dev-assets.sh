@@ -193,13 +193,17 @@ fi
 echo "==> Building almamesh wheel"
 ( cd "${BACKEND_DIR}" && uv build --wheel )
 
-echo "==> Generating a dev signing keypair (./backend/keys)"
-( cd "${BACKEND_DIR}" && uv run almamesh-bundle keygen ./keys --force )
+if [[ ! -f "${BACKEND_DIR}/keys/private.key" || ! -f "${BACKEND_DIR}/keys/public.key" ]]; then
+  echo "==> Generating a dev signing keypair (./backend/keys)"
+  ( cd "${BACKEND_DIR}" && uv run almamesh-bundle keygen ./keys --force )
+else
+  echo "==> Reusing existing dev signing keypair (./backend/keys)"
+fi
 
-# The dev key is regenerated (--force) and the bundle re-signed on every run. A
+# The bundle is re-signed on every run with an increasing epoch-second sequence. A
 # browser that already synced a dev bundle keeps its signed sequence as a durable
-# anti-rollback floor in OPFS, so a fixed sequence (the CLI default is 1) would be
-# refused as a rollback. Epoch seconds strictly increase across re-runs. Dev only:
+# anti-rollback floor in OPFS, so epoch seconds strictly increase across re-runs
+# while keeping the same dev signing key. Dev only:
 # production sequences come from build-prod.sh (git commit count) + release_guard.
 DEV_BUNDLE_SEQUENCE="${DEV_BUNDLE_SEQUENCE:-$(date +%s)}"
 echo "==> Signing the offline dev bundle (./backend/origin), sequence ${DEV_BUNDLE_SEQUENCE}"

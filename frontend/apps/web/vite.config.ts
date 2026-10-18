@@ -791,7 +791,7 @@ export default defineConfig({
     // standalone sync Worker is an installed dependency. (No effect on the
     // production build / preview.)
     fs: {
-      allow: ['..'],
+      allow: ['../..'],
     },
   },
   build: {
