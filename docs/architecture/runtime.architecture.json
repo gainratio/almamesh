@@ -6,8 +6,8 @@
     "locale": "en",
     "quality_profile": "showcase",
     "repository": {
-      "url": "https://github.com/hseshadr/almamesh",
-      "revision": "fd661d5ffec5de9e3bb35068ae69f06e2e810436"
+      "url": "https://github.com/gainratio/almamesh",
+      "revision": "ed0dbb76624a84e210a0d2a1be278088afa74beb"
     },
     "viewBox": [1390, 800],
     "views": [
@@ -33,7 +33,7 @@
         "id": "durable-device-state",
         "label": "Durable device state",
         "focus": ["runtime", "app_data", "sync_worker", "bundle_cache", "sqlite_vector_worker", "semantic_memory"],
-        "note": "Personal records, authenticated engine bytes, and derived semantic vectors use separate on-device storage contracts."
+        "note": "Personal records (almamesh-user-state), engine chunks (almamesh-constructs-chunks), and semantic vectors use separate OPFS SQLite databases."
       },
       {
         "id": "semantic-memory",
@@ -88,10 +88,10 @@
       "id": "bundle_cache",
       "type": "database",
       "label": "Engine Bundle Cache",
-      "sublabel": "OPFS · IndexedDB fallback",
+      "sublabel": "OPFS SQLite · chunks",
       "pos": [705, 320],
       "size": [145, 72],
-      "sources": [{ "path": "docs/ARCHITECTURE.md", "line": 20, "end_line": 29, "label": "Durable cache contract" }]
+      "sources": [{ "path": "frontend/packages/browser/src/edgeprocClient.ts", "line": 31, "end_line": 44, "label": "Durable SQLite cache contract" }]
     },
     {
       "id": "pyodide_worker",
@@ -127,7 +127,7 @@
       "id": "app_data",
       "type": "database",
       "label": "Portable App Data",
-      "sublabel": "OPFS SQLite · one file",
+      "sublabel": "OPFS SQLite · user-state",
       "pos": [355, 535],
       "size": [145, 66],
       "sources": [{ "path": "frontend/packages/store/src/index.ts", "line": 1, "end_line": 17, "label": "Storage ownership" }]

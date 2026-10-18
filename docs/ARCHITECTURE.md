@@ -4,12 +4,15 @@
 chart engine — the same `almamesh` package you can run on your laptop — runs
 *inside the browser tab* under Pyodide (Python compiled to WebAssembly), fed by
 an ed25519-signed, content-addressed bundle cached in durable browser storage.
-OPFS is the fast path for the signed engine cache; IndexedDB is that cache's
-persistent fallback when a browser exposes OPFS but cannot open it. Canonical
-user data is separate: profiles, charts, life events, predictive results, chat,
-interpretations, portable preferences, and the optional AI key live together in
-one standard SQLite database in OPFS. Neither localStorage nor IndexedDB is an
-ongoing user-data mirror. The network carries
+Verified engine chunks, manifests, and the anti-rollback floor live in an OPFS
+SQLite cache (`SqliteCacheStore`, `edgeproc-browser-chunks` / `almamesh-constructs-chunks`,
+`cacheFallback: 'none'`), with an explicit in-memory SQLite session only when
+a browser refuses OPFS while allowing site storage; there is no IndexedDB
+fallback. Canonical user data is separate: profiles, charts, life events,
+predictive results, chat, interpretations, portable preferences, and the
+optional AI key live together in one standard `almamesh-user-state` SQLite
+database in OPFS. Neither localStorage nor IndexedDB is an ongoing user-data
+or bundle-cache mirror. The network carries
 delivery metadata and the explicitly disclosed city-search/optional-AI flows;
 birth details and computed charts are not sent by the engine or geocoder.
 Optional chat memory is also derived entirely on-device: a self-hosted MiniLM
@@ -26,19 +29,54 @@ standard, this repo is the exemplar for the "Pyodide app engine" pattern
 
 ## The delivery + compute flow
 
-![Signed bundle → OPFS primary path → Pyodide engine](assets/delivery-flow.svg)
+```mermaid
+flowchart LR
+  subgraph publisher["Build time (publisher / CI)"]
+    wheel["almamesh wheel<br/>(unchanged Python engine)"]
+    assets["de421.bsp + finals2000A.all<br/>+ pyodide/skyfield wheels"]
+    cli["almamesh-bundle CLI<br/>ed25519-sign, content-address"]
+    wheel --> cli
+    assets --> cli
+  end
 
-The diagram shows the primary OPFS path. IndexedDB implements the same cache
-contract when OPFS cannot open and always retains the shared monotonic release
-floor, so switching storage backends cannot accept an older signed bundle. That
-small IndexedDB control plane is required even on the OPFS fast path; serialized
-reads and syncs ensure pruning cannot invalidate an in-flight reader. Successful
-syncs prune its content to the active release when Web Locks are available;
-otherwise pruning is skipped. Quota failures keep serving the last authenticated
-complete release.
+  subgraph cdn["Static hosting (Cloudflare Pages)"]
+    bundle["Signed bundle<br/>(manifest + chunks)"]
+    key["/public.key<br/>(pinned verify key)"]
+  end
 
-*Diagram source: [assets/delivery-flow.d2](assets/delivery-flow.d2) (d2, the
-house diagram format).*
+  subgraph browser["Browser tab (100% on-device)"]
+    sync["@almamesh/browser<br/>verify ed25519 + sha256 (fail-closed)"]
+    opfs[("OPFS SQLite Cache<br/>SqliteCacheStore (cacheFallback: 'none')")]
+    subgraph worker["Pyodide Web Worker"]
+      pyodide["Pyodide (Python-in-WASM)<br/>boots unchanged wheel"]
+      engine["almamesh engine<br/>byte-identical to CPython"]
+      pyodide --> engine
+    end
+    ui["React PWA<br/>charts, dasha, mesh, report"]
+    state[("OPFS SQLite State<br/>almamesh-user-state")]
+
+    sync -->|store verified chunks| opfs
+    opfs -->|load wheels + ephemeris| pyodide
+    engine -->|SiderealChart JSON| ui
+    ui <-->|CAS transactions| state
+  end
+
+  cli -->|publish| bundle
+  bundle -->|one-way delivery| sync
+  key -->|pin| sync
+```
+
+The diagram shows the primary OPFS SQLite path. `@gainratio/browser`'s
+`SqliteCacheStore` stores verified chunks, manifests, the active pointer, and
+the monotonic anti-rollback release floor inside a dedicated OPFS SQLite
+database (`edgeproc-browser-chunks`, with one-time migration from legacy 0.2.x
+IndexedDB stores and no ongoing IndexedDB writes). By default AlmaMesh passes
+`cacheFallback: 'none'`, refusing an ephemeral cache up front unless the browser
+refuses OPFS while allowing site storage, in which case both `almamesh-user-state`
+and the bundle cache run in memory for that tab with an explicit non-persistence
+notice. Serialized reads and syncs under Web Locks ensure pruning cannot
+invalidate an in-flight reader, and quota failures keep serving the last
+authenticated complete release.
 
 1. **Build time** — `almamesh-bundle` (the Python CLI in `backend/`) assembles
    the engine wheel, the JPL DE421 ephemeris, and the Pyodide/Skyfield wheels
@@ -49,9 +87,9 @@ house diagram format).*
 2. **Delivery** — the bundle is static files on Cloudflare Pages. One-way:
    nothing ever flows back.
 3. **In the tab** — `@almamesh/browser` verifies the signature (fail-closed:
-   a bad signature raises, never downgrades), syncs chunks into a private,
-   durable content-addressed cache (**OPFS**, or **IndexedDB** when OPFS cannot
-   open), and boots the **unchanged wheel** under
+   a bad signature raises, never downgrades), syncs chunks into the private,
+   durable OPFS SQLite content-addressed cache (`SqliteCacheStore`, never
+   IndexedDB), and boots the **unchanged wheel** under
    Pyodide in a Web Worker. Charts compute off the UI thread, byte-identical
    to CPython — `apps/web/scripts/verify-browser-parity.mjs` enforces that
    identity in CI by driving the real Worker in headless Chromium and
