@@ -50,8 +50,8 @@ frontend/
 | `@almamesh/shared-types` | The UI contract (`ChartData` and friends). UI code depends on this, not on the engine's raw shapes. |
 | `@almamesh/constants` | The **single design-token source** (colors, typography, astrology constants); also exports a Tailwind preset (`@almamesh/constants/tailwind.preset`). |
 | `@almamesh/browser` | The in-browser engine. Bundle sync + Pyodide chart Worker + `AlmaMeshRuntime`. |
-| `@gainratio/browser` | Standalone browser sync Lego from npm, tracking its latest release (`^0.2.0`): signed-bundle sync into OPFS/IndexedDB with ed25519 + sha256 fail-closed. See `../docs/edgeproc-browser.md`. |
-| `@almamesh/store` | Zustand stores + **pure** adapters, all reshape-only with **no astrology math**: `chart.ts` (`SiderealChart → ChartData`), `chartGeometry.ts` (`buildChartGeometry` → N/S kundli geometry), `energy.ts` (`buildEnergyFrame(chart, t)` → 3D force-field frame), plus the `profiles` store (named, password-less people; each owns its charts). |
+| `@gainratio/browser` | Standalone browser sync Lego from npm, tracking its latest release (`^0.4.1`): signed-bundle sync into OPFS SQLite (`SqliteCacheStore`, `cacheFallback: 'none'`, no IndexedDB) with ed25519 + sha256 fail-closed. See `../docs/edgeproc-browser.md`. |
+| `@almamesh/store` | Zustand stores + **pure** adapters, all reshape-only with **no astrology math**: `chart.ts` (`SiderealChart → ChartData`), `chartGeometry.ts` (`buildChartGeometry` → N/S kundli geometry), `energy.ts` (`buildEnergyFrame(chart, t)` → 3D force-field frame), plus the `profiles` store (named, password-less people; each owns its charts), persisted in the canonical `almamesh-user-state` OPFS SQLite database. |
 | `@almamesh/llm` | Optional narration + multi-turn chat — **no AI by default** (the chart is pure calculation). Opt-in **cloud/BYO** only: any OpenAI-compatible endpoint (`engine:'openai-http'`) — a one-click OpenRouter preset (stronger) or a local Ollama. Saving runs a real connectivity probe (`testProviderConnection`); PII-redacted, fail-closed `local_only`. Never required to draw a chart. |
 | `@almamesh/memory` | Zero-egress semantic chat memory: self-hosted MiniLM embeddings plus the shared `@gainratio/browser/vector/sqlite` Worker. Exact cosine search and profile/generation filtering run in SQLite; derived vectors persist in OPFS. |
 | `apps/web` | The React/Vite "Observatory" PWA: UI primitives (`src/components/ui/`), `AppLayout` shell, N/S charts, and the `forcefield/` 3D hero. Self-hosted fonts (`@fontsource-variable/*`) — no font CDN. |
@@ -66,7 +66,7 @@ Two Workers, off the UI thread, driven by `AlmaMeshRuntime.bootstrap()`:
    `@gainratio/browser` package pulls the **signed,
    content-addressed bundle** from a static origin, verifies it **ed25519 +
    sha256 fail-closed**, and materializes the DE421 ephemeris + the
-   Skyfield/Pyodide/`almamesh` wheels into **OPFS**.
+   Skyfield/Pyodide/`almamesh` wheels into **OPFS SQLite** (`SqliteCacheStore`).
 2. **Pyodide Worker** — `ChartEngineClient` boots Pyodide from the self-hosted
    dist, installs the wheels from OPFS, and calls the *same* Python entrypoint
    the CLI uses: `calculate_sidereal_context(dt, lat, lon, reference_date=...)`.
@@ -98,7 +98,7 @@ single engine, any OpenAI-compatible endpoint they bring:
 - **Cloud / BYO endpoint.** The one-click **OpenRouter** preset (stronger
   models), or point `VITE_LLM_API_BASE`/`VITE_LLM_API_KEY` (or Settings → AI) at
   any OpenAI-compatible server — e.g. a local **Ollama** at
-  `http://localhost:11434/v1`. Saving runs a real 1-token connectivity probe
+  `http://localhost:11434/v1`. Saving runs a real JSON-mode connectivity probe
   (`testProviderConnection`), so a bad key / bad model / out-of-credits /
   unreachable endpoint is reported immediately in the UI (and logged to the
   console) instead of a silent no-op.

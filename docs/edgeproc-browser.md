@@ -10,8 +10,8 @@ the historical cache layout, and exit-gate observability.
 | Field | Value |
 |---|---|
 | Package | [`@gainratio/browser`](https://www.npmjs.com/package/@gainratio/browser) |
-| Range | `^0.2.0` (no upper cap; never a Git alias, never `"latest"`) |
-| Source repository | `https://github.com/hseshadr/edgeproc-browser` |
+| Range | `^0.4.1` (no upper cap; never a Git alias, never `"latest"`) |
+| Source repository | `https://github.com/gainratio/edgeproc-browser` |
 | License | MIT |
 | Consumer manifests | `frontend/packages/browser/package.json`, `frontend/packages/memory/package.json`, `frontend/packages/store/package.json` |
 | Reproducible lock | `frontend/bun.lock` (a deploy builds exactly what CI tested) |
@@ -25,16 +25,18 @@ A Dependabot job (`.github/dependabot.yml`, group `gainratio`) checks
 
 - `frontend/packages/browser/src/edgeproc.worker.ts` is the one-line,
   consumer-owned Vite Worker entry.
-- `frontend/packages/browser/src/edgeprocClient.ts` adapts AlmaMesh's legacy
-  four-argument sync port, preserves the `edgeproc-browser-cache` /
-  `content-addressed-cache` / `:` IndexedDB layout, and maps the private
-  exit-gate fallback hook to the shared typed storage option.
+- `frontend/packages/browser/src/edgeprocClient.ts` adapts AlmaMesh's
+  sync port, passes the `edgeproc-browser` SQLite cache namespace plus the
+  legacy `edgeproc-browser-cache` / `content-addressed-cache` / `:` IndexedDB
+  layout for one-time migration into OPFS SQLite (`SqliteCacheStore`), enforces
+  `cacheFallback: "none"` by default (or `"memory"` when the app's own state runs
+  in memory because OPFS is refused), and publishes exit-gate cache diagnostics.
 - `frontend/packages/browser/src/pyodide/` remains AlmaMesh product code: it
   loads the signed chart assets and boots the Pyodide chart Worker.
 
 Generic signature verification, bounded fetch/decompression, content-addressed
-sync, OPFS/IndexedDB persistence, locking, Worker protocol, and vector adapters
-live only in the standalone package.
+sync, OPFS SQLite persistence (`SqliteCacheStore`), locking, Worker protocol,
+passphrase sealing, and vector adapters live only in the standalone package.
 
 `frontend/packages/memory/src/vectorStore.ts` is a second thin domain adapter:
 it maps chat chunks to flat SQLite metadata, applies the durable dataset
@@ -48,8 +50,9 @@ persistence to `@gainratio/browser/vector/sqlite`.
 2. Run the complete frontend gate.
 3. Build the real Vite app and confirm it emits one signed-bundle Worker asset
    and one SQLite-vector Worker asset.
-4. Run the Chromium parity journey and both WebKit persistence journeys. They
-   prove warm OPFS reuse, forced IndexedDB fallback using the historical layout,
+4. Run the Chromium parity journey and the WebKit persistence journeys. They
+   prove warm OPFS SQLite reuse, in-memory SQLite fallback with the visible
+   notice when OPFS cannot open (zero IndexedDB databases),
    offline reload, trust-root refresh, and exactly one sync Worker asset.
 5. Run the security audit and secret scan before merge.
 

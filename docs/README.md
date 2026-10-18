@@ -18,8 +18,8 @@ Start with the top-level docs:
   build → preview → generate a chart offline), and the no-frontend CLI path.
 - **[QUICKSTART](QUICKSTART.md)** — `make demo` to a rendered chart, plus the
   one-command quality gate.
-- **[ARCHITECTURE](ARCHITECTURE.md)** — the signed-bundle → OPFS → Pyodide flow
-  in one diagram (d2 source committed).
+- **[ARCHITECTURE](ARCHITECTURE.md)** — the signed-bundle → OPFS SQLite → Pyodide
+  flow in one Mermaid diagram.
 - **[Tech stack](tech-stack.md)** — the local-first engine + bundle delivery +
   in-browser Pyodide architecture, with the real commands.
 - **[Frontend README](../frontend/README.md)** — the Bun monorepo, the
