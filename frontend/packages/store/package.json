@@ -22,7 +22,7 @@
     "@almamesh/constants": "workspace:*",
     "@almamesh/llm": "workspace:*",
     "@almamesh/shared-types": "workspace:*",
-    "@gainratio/browser": "^0.4.1",
+    "@gainratio/browser": "^0.4.2",
     "dayjs": "^1.11.23",
     "idb-keyval": "^6.3.0",
     "zustand": "^5.0.14"

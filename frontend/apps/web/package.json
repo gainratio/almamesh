@@ -59,7 +59,7 @@
     "smoke:returning-pair": "bun scripts/serve-returning-pair.ts"
   },
   "dependencies": {
-    "@gainratio/browser": "^0.4.1",
+    "@gainratio/browser": "^0.4.2",
     "@almamesh/browser": "workspace:*",
     "@almamesh/constants": "workspace:*",
     "@almamesh/llm": "workspace:*",
