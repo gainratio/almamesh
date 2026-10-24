@@ -281,7 +281,9 @@ See [SECURITY.md](SECURITY.md) for reporting a vulnerability.
 
 ## What this proves / what it does not prove
 
-**Planet positions are accurate to under an arcsecond.** You can check this yourself. It runs **fully
+**Planet positions agree with the committed astropy + JPL Horizons oracle to about 0.05
+arcsec; the natal regression gate is looser (18 arcsec for planets, 180 arcsec for the
+ascendant) and the transit gate enforces 1 arcsec.** You can check this yourself. It runs **fully
 offline**: the engine uses the vendored `backend/de421.bsp`, and the independent
 astropy + JPL Horizons oracle values are committed as fixtures (no live download
 or API call at test time).
@@ -485,8 +487,8 @@ build you publish — build-time values end up in the shipped JavaScript.
 
 | Capability | What | State |
 |------------|------|-------|
-| Engine | Deterministic sidereal chart + dasha + yogas (Python); Lahiri default, True-Chitra + True-node selectable | ✅ shipped, tested |
-| Engine validation | External golden-reference check: astropy (independent code path) + committed JPL Horizons cross-check, agreeing to sub-arcsecond; license-clean (no Swiss Ephemeris) | ✅ shipped, tested |
+| Engine | Deterministic sidereal chart + dasha + yogas (Python); Lahiri ayanamsa and mean node | ✅ shipped, tested |
+| Engine validation | External golden-reference check: astropy (independent code path) + committed JPL Horizons cross-check, measured agreement ~0.05 arcsec (gate tolerance 18 arcsec natal / 1 arcsec transit); license-clean (no Swiss Ephemeris) | ✅ shipped, tested |
 | Bundle publisher | Signed, content-addressed bundle publish/sync | ✅ shipped, tested |
 | Offline CLI | `almamesh-chart`, `almamesh-bundle` | ✅ shipped, tested |
 | In-browser engine | The Python wheel in Pyodide/WASM, off the UI thread | ✅ shipped (byte-parity gated in CI, [in a real browser](#is-the-browser-chart-really-byte-identical)) |
