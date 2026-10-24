@@ -87,7 +87,7 @@ const DIST = `${WEB}/dist`
 const KEYS = "/run/almamesh-keys"
 const BUN_INSTALLER = "/opt/almamesh/install-bun.sh"
 const LIVE_ORIGIN = "https://almamesh.com"
-const BROWSER_LEGO_SPEC = '"@gainratio/browser": "^0.4.1"'
+const BROWSER_LEGO_SPEC = '"@gainratio/browser": "^0.4.2"'
 const CONTRACT_SHA = "1111111111111111111111111111111111111111"
 // Owner of the Git source a Git-linked Pages project stays bound to. Pinned to
 // today's owner so the binding survives the hseshadr -> gainratio transfer.

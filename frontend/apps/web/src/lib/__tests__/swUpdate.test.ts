@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 
-import { activatePendingUpdateOnBoot, applyServiceWorkerUpdate } from '../swUpdate';
+import { applyServiceWorkerUpdate } from '../swUpdate';
 
 interface StubWorker {
   state: string;
@@ -221,83 +221,4 @@ describe('applyServiceWorkerUpdate', () => {
     expect(env.reload).toHaveBeenCalledTimes(1);
   });
 });
-
-describe('activatePendingUpdateOnBoot', () => {
-  it('activates a waiting worker on boot when already controlled and reloads on controllerchange', async () => {
-    const waiting = stubWorker();
-    const registration: Record<string, unknown> = {
-      active: stubWorker('activated'),
-      waiting: null,
-      update: vi.fn(),
-    };
-    (registration.update as ReturnType<typeof vi.fn>).mockImplementation(async () => {
-      registration.waiting = waiting;
-    });
-    const env = stubEnv({ registration });
-
-    const activated = await activatePendingUpdateOnBoot({ reload: env.reload });
-
-    expect(activated).toBe(true);
-    expect(registration.update).toHaveBeenCalledTimes(1);
-    expect(waiting.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
-    expect(env.reload).not.toHaveBeenCalled();
-
-    env.takeControl();
-    expect(env.reload).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not reload when the active worker is already up to date', async () => {
-    const registration = {
-      active: stubWorker('activated'),
-      waiting: null,
-      update: vi.fn().mockResolvedValue(undefined),
-    };
-    const env = stubEnv({ registration });
-
-    const activated = await activatePendingUpdateOnBoot({ reload: env.reload });
-
-    expect(activated).toBe(false);
-    expect(registration.update).toHaveBeenCalledTimes(1);
-    expect(env.reload).not.toHaveBeenCalled();
-  });
-
-  it('promotes a waiting worker without a redundant reload on a hard reload (active worker, null controller)', async () => {
-    const waiting = stubWorker();
-    const reload = vi.fn();
-    vi.stubGlobal('navigator', {
-      serviceWorker: {
-        controller: null,
-        getRegistration: vi.fn().mockResolvedValue({
-          active: stubWorker('activated'),
-          waiting,
-          update: vi.fn(),
-        }),
-      },
-    });
-    vi.stubGlobal('window', { location: { reload } });
-
-    const activated = await activatePendingUpdateOnBoot({ reload });
-
-    expect(activated).toBe(true);
-    expect(waiting.postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
-    expect(reload).not.toHaveBeenCalled();
-  });
-
-  it('no-ops on a first visit when no active worker exists yet', async () => {
-    const reload = vi.fn();
-    vi.stubGlobal('navigator', {
-      serviceWorker: {
-        controller: null,
-        getRegistration: vi.fn().mockResolvedValue({ active: null, waiting: null }),
-      },
-    });
-    vi.stubGlobal('window', { location: { reload } });
-
-    const activated = await activatePendingUpdateOnBoot({ reload });
-
-    expect(activated).toBe(false);
-    expect(reload).not.toHaveBeenCalled();
-  });
-});
-
 

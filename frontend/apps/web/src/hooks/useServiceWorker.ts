@@ -2,24 +2,15 @@ import { useCallback, useEffect, useState } from 'react'
 import { registerSW } from 'virtual:pwa-register'
 
 import { healStrandedServiceWorker } from '../lib/swSelfHeal'
-import {
-  activatePendingUpdateOnBoot,
-  applyServiceWorkerUpdate,
-  type UpdateStatus,
-} from '../lib/swUpdate'
+import { applyServiceWorkerUpdate, type UpdateStatus } from '../lib/swUpdate'
 
 /**
  * Registers the PWA Service Worker and surfaces its update lifecycle.
  *
  * Update policy (matches the P6 cache-discipline spec):
- *   - On page boot/reload when already controlled by an older worker,
- *     {@link activatePendingUpdateOnBoot} checks `sw.js` immediately and, if a
- *     newer worker is waiting/installing, promotes it (`SKIP_WAITING`) and
- *     reloads once `controllerchange` fires — so a browser reload (`Cmd+R`)
- *     after code changes lands cleanly on the new build.
- *   - While a tab stays open across a later deploy, `registerType: 'prompt'` +
- *     `/version.json` polling surface `UpdateBanner` without yanking an active
- *     session mid-work.
+ *   - `registerType: 'prompt'` — a new SW installs but WAITS. We never auto
+ *     `skipWaiting` for a normal update; instead `needRefresh` flips true and
+ *     the UI offers a reload (see {@link UpdateBanner}).
  *   - `update()` is the force path: it activates the waiting SW (skipWaiting)
  *     and reloads, so a security update can be pushed through immediately.
  *
@@ -48,10 +39,6 @@ export function useServiceWorker() {
     // Chrome error page. Detect + repair (unregister + reload once, engine caches
     // preserved) so a returning visitor is never stranded — no manual reset.
     void healStrandedServiceWorker()
-
-    // If this controlled page booted/reloaded while a newer SW is already on
-    // the origin, activate the new SW and reload onto the fresh build now.
-    void activatePendingUpdateOnBoot({ onStatus: setUpdateStatus })
 
     registerSW({
       immediate: true,

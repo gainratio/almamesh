@@ -694,7 +694,7 @@ describe("browser Lego caret pin", () => {
   }
 
   test("passes a lock that resolves our libraries from npm", async () => {
-    expect(await pinCheckExit('"@gainratio/browser": ["@gainratio/browser@0.4.1", ""]')).toBe(0)
+    expect(await pinCheckExit('"@gainratio/browser": ["@gainratio/browser@0.4.2", ""]')).toBe(0)
   })
 
   test.each(["hseshadr", "gainratio"])("refuses a %s Git alias in the lock", async (owner) => {

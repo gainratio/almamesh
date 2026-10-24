@@ -45,7 +45,7 @@
         "@fontsource-variable/fraunces": "^5.3.0",
         "@fontsource-variable/hanken-grotesk": "^5.3.0",
         "@fontsource-variable/spline-sans-mono": "^5.3.0",
-        "@gainratio/browser": "^0.4.1",
+        "@gainratio/browser": "^0.4.2",
         "@gainratio/errors": "^0.3.1",
         "@gainratio/receipt-ui": "0.3.0",
         "@huggingface/transformers": "^4.3.1",
@@ -122,7 +122,7 @@
       "dependencies": {
         "@gainratio/assay": "0.5.0-dev.6",
         "@gainratio/avow": "^0.5.3",
-        "@gainratio/browser": "^0.4.1",
+        "@gainratio/browser": "^0.4.2",
         "pyodide": "^314.0.7",
       },
       "devDependencies": {
@@ -160,7 +160,7 @@
       "name": "@almamesh/memory",
       "version": "0.0.1",
       "dependencies": {
-        "@gainratio/browser": "^0.4.1",
+        "@gainratio/browser": "^0.4.2",
         "@huggingface/transformers": "^4.3.1",
       },
       "devDependencies": {
@@ -186,7 +186,7 @@
         "@almamesh/constants": "workspace:*",
         "@almamesh/llm": "workspace:*",
         "@almamesh/shared-types": "workspace:*",
-        "@gainratio/browser": "^0.4.1",
+        "@gainratio/browser": "^0.4.2",
         "dayjs": "^1.11.23",
         "idb-keyval": "^6.3.0",
         "zustand": "^5.0.14",
@@ -613,7 +613,7 @@
 
     "@gainratio/avow": ["@gainratio/avow@0.5.3", "", { "dependencies": { "@noble/ed25519": "^3.1.0", "canonicalize": "^3.0.0" } }, "sha512-EeIvZ2xkXDiLpJRhVyODbTNscURy0Xqnzxucbkn9UfZSUIuSqwDfG/EvfSl0AcOLnJQ8PNMM2s2Oq41ACC8uqQ=="],
 
-    "@gainratio/browser": ["@gainratio/browser@0.4.1", "", { "dependencies": { "@hpcc-js/wasm-zstd": "^1.16.1", "@noble/ed25519": "^3.2.0", "age-encryption": "^0.3.1" } }, "sha512-swPrWgzWicZv0CHI3CB1WuQsV8xN2IdBIYeowqH0RZR/5SuQidyXKNzAYKRe7gaNT0Wc8FK/TnpkgReDwJFB5w=="],
+    "@gainratio/browser": ["@gainratio/browser@0.4.2", "", { "dependencies": { "@hpcc-js/wasm-zstd": "^1.16.1", "@noble/ed25519": "^3.2.0", "age-encryption": "^0.3.1" } }, "sha512-/h6QbjmCrMrd4Ee2F9K/P6nmbdMzRLEDWSPCYwNgb60S+PnZxcE5SSUt61+As8iVHnoUP8Da13cqTChP4va3ig=="],
 
     "@gainratio/errors": ["@gainratio/errors@0.3.1", "", {}, "sha512-+pmoXvBem3EKzoM+4KNkQ4Whk6HRQ80fxEPJRQmPwyLgOzdmxcDaAalMdpXVVARYUc+mIUbMyAf17udjiTVJ+g=="],
 
