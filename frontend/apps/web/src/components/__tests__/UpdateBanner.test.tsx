@@ -6,11 +6,7 @@ import userEvent from '@testing-library/user-event';
 // an update, so `needRefresh` stays false and only the version poller can raise
 // the banner. That is exactly the branch this file guards.
 vi.mock('../../lib/swSelfHeal', () => ({ healStrandedServiceWorker: vi.fn() }));
-vi.mock('../../lib/swUpdate', () => ({
-  activatePendingUpdateOnBoot: vi.fn(),
-  applyServiceWorkerUpdate: vi.fn(),
-  reloadPage: vi.fn(),
-}));
+vi.mock('../../lib/swUpdate', () => ({ applyServiceWorkerUpdate: vi.fn(), reloadPage: vi.fn() }));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));

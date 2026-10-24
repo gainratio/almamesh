@@ -131,7 +131,7 @@ export const KNOWN_ERROR_CLASSES: ReadonlySet<string> = new Set([
   'CacheFallbackRefusedError', 'EngineOperationError', 'EngineStorageUnavailableError', 'GetSyncHandleError',
   'IntegrityError', 'KeyRevokedError', 'KeyringError', 'LegacyFloorUnavailableError', 'PointerExpiredError',
   'ResponseTooLargeError', 'RollbackError', 'SQLite3Error', 'SignatureError', 'SqlImportRejectedError',
-  'SqlStorageUnavailableError', 'SqlTransactionEndedError', 'SqliteStateConflictError', 'SqliteStateSchemaError',
+  'SqlStorageUnavailableError', 'SqlSwapTimeoutError', 'SqlTransactionEndedError', 'SqliteStateConflictError', 'SqliteStateSchemaError',
   'StorageQuotaError', 'SyncCapError', 'UnknownKeyError', 'WasmAllocError', 'WorkerCrashError', 'WorkerTimeoutError',
 ]);
 

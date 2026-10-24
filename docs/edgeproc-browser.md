@@ -10,7 +10,7 @@ the historical cache layout, and exit-gate observability.
 | Field | Value |
 |---|---|
 | Package | [`@gainratio/browser`](https://www.npmjs.com/package/@gainratio/browser) |
-| Range | `^0.4.1` (no upper cap; never a Git alias, never `"latest"`) |
+| Range | `^0.4.2` (no upper cap; never a Git alias, never `"latest"`) |
 | Source repository | `https://github.com/gainratio/edgeproc-browser` |
 | License | MIT |
 | Consumer manifests | `frontend/packages/browser/package.json`, `frontend/packages/memory/package.json`, `frontend/packages/store/package.json` |
