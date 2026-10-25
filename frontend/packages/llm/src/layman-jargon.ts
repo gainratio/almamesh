@@ -48,7 +48,13 @@ export function dropSentences(
   if (dropped === 0) return { text, dropped: 0 };
   const joined = kept
     .join("")
-    .replace(/[ \t]+\n/g, "\n")
+    .split("\n")
+    .map((line) => {
+      let end = line.length;
+      while (end > 0 && (line[end - 1] === " " || line[end - 1] === "\t")) end -= 1;
+      return line.slice(0, end);
+    })
+    .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
   return { text: joined, dropped };
