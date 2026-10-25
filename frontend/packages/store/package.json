@@ -25,7 +25,7 @@
     "@gainratio/browser": "^0.4.2",
     "dayjs": "^1.11.23",
     "idb-keyval": "^6.3.0",
-    "zustand": "^5.0.14"
+    "zustand": "^5.0.16"
   },
   "peerDependencies": {
     "@react-native-async-storage/async-storage": ">=1.23.0"
@@ -38,8 +38,8 @@
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",
     "age-encryption": "^0.3.1",
-    "fake-indexeddb": "^6.2.5",
+    "fake-indexeddb": "^6.2.6",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.4"
+    "vitest": "^5.0.5"
   }
 }
