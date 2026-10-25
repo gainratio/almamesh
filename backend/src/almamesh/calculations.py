@@ -545,8 +545,9 @@ class SkyfieldAstronomy:
         den = (math.sin(ramc_rad) * math.cos(eps_rad)) + (math.tan(lat_rad) * math.sin(eps_rad))
 
         lagna_tropical = (math.degrees(math.atan2(num, den)) + 180) % 360
-        logger.debug(f"LST: {lst_deg}, RAMC: {ramc_rad}, EPS: {eps_rad}, LAT: {lat_rad}")
-        logger.debug(f"NUM: {num}, DEN: {den}, TROPICAL: {lagna_tropical}, AYANAMSA: {ayanamsa}")
+        # Do not log the birth location (lat/lon) or the derived angles: this
+        # path handles user-supplied natal data. Log the fact, not the values.
+        logger.debug("lagna computed from local sidereal time")
         return (lagna_tropical - ayanamsa) % 360
 
 
