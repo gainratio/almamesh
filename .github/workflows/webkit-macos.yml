@@ -24,8 +24,8 @@ concurrency:
 
 # Linux WebKit cannot boot the nested-Worker OPFS engine, so desktop-Safari and
 # iPhone WebKit journeys run here: memory, travel and portable/boot, each with a
-# 45-minute bound. This lane REPORTS and never blocks: deploys wait on Dagger and
-# real Safari (safari-smoke.yml), so a lane failure only marks its step. Each
+# 45-minute bound. The memory journey is required; travel and portable still
+# report only, so a new iPhone Safari regression in memory blocks the PR. Each
 # lane redacts its copied crash reports (crash reporter key, UUIDs) and prints
 # signatures: crashes, and failed tests no crash report explains. On a main
 # push webkit-crash-issues files each new one as a `webkit-crash` or
@@ -54,7 +54,6 @@ jobs:
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: bun install --frozen-lockfile
       - run: bash scripts/webkit-macos-lane.sh memory
-        continue-on-error: ${{ true }}
       - id: collect-native-evidence
         if: always()
         timeout-minutes: 2
