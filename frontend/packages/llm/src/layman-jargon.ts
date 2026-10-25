@@ -29,7 +29,7 @@ export function findLaymanJargon(text: string): string[] {
 
 // A sentence (with its closing punctuation, quotes and trailing spaces) or a
 // run of newlines. Concatenating every piece reproduces the input exactly.
-const SENTENCE_OR_BREAK = /[^.!?…\n]+(?:[.!?…]+["'”’)\]]*)?[ \t]*|[.!?…]+[ \t]*|\n+/g;
+const SENTENCE_OR_BREAK = /[^.!?…\n]+[.!?…]*["'”’)\]]*[ \t]*|\n+/g;
 
 /**
  * Drop every sentence for which `drop` is true; everything else is kept
