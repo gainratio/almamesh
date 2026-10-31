@@ -14,9 +14,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$TOKEN" || { echo "no token"; exit 1; }
-          zone=$(curl -sS -H "Authorization: Bearer $TOKEN" "https://api.cloudflare.com/client/v4/zones?name=almamesh.com")
-          echo "$zone" | jq -c '{success,errors,count:(.result|length?)}'
-          id=$(echo "$zone" | jq -r '.result[0].id // empty')
+          id="896c840153ea9a79c8bfd9cef85c8a1e"
           test -n "$id" || exit 0
           for setting in security_level bot_management browser_check; do
             echo "== $setting"
