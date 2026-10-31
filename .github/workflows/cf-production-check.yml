@@ -1,0 +1,24 @@
+name: Cloudflare production access check
+on:
+  push:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Read zone settings
+        env:
+          TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          test -n "$TOKEN" || { echo "no token"; exit 1; }
+          zone=$(curl -sS -H "Authorization: Bearer $TOKEN" "https://api.cloudflare.com/client/v4/zones?name=almamesh.com")
+          echo "$zone" | jq -c '{success,errors,count:(.result|length?)}'
+          id=$(echo "$zone" | jq -r '.result[0].id // empty')
+          test -n "$id" || exit 0
+          for setting in security_level bot_management browser_check; do
+            echo "== $setting"
+            curl -sS -H "Authorization: Bearer $TOKEN" "https://api.cloudflare.com/client/v4/zones/$id/settings/$setting" | jq -c '{success,errors,value:.result.value}'
+          done
