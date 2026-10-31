@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  packages: read # Pull the prebuilt browser toolchain.
 
 concurrency:
   group: ${{ github.workflow }}
@@ -33,7 +34,8 @@ jobs:
         env:
           # Engine config: pull Docker Hub images via the GHCR mirror (.github/xdg/dagger/engine.json).
           XDG_CONFIG_HOME: ${{ github.workspace }}/.github/xdg
+          GITHUB_TOKEN: ${{ github.token }}
         with:
           version: "0.21.8"
           verb: call
-          args: live-probe
+          args: --registry-token=env:GITHUB_TOKEN live-probe
