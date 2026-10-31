@@ -36,15 +36,15 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "3.0.68",
+    "@ai-sdk/openai-compatible": "3.0.80",
     "@almamesh/browser": "workspace:*",
     "@almamesh/shared-types": "workspace:*",
-    "ai": "7.0.140",
+    "ai": "7.0.155",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^5.0.4"
+    "vitest": "^5.0.5"
   }
 }
