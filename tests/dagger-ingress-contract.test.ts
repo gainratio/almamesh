@@ -144,6 +144,11 @@ const UPLOAD_IF = `always() && steps.${LEAK_SCAN_ID}.outcome == 'success'`
  * step (collection, redaction, scan, upload) must still succeed.
  */
 const LANE_REPORTS = "${{ true }}"
+function expectedLaneStep(mode: MacosLaneMode): Record<string, unknown> {
+  return mode === "memory"
+    ? { run: `${LANE_RUN} ${mode}` }
+    : { run: `${LANE_RUN} ${mode}`, "continue-on-error": LANE_REPORTS }
+}
 /**
  * Redact the copied .ips in place and print the job's `crashes` output: crash
  * signatures, plus failed tests (Playwright JSON reports) that no .ips explains.
@@ -391,7 +396,7 @@ function macosLaneViolations(parsed: Record<string, unknown>): string[] {
     const runs = jobSteps.filter((step) => "run" in step).map((step) => String(step.run).trim())
     if (JSON.stringify(runs) !== JSON.stringify(["bun install --frozen-lockfile", `${LANE_RUN} ${mode}`, `${LANE_RUN} --collect-native-evidence ${mode}`, String(crashSignatureStep(mode).run), `${LANE_RUN} --finalize-evidence ${mode}`, `${LEAK_SCAN_RUN}${mode}`])) violations.push("run-steps")
     const lane = jobSteps.find((step) => step.run === `${LANE_RUN} ${mode}`)
-    if (JSON.stringify(lane) !== JSON.stringify({ run: `${LANE_RUN} ${mode}`, "continue-on-error": LANE_REPORTS })) violations.push("lane-blocks")
+    if (JSON.stringify(lane) !== JSON.stringify(expectedLaneStep(mode))) violations.push("lane-blocks")
     if (jobSteps.some((step) => (step !== lane && "continue-on-error" in step) || "env" in step || "working-directory" in step || "shell" in step)) violations.push("step-bypass")
     if (jobSteps.filter((step) => "run" in step).slice(0, 2).some((step) => "if" in step || "env" in step || "working-directory" in step)) violations.push("run-bypass")
     const checkouts = jobSteps.filter((step) => step.uses === checkout)
@@ -557,9 +562,9 @@ describe("canonical GitHub ingress contract", () => {
     const source = workflowSource("live-probe.yml")
     const on = workflow("live-probe.yml").on as Record<string, unknown>
     expect(Object.keys(on).sort()).toEqual(["schedule", "workflow_dispatch"])
-    expect(source).toContain("args: live-probe")
+    expect(source).toContain("args: --registry-token=env:GITHUB_TOKEN live-probe")
     expect(source).not.toContain("secrets.")
-    expect(workflow("live-probe.yml").permissions).toEqual({ contents: "read" })
+    expect(workflow("live-probe.yml").permissions).toEqual({ contents: "read", packages: "read" })
   })
 
   test.each([
@@ -670,7 +675,7 @@ describe("canonical GitHub ingress contract", () => {
       expect(job["timeout-minutes"]).toBe(45)
       expect(job).not.toHaveProperty("env")
       expect(job).not.toHaveProperty("permissions")
-      expect(job.steps as Array<Record<string, unknown>>).toContainEqual({ run: `${LANE_RUN} ${mode}`, "continue-on-error": LANE_REPORTS })
+      expect(job.steps as Array<Record<string, unknown>>).toContainEqual(expectedLaneStep(mode))
       expect(job.steps as Array<Record<string, unknown>>).toContainEqual(crashSignatureStep(mode))
       expect(job.outputs).toEqual(LANE_OUTPUTS)
     }

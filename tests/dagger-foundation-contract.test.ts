@@ -660,7 +660,7 @@ describe("browser Lego caret pin", () => {
   const spec = source.match(/const BROWSER_LEGO_SPEC = '([^']+)'/)?.[1]
 
   test("declares the spec the pin check greps for", () => {
-    expect(spec).toMatch(/^"@gainratio\/browser": "\^\d+\.\d+\.\d+"$/)
+    expect(spec).toMatch(/^"@gainratio\/browser": "\^\d+\.\d+\.$/)
   })
 
   // The lock must never carry a Git alias of our own libraries under EITHER owner:
@@ -687,7 +687,7 @@ describe("browser Lego caret pin", () => {
     const dir = mkdtempSync(join(tmpdir(), "pin-check-"))
     for (const manifest of ["browser", "memory", "store"]) {
       mkdirSync(join(dir, "packages", manifest), { recursive: true })
-      writeFileSync(join(dir, "packages", manifest, "package.json"), `{ ${spec} }`)
+      writeFileSync(join(dir, "packages", manifest, "package.json"), `{ ${spec}0" }`)
     }
     writeFileSync(join(dir, "bun.lock"), lock)
     return Bun.spawnSync(module.edgeprocPinCheck(), { cwd: dir }).exitCode
