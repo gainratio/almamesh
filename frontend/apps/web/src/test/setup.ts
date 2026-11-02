@@ -90,6 +90,15 @@ afterAll(() => {
 // canary) run under `@vitest-environment node`, where no `window` exists —
 // exactly the environment the build-time prerender executes in.
 if (typeof window !== 'undefined') {
+  const AnimationCtor = (window as unknown as { Animation?: { prototype?: { cancel?: () => void; finished?: Promise<unknown> } } }).Animation;
+  const originalCancel = AnimationCtor?.prototype?.cancel;
+  if (typeof originalCancel === 'function' && AnimationCtor?.prototype) {
+    AnimationCtor.prototype.cancel = function patchedCancel(this: { finished?: Promise<unknown> }) {
+      this.finished?.catch?.(() => undefined);
+      return originalCancel.call(this);
+    };
+  }
+
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     value: vi.fn().mockImplementation((query: string) => ({
