@@ -49,14 +49,22 @@ export interface RouteHead {
   readonly description: string;
   /** Absolute canonical URL on almamesh.com. */
   readonly canonical: string;
+  /** Reciprocal hreflang alternates, when a translation exists. */
+  readonly alternates?: readonly { readonly hreflang: string; readonly href: string }[];
 }
 
-function route(path: string, title: string, description: string): RouteHead {
+function route(
+  path: string,
+  title: string,
+  description: string,
+  alternates?: readonly { readonly hreflang: string; readonly href: string }[],
+): RouteHead {
   return {
     path,
     title,
     description,
     canonical: path === '/' ? `${SITE_ORIGIN}/` : `${SITE_ORIGIN}${path}`,
+    ...(alternates ? { alternates } : {}),
   };
 }
 
@@ -75,6 +83,11 @@ export const PUBLIC_ROUTE_HEADS: readonly RouteHead[] = [
     '/free-kundli',
     'Free Kundli Calculator — Vedic Birth Chart in Your Browser',
     'Generate a free Vedic kundli with planets, nakshatras, dashas, and divisional charts. Computed locally in your browser; no account or upload.',
+    [
+      { hreflang: 'en', href: `${SITE_ORIGIN}/free-kundli` },
+      { hreflang: 'hi', href: `${SITE_ORIGIN}/hi/free-kundli/` },
+      { hreflang: 'x-default', href: `${SITE_ORIGIN}/free-kundli` },
+    ],
   ),
   route(
     '/birth-chart',
@@ -195,5 +208,9 @@ export function headElementsFor(path: string): HeadElement[] {
     meta({ name: 'twitter:title', content: head.title }),
     meta({ name: 'twitter:description', content: head.description }),
     meta({ name: 'twitter:image', content: ogImage }),
+    ...(head.alternates ?? []).map((alternate) => ({
+      type: 'link',
+      props: { rel: 'alternate', hreflang: alternate.hreflang, href: alternate.href },
+    })),
   ];
 }

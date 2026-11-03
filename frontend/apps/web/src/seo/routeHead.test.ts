@@ -92,11 +92,23 @@ describe('routeHead — the single per-route SEO source', () => {
   it('every public route produces the same SHAPE of head elements', () => {
     const shapes = PUBLIC_ROUTE_PATHS.map((p) =>
       headElementsFor(p)
+        .filter((el) => el.props.rel !== 'alternate')
         .map((el) => `${el.type}:${el.props.rel ?? el.props.name ?? el.props.property}`)
         .sort()
         .join('|'),
     );
     expect(new Set(shapes).size).toBe(1);
+  });
+
+  it('emits reciprocal hreflang for the Hindi kundli page', () => {
+    const alternates = headElementsFor('/free-kundli')
+      .filter((el) => el.props.rel === 'alternate')
+      .map((el) => `${el.props.hreflang}=${el.props.href}`);
+    expect(alternates).toEqual([
+      `en=${SITE_ORIGIN}/free-kundli`,
+      `hi=${SITE_ORIGIN}/hi/free-kundli/`,
+      `x-default=${SITE_ORIGIN}/free-kundli`,
+    ]);
   });
 
   it('returns undefined for private routes', () => {
