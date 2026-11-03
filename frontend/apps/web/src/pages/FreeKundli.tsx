@@ -15,6 +15,17 @@ export default function FreeKundli(): ReactElement {
           AlmaMesh computes the sidereal chart — planets, rashis, nakshatras, and dashas — on
           your own device. No account, no upload, no server.
         </p>
+        <section lang="hi" className="mt-10 rounded-2xl border border-ui-border/60 p-6">
+          <h2 className="text-2xl font-semibold">मुफ़्त कुंडली और जन्म कुंडली</h2>
+          <p className="mt-3 text-text-secondary">
+            अपनी जन्म तिथि, समय और स्थान से मुफ़्त वैदिक कुंडली बनाएं। ग्रह, राशि, नक्षत्र और
+            दशाएं आपके ही ब्राउज़र में निकाली जाती हैं — कोई अकाउंट नहीं, कोई अपलोड नहीं।
+          </p>
+          <p className="mt-2 text-text-secondary">
+            कुंडली गणना ओपन-सोर्स इंजन से होती है और पहली बार लोड के बाद ऑफ़लाइन भी काम करती है।
+          </p>
+        </section>
+
         <h2 className="mt-10 text-2xl font-semibold">What the kundli includes</h2>
         <ul className="mt-4 space-y-3 text-text-secondary">
           <li><strong>Lagna and planets:</strong> sidereal positions using the Lahiri ayanamsha.</li>
