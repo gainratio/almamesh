@@ -378,6 +378,7 @@ const payload = {
   urlList: [
     "https://almamesh.com/",
     "https://almamesh.com/welcome",
+    "https://almamesh.com/free-kundli",
     "https://almamesh.com/privacy",
     "https://almamesh.com/terms",
     "https://almamesh.com/data-deletion",
