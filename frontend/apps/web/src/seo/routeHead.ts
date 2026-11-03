@@ -103,6 +103,11 @@ export const PUBLIC_ROUTE_HEADS: readonly RouteHead[] = [
     '/nakshatra',
     'Free Nakshatra Calculator — Find Your Birth Nakshatra & Pada',
     'Find your birth nakshatra, pada, ruling planet, and rashi from your birth details. Vedic calculations run locally in your browser.',
+    [
+      { hreflang: 'en', href: `${SITE_ORIGIN}/nakshatra` },
+      { hreflang: 'hi', href: `${SITE_ORIGIN}/hi/nakshatra/` },
+      { hreflang: 'x-default', href: `${SITE_ORIGIN}/nakshatra` },
+    ],
   ),
   route(
     '/dasha',

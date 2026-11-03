@@ -40,6 +40,7 @@ export default function FreeKundli(): ReactElement {
         <p className="mt-4 text-sm text-text-muted">
           Astrology is offered for reflection, not as medical, legal, or financial advice.
         </p>
+        <p className="mt-4"><a href="/hi/nakshatra/" className="text-accent-gold-bright underline">हिन्दी में पढ़ें</a></p>
         <section className="mt-10"><h2 className="text-2xl font-semibold">Frequently asked questions</h2><dl className="mt-4 space-y-4 text-text-secondary"><div><dt className="font-medium text-text-primary">What is a nakshatra?</dt><dd>A nakshatra is one of the 27 lunar mansions in Vedic astrology. Your birth nakshatra is the mansion the Moon occupied at birth.</dd></div><div><dt className="font-medium text-text-primary">Can I find my pada?</dt><dd>Yes. The page reports the nakshatra and its pada, along with the ruling planet.</dd></div></dl></section>
         <FaqJsonLd items={[{question: 'What is a nakshatra?', answer: 'A nakshatra is one of the 27 lunar mansions in Vedic astrology. Your birth nakshatra is the mansion the Moon occupied at birth.'}, {question: 'Can I find my pada?', answer: 'Yes. The page reports the nakshatra and its pada, along with the ruling planet.'}]} />
         <RelatedTools />
