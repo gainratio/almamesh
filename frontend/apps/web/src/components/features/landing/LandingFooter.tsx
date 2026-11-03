@@ -68,6 +68,9 @@ export function LandingFooter(): ReactElement {
             <Link to="/dasha" className="transition-colors hover:text-accent-gold-bright">
               Dasha
             </Link>
+            <Link to="/kundli-matching" className="transition-colors hover:text-accent-gold-bright">
+              Kundli Matching
+            </Link>
             <Link to="/privacy" className="transition-colors hover:text-accent-gold-bright">
               {t('footer.privacy')}
             </Link>
