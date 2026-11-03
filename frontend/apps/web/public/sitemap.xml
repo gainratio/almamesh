@@ -59,6 +59,9 @@
   </url>
   <url>
     <loc>https://almamesh.com/muhurta</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://almamesh.com/muhurta"/>
+    <xhtml:link rel="alternate" hreflang="hi" href="https://almamesh.com/hi/muhurta/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://almamesh.com/muhurta"/>
     <lastmod>2026-11-03</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
@@ -107,6 +110,15 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://almamesh.com/kundli-matching"/>
     <xhtml:link rel="alternate" hreflang="hi" href="https://almamesh.com/hi/kundli-matching/"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://almamesh.com/kundli-matching"/>
+  </url>
+  <url>
+    <loc>https://almamesh.com/hi/muhurta/</loc>
+    <lastmod>2026-11-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://almamesh.com/muhurta"/>
+    <xhtml:link rel="alternate" hreflang="hi" href="https://almamesh.com/hi/muhurta/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://almamesh.com/muhurta"/>
   </url>
   <url>
     <loc>https://almamesh.com/privacy</loc>
