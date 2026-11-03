@@ -383,6 +383,7 @@ const payload = {
     "https://almamesh.com/nakshatra",
     "https://almamesh.com/dasha",
     "https://almamesh.com/kundli-matching",
+    "https://almamesh.com/muhurta",
     "https://almamesh.com/privacy",
     "https://almamesh.com/terms",
     "https://almamesh.com/data-deletion",

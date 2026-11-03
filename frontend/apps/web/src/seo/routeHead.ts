@@ -97,6 +97,11 @@ export const PUBLIC_ROUTE_HEADS: readonly RouteHead[] = [
     'Check Vedic kundli matching for two birth charts: rashi, nakshatra, graha maitri, and traditional kuta scores. Runs locally in your browser.',
   ),
   route(
+    '/muhurta',
+    'Free Muhurta Calculator — Auspicious Vedic Timing',
+    'Find an auspicious muhurta for weddings, griha pravesh, business, or travel using nakshatra, tithi, and Vedic timing. Computed locally.',
+  ),
+  route(
     '/privacy',
     'Privacy Policy — AlmaMesh',
     'AlmaMesh computes your chart in your browser. Only birthplace search and the optional AI touch the network, and AI chart data can reveal your birth date.',
