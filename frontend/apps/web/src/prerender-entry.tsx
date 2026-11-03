@@ -44,6 +44,7 @@ import BirthChart from './pages/BirthChart';
 import Nakshatra from './pages/Nakshatra';
 import Dasha from './pages/Dasha';
 import KundliMatching from './pages/KundliMatching';
+import Muhurta from './pages/Muhurta';
 import PrivacyPolicy from './pages/legal/PrivacyPolicy';
 import TermsOfService from './pages/legal/TermsOfService';
 import DataDeletion from './pages/legal/DataDeletion';
@@ -80,6 +81,7 @@ const PAGES: Readonly<Record<string, ComponentType>> = {
   '/nakshatra': Nakshatra,
   '/dasha': Dasha,
   '/kundli-matching': KundliMatching,
+  '/muhurta': Muhurta,
   '/': HomeLanding,
   '/welcome': WelcomeLanding,
   '/privacy': PrivacyPolicy,

@@ -71,6 +71,9 @@ export function LandingFooter(): ReactElement {
             <Link to="/kundli-matching" className="transition-colors hover:text-accent-gold-bright">
               Kundli Matching
             </Link>
+            <Link to="/muhurta" className="transition-colors hover:text-accent-gold-bright">
+              Muhurta
+            </Link>
             <Link to="/privacy" className="transition-colors hover:text-accent-gold-bright">
               {t('footer.privacy')}
             </Link>
