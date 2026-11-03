@@ -56,6 +56,9 @@ export function LandingFooter(): ReactElement {
             aria-label={t('footer.tagline')}
             className="flex flex-col gap-3 text-sm text-text-secondary"
           >
+            <Link to="/free-kundli" className="transition-colors hover:text-accent-gold-bright">
+              Free Kundli
+            </Link>
             <Link to="/privacy" className="transition-colors hover:text-accent-gold-bright">
               {t('footer.privacy')}
             </Link>
