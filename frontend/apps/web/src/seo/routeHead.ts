@@ -113,6 +113,11 @@ export const PUBLIC_ROUTE_HEADS: readonly RouteHead[] = [
     '/dasha',
     'Free Vimshottari Dasha Calculator — Mahadasha & Antardasha',
     'Calculate your Vimshottari dasha timeline: mahadasha, antardasha, and planetary periods from your birth details. Computed locally in your browser.',
+     [
+      { hreflang: 'en', href: `${SITE_ORIGIN}/dasha` },
+      { hreflang: 'hi', href: `${SITE_ORIGIN}/hi/dasha/` },
+      { hreflang: 'x-default', href: `${SITE_ORIGIN}/dasha` },
+    ],
   ),
   route(
     '/kundli-matching',

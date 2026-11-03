@@ -40,6 +40,7 @@ export default function FreeKundli(): ReactElement {
         <p className="mt-4 text-sm text-text-muted">
           Astrology is offered for reflection, not as medical, legal, or financial advice.
         </p>
+        <p className="mt-4"><a href="/hi/dasha/" className="text-accent-gold-bright underline">हिन्दी में पढ़ें</a></p>
         <section className="mt-10"><h2 className="text-2xl font-semibold">Frequently asked questions</h2><dl className="mt-4 space-y-4 text-text-secondary"><div><dt className="font-medium text-text-primary">What is Vimshottari dasha?</dt><dd>It is the 120-year planetary period system used in Vedic astrology, divided into mahadasha and antardasha periods.</dd></div><div><dt className="font-medium text-text-primary">Can I use it offline?</dt><dd>Yes. After the first load, the calculation runs in your browser and works offline.</dd></div></dl></section>
         <FaqJsonLd items={[{question: 'What is Vimshottari dasha?', answer: 'It is the 120-year planetary period system used in Vedic astrology, divided into mahadasha and antardasha periods.'}, {question: 'Can I use it offline?', answer: 'Yes. After the first load, the calculation runs in your browser and works offline.'}]} />
         <RelatedTools />
