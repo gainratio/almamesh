@@ -93,6 +93,11 @@ export const PUBLIC_ROUTE_HEADS: readonly RouteHead[] = [
     '/birth-chart',
     'Free Birth Chart Calculator — Vedic Sidereal Chart Online',
     'Calculate a free Vedic birth chart with sidereal planets, nakshatras, dashas, and divisional charts. Runs locally in your browser; no signup.',
+    [
+      { hreflang: 'en', href: `${SITE_ORIGIN}/birth-chart` },
+      { hreflang: 'hi', href: `${SITE_ORIGIN}/hi/birth-chart/` },
+      { hreflang: 'x-default', href: `${SITE_ORIGIN}/birth-chart` },
+    ],
   ),
   route(
     '/nakshatra',
