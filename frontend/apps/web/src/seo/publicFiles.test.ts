@@ -50,7 +50,8 @@ describe('public/sitemap.xml', () => {
     expect(locs.sort()).toEqual([...PUBLIC_ROUTE_HEADS.map((h) => h.canonical), `${SITE_ORIGIN}/hi/free-kundli/`,
       `${SITE_ORIGIN}/hi/birth-chart/`,
       `${SITE_ORIGIN}/hi/nakshatra/`,
-      `${SITE_ORIGIN}/hi/dasha/`].sort());
+      `${SITE_ORIGIN}/hi/dasha/`,
+      `${SITE_ORIGIN}/hi/kundli-matching/`].sort());
   });
 
   it('is well-formed XML (tags balance, single root)', () => {
@@ -58,7 +59,7 @@ describe('public/sitemap.xml', () => {
     const opens = (xml.match(/<url>/g) ?? []).length;
     const closes = (xml.match(/<\/url>/g) ?? []).length;
     expect(opens).toBe(closes);
-    expect(opens).toBe(PUBLIC_ROUTE_HEADS.length + 4);
+    expect(opens).toBe(PUBLIC_ROUTE_HEADS.length + 5);
     expect((xml.match(/<urlset/g) ?? []).length).toBe(1);
   });
 });
