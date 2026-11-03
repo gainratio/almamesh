@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { LandingFooter, LandingNav } from '../components/features/landing';
 import { FaqJsonLd } from '../components/seo/FaqJsonLd';
+import { RelatedTools } from '../components/seo/RelatedTools';
 
 /** Crawlable intent page; the app itself remains client-side. */
 export default function FreeKundli(): ReactElement {
@@ -79,6 +80,7 @@ export default function FreeKundli(): ReactElement {
             },
           ]}
         />
+        <RelatedTools />
       </main>
       <LandingFooter />
     </div>
