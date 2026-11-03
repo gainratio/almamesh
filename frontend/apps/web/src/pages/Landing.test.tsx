@@ -47,7 +47,7 @@ describe('Landing', () => {
     expect(
       screen.getByRole('heading', {
         level: 1,
-        name: /Your real sky\. Computed on your device\. Free, forever\./i,
+        name: /Vedic astrology and your kundli, computed on your device\. Free, forever\./i,
       }),
     ).toBeTruthy();
   });
