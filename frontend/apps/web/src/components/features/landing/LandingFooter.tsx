@@ -83,6 +83,9 @@ export function LandingFooter(): ReactElement {
             <Link to="/how-we-test" className="transition-colors hover:text-accent-gold-bright">
               {t('footer.howWeTest')}
             </Link>
+            <a href="https://open-source.gainratio.com/" className="transition-colors hover:text-accent-gold-bright">
+              Open source
+            </a>
             <a
               href={GITHUB_URL}
               target="_blank"
