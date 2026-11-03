@@ -41,6 +41,9 @@
   </url>
   <url>
     <loc>https://almamesh.com/dasha</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://almamesh.com/dasha"/>
+    <xhtml:link rel="alternate" hreflang="hi" href="https://almamesh.com/hi/dasha/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://almamesh.com/dasha"/>
     <lastmod>2026-11-03</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
@@ -83,6 +86,15 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://almamesh.com/nakshatra"/>
     <xhtml:link rel="alternate" hreflang="hi" href="https://almamesh.com/hi/nakshatra/"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://almamesh.com/nakshatra"/>
+  </url>
+  <url>
+    <loc>https://almamesh.com/hi/dasha/</loc>
+    <lastmod>2026-11-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://almamesh.com/dasha"/>
+    <xhtml:link rel="alternate" hreflang="hi" href="https://almamesh.com/hi/dasha/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://almamesh.com/dasha"/>
   </url>
   <url>
     <loc>https://almamesh.com/privacy</loc>
