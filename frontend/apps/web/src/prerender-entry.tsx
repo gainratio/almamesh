@@ -42,6 +42,7 @@ import Landing from './pages/Landing';
 import FreeKundli from './pages/FreeKundli';
 import BirthChart from './pages/BirthChart';
 import Nakshatra from './pages/Nakshatra';
+import Dasha from './pages/Dasha';
 import PrivacyPolicy from './pages/legal/PrivacyPolicy';
 import TermsOfService from './pages/legal/TermsOfService';
 import DataDeletion from './pages/legal/DataDeletion';
@@ -76,6 +77,7 @@ const PAGES: Readonly<Record<string, ComponentType>> = {
   '/free-kundli': FreeKundli,
   '/birth-chart': BirthChart,
   '/nakshatra': Nakshatra,
+  '/dasha': Dasha,
   '/': HomeLanding,
   '/welcome': WelcomeLanding,
   '/privacy': PrivacyPolicy,

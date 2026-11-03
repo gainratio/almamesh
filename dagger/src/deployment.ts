@@ -381,6 +381,7 @@ const payload = {
     "https://almamesh.com/free-kundli",
     "https://almamesh.com/birth-chart",
     "https://almamesh.com/nakshatra",
+    "https://almamesh.com/dasha",
     "https://almamesh.com/privacy",
     "https://almamesh.com/terms",
     "https://almamesh.com/data-deletion",
