@@ -123,6 +123,11 @@ export const PUBLIC_ROUTE_HEADS: readonly RouteHead[] = [
     '/kundli-matching',
     'Free Kundli Matching — Vedic Gun Milan Compatibility',
     'Check Vedic kundli matching for two birth charts: rashi, nakshatra, graha maitri, and traditional kuta scores. Runs locally in your browser.',
+    [
+      { hreflang: 'en', href: `${SITE_ORIGIN}/kundli-matching` },
+      { hreflang: 'hi', href: `${SITE_ORIGIN}/hi/kundli-matching/` },
+      { hreflang: 'x-default', href: `${SITE_ORIGIN}/kundli-matching` },
+    ],
   ),
   route(
     '/muhurta',
