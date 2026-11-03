@@ -1,6 +1,7 @@
 import type { ReactElement } from 'react';
 import { Link } from 'react-router-dom';
 import { LandingFooter, LandingNav } from '../components/features/landing';
+import { FaqJsonLd } from '../components/seo/FaqJsonLd';
 
 /** Crawlable intent page; the app itself remains client-side. */
 export default function FreeKundli(): ReactElement {
@@ -38,6 +39,8 @@ export default function FreeKundli(): ReactElement {
         <p className="mt-4 text-sm text-text-muted">
           Astrology is offered for reflection, not as medical, legal, or financial advice.
         </p>
+        <section className="mt-10"><h2 className="text-2xl font-semibold">Frequently asked questions</h2><dl className="mt-4 space-y-4 text-text-secondary"><div><dt className="font-medium text-text-primary">Is the birth chart calculator free?</dt><dd>Yes. AlmaMesh is free and open source, with no account or payment.</dd></div><div><dt className="font-medium text-text-primary">Is it sidereal or tropical?</dt><dd>It uses the sidereal zodiac with the Lahiri ayanamsha, the convention used in Vedic astrology.</dd></div></dl></section>
+        <FaqJsonLd items={[{question: 'Is the birth chart calculator free?', answer: 'Yes. AlmaMesh is free and open source, with no account or payment.'}, {question: 'Is it sidereal or tropical?', answer: 'It uses the sidereal zodiac with the Lahiri ayanamsha, the convention used in Vedic astrology.'}]} />
       </main>
       <LandingFooter />
     </div>
