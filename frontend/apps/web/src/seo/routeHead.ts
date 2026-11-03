@@ -82,6 +82,11 @@ export const PUBLIC_ROUTE_HEADS: readonly RouteHead[] = [
     'Calculate a free Vedic birth chart with sidereal planets, nakshatras, dashas, and divisional charts. Runs locally in your browser; no signup.',
   ),
   route(
+    '/nakshatra',
+    'Free Nakshatra Calculator — Find Your Birth Nakshatra & Pada',
+    'Find your birth nakshatra, pada, ruling planet, and rashi from your birth details. Vedic calculations run locally in your browser.',
+  ),
+  route(
     '/privacy',
     'Privacy Policy — AlmaMesh',
     'AlmaMesh computes your chart in your browser. Only birthplace search and the optional AI touch the network, and AI chart data can reveal your birth date.',
