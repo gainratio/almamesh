@@ -41,6 +41,7 @@ import {
 import Landing from './pages/Landing';
 import FreeKundli from './pages/FreeKundli';
 import BirthChart from './pages/BirthChart';
+import Nakshatra from './pages/Nakshatra';
 import PrivacyPolicy from './pages/legal/PrivacyPolicy';
 import TermsOfService from './pages/legal/TermsOfService';
 import DataDeletion from './pages/legal/DataDeletion';
@@ -74,6 +75,7 @@ function WelcomeLanding(): ReactElement {
 const PAGES: Readonly<Record<string, ComponentType>> = {
   '/free-kundli': FreeKundli,
   '/birth-chart': BirthChart,
+  '/nakshatra': Nakshatra,
   '/': HomeLanding,
   '/welcome': WelcomeLanding,
   '/privacy': PrivacyPolicy,

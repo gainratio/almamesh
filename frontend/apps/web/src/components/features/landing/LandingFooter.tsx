@@ -62,6 +62,9 @@ export function LandingFooter(): ReactElement {
             <Link to="/birth-chart" className="transition-colors hover:text-accent-gold-bright">
               Free Birth Chart
             </Link>
+            <Link to="/nakshatra" className="transition-colors hover:text-accent-gold-bright">
+              Nakshatra
+            </Link>
             <Link to="/privacy" className="transition-colors hover:text-accent-gold-bright">
               {t('footer.privacy')}
             </Link>
