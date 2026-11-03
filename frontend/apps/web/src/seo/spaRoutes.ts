@@ -9,7 +9,7 @@
 import { LIFE_DOMAINS } from '../lib/lifeAtlas';
 
 export const SPA_FALLBACK_ALLOWLIST: readonly RegExp[] = [
-  /^\/(?:onboarding(?:\/ai)?|dashboard|predictive|report|edit-birth-details)\/?$/,
+  /^\/(?:free-kundli|onboarding(?:\/ai)?|dashboard|predictive|report|edit-birth-details)\/?$/,
   new RegExp(`^/life/(?:${LIFE_DOMAINS.join('|')})/?$`),
   /^\/mesh(?:\/[^/]+)?\/?$/,
   /^\/rectify\/[^/]+\/?$/,

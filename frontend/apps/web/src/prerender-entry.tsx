@@ -39,6 +39,7 @@ import {
   type ChartEngineContextValue,
 } from './providers/chartEngineContext';
 import Landing from './pages/Landing';
+import FreeKundli from './pages/FreeKundli';
 import PrivacyPolicy from './pages/legal/PrivacyPolicy';
 import TermsOfService from './pages/legal/TermsOfService';
 import DataDeletion from './pages/legal/DataDeletion';
@@ -70,6 +71,7 @@ function WelcomeLanding(): ReactElement {
 }
 
 const PAGES: Readonly<Record<string, ComponentType>> = {
+  '/free-kundli': FreeKundli,
   '/': HomeLanding,
   '/welcome': WelcomeLanding,
   '/privacy': PrivacyPolicy,
