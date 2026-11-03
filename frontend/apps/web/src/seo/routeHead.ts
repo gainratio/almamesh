@@ -77,6 +77,11 @@ export const PUBLIC_ROUTE_HEADS: readonly RouteHead[] = [
     'Generate a free Vedic kundli with planets, nakshatras, dashas, and divisional charts. Computed locally in your browser; no account or upload.',
   ),
   route(
+    '/birth-chart',
+    'Free Birth Chart Calculator — Vedic Sidereal Chart Online',
+    'Calculate a free Vedic birth chart with sidereal planets, nakshatras, dashas, and divisional charts. Runs locally in your browser; no signup.',
+  ),
+  route(
     '/privacy',
     'Privacy Policy — AlmaMesh',
     'AlmaMesh computes your chart in your browser. Only birthplace search and the optional AI touch the network, and AI chart data can reveal your birth date.',
