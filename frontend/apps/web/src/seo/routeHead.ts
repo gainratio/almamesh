@@ -87,6 +87,11 @@ export const PUBLIC_ROUTE_HEADS: readonly RouteHead[] = [
     'Find your birth nakshatra, pada, ruling planet, and rashi from your birth details. Vedic calculations run locally in your browser.',
   ),
   route(
+    '/dasha',
+    'Free Vimshottari Dasha Calculator — Mahadasha & Antardasha',
+    'Calculate your Vimshottari dasha timeline: mahadasha, antardasha, and planetary periods from your birth details. Computed locally in your browser.',
+  ),
+  route(
     '/privacy',
     'Privacy Policy — AlmaMesh',
     'AlmaMesh computes your chart in your browser. Only birthplace search and the optional AI touch the network, and AI chart data can reveal your birth date.',

@@ -55,6 +55,7 @@ const HowWeTest = lazyWithRetry(() => import('./pages/legal/HowWeTest'), 'HowWeT
 const FreeKundliPage = lazyWithRetry(() => import('./pages/FreeKundli'), 'FreeKundli')
 const BirthChartPage = lazyWithRetry(() => import('./pages/BirthChart'), 'BirthChart')
 const NakshatraPage = lazyWithRetry(() => import('./pages/Nakshatra'), 'Nakshatra')
+const DashaPage = lazyWithRetry(() => import('./pages/Dasha'), 'Dasha')
 const SettingsLayout = lazyWithRetry(() => import('./pages/settings/SettingsLayout'), 'SettingsLayout')
 const ProfileSettings = lazyWithRetry(() => import('./pages/settings/ProfileSettings'), 'ProfileSettings')
 const PeopleSettings = lazyWithRetry(() => import('./pages/settings/PeopleSettings'), 'PeopleSettings')
@@ -178,6 +179,7 @@ function AppRoutes() {
         <Route path="/free-kundli" element={page(<FreeKundliPage />)} />
         <Route path="/birth-chart" element={page(<BirthChartPage />)} />
         <Route path="/nakshatra" element={page(<NakshatraPage />)} />
+        <Route path="/dasha" element={page(<DashaPage />)} />
 
         <Route path="*" element={<NotFoundPage />} />
       </AnimatedRoutes>
