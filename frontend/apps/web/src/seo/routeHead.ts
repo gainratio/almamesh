@@ -133,6 +133,11 @@ export const PUBLIC_ROUTE_HEADS: readonly RouteHead[] = [
     '/muhurta',
     'Free Muhurta Calculator — Auspicious Vedic Timing',
     'Find an auspicious muhurta for weddings, griha pravesh, business, or travel using nakshatra, tithi, and Vedic timing. Computed locally.',
+     [
+      { hreflang: 'en', href: `${SITE_ORIGIN}/muhurta` },
+      { hreflang: 'hi', href: `${SITE_ORIGIN}/hi/muhurta/` },
+      { hreflang: 'x-default', href: `${SITE_ORIGIN}/muhurta` },
+    ],
   ),
   route(
     '/privacy',

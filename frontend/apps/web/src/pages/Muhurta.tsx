@@ -40,6 +40,7 @@ export default function FreeKundli(): ReactElement {
         <p className="mt-4 text-sm text-text-muted">
           Astrology is offered for reflection, not as medical, legal, or financial advice.
         </p>
+        <p className="mt-4"><a href="/hi/muhurta/" className="text-accent-gold-bright underline">हिन्दी में पढ़ें</a></p>
         <section className="mt-10"><h2 className="text-2xl font-semibold">Frequently asked questions</h2><dl className="mt-4 space-y-4 text-text-secondary"><div><dt className="font-medium text-text-primary">What is muhurta?</dt><dd>Muhurta is the Vedic practice of choosing an auspicious time for an important activity.</dd></div><div><dt className="font-medium text-text-primary">Which factors are used?</dt><dd>The page uses nakshatra, tithi, and weekday suitability with the relevant planetary periods.</dd></div></dl></section>
         <FaqJsonLd items={[{question: 'What is muhurta?', answer: 'Muhurta is the Vedic practice of choosing an auspicious time for an important activity.'}, {question: 'Which factors are used?', answer: 'The page uses nakshatra, tithi, and weekday suitability with the relevant planetary periods.'}]} />
         <RelatedTools />
