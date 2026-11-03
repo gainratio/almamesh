@@ -16,6 +16,7 @@ export default function FreeKundli(): ReactElement {
           AlmaMesh computes the sidereal chart — planets, rashis, nakshatras, and dashas — on
           your own device. No account, no upload, no server.
         </p>
+        <p className="mt-4"><a href="/hi/free-kundli/" className="text-accent-gold-bright underline">हिन्दी में पढ़ें</a></p>
         <section lang="hi" className="mt-10 rounded-2xl border border-ui-border/60 p-6">
           <h2 className="text-2xl font-semibold">मुफ़्त कुंडली और जन्म कुंडली</h2>
           <p className="mt-3 text-text-secondary">
