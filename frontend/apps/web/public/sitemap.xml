@@ -32,6 +32,9 @@
   </url>
   <url>
     <loc>https://almamesh.com/nakshatra</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://almamesh.com/nakshatra"/>
+    <xhtml:link rel="alternate" hreflang="hi" href="https://almamesh.com/hi/nakshatra/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://almamesh.com/nakshatra"/>
     <lastmod>2026-11-03</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
@@ -71,6 +74,15 @@
     <xhtml:link rel="alternate" hreflang="en" href="https://almamesh.com/birth-chart"/>
     <xhtml:link rel="alternate" hreflang="hi" href="https://almamesh.com/hi/birth-chart/"/>
     <xhtml:link rel="alternate" hreflang="x-default" href="https://almamesh.com/birth-chart"/>
+  </url>
+  <url>
+    <loc>https://almamesh.com/hi/nakshatra/</loc>
+    <lastmod>2026-11-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="en" href="https://almamesh.com/nakshatra"/>
+    <xhtml:link rel="alternate" hreflang="hi" href="https://almamesh.com/hi/nakshatra/"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://almamesh.com/nakshatra"/>
   </url>
   <url>
     <loc>https://almamesh.com/privacy</loc>
