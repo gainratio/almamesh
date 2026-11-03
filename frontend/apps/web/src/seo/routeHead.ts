@@ -92,6 +92,11 @@ export const PUBLIC_ROUTE_HEADS: readonly RouteHead[] = [
     'Calculate your Vimshottari dasha timeline: mahadasha, antardasha, and planetary periods from your birth details. Computed locally in your browser.',
   ),
   route(
+    '/kundli-matching',
+    'Free Kundli Matching — Vedic Gun Milan Compatibility',
+    'Check Vedic kundli matching for two birth charts: rashi, nakshatra, graha maitri, and traditional kuta scores. Runs locally in your browser.',
+  ),
+  route(
     '/privacy',
     'Privacy Policy — AlmaMesh',
     'AlmaMesh computes your chart in your browser. Only birthplace search and the optional AI touch the network, and AI chart data can reveal your birth date.',
