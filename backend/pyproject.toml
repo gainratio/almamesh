@@ -136,6 +136,9 @@ markers = [
 filterwarnings = [
     # Ignore numpy deprecation warning from pydantic (external library issue)
     "ignore:In future, it will be an error for 'np.bool' scalars:DeprecationWarning",
+    # Ignore numpy 2.5 shape/dtype assignment deprecation inside skyfield
+    "ignore:Setting the shape on a NumPy array has been deprecated:DeprecationWarning",
+    "ignore:Setting the dtype on a NumPy array has been deprecated:DeprecationWarning",
 ]
 
 [tool.ruff]

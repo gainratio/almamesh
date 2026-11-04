@@ -5,7 +5,7 @@ import { FaqJsonLd } from '../components/seo/FaqJsonLd';
 import { RelatedTools } from '../components/seo/RelatedTools';
 
 /** Crawlable intent page; the app itself remains client-side. */
-export default function FreeKundli(): ReactElement {
+export default function Dasha(): ReactElement {
   return (
     <div className="min-h-screen bg-observatory font-sans text-text-primary antialiased">
       <LandingNav />
@@ -14,7 +14,7 @@ export default function FreeKundli(): ReactElement {
         <h1 className="mt-3 text-4xl font-semibold sm:text-5xl">Free Dasha Calculator</h1>
         <p className="mt-5 text-lg text-text-secondary">
           Generate a free Vedic kundli (birth chart) from your birth date, time, and place.
-          AlmaMesh computes the sidereal chart — planets, rashis, dashas, and dashas — on
+          AlmaMesh computes the sidereal chart — planets, rashis, nakshatras, and dashas — on
           your own device. No account, no upload, no server.
         </p>
         <h2 className="mt-10 text-2xl font-semibold">What the dasha report includes</h2>

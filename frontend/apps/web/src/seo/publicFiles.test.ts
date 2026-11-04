@@ -45,7 +45,7 @@ describe('public/sitemap.xml', () => {
   const xml = readFileSync(path.join(publicDir, 'sitemap.xml'), 'utf-8');
 
   it('is a urlset with exactly the public canonicals', () => {
-    expect(xml).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">');
+    expect(xml).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">');
     const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
     expect(locs.sort()).toEqual([...PUBLIC_ROUTE_HEADS.map((h) => h.canonical), `${SITE_ORIGIN}/hi/free-kundli/`,
       `${SITE_ORIGIN}/hi/birth-chart/`,

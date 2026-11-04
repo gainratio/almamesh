@@ -366,6 +366,10 @@ function pwaPlugin(): Plugin[] {
         // host's real 404. verify-precache-redirect.mjs fails the build if any
         // precache URL redirects.
         '404.html',
+        // Static Hindi SEO pages live at `/hi/<slug>/index.html`; Cloudflare
+        // Pages 308-redirects `/hi/<slug>/index.html` to `/hi/<slug>/`, so
+        // keeping them out of the app-shell precache avoids redirect entries.
+        'hi/**',
       ],
       // App-shell SPA fallback: an offline navigation to a registered client
       // route serves the precached shell (then React Router takes over). The shell is precached

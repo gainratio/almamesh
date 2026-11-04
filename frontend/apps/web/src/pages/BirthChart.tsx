@@ -5,7 +5,7 @@ import { FaqJsonLd } from '../components/seo/FaqJsonLd';
 import { RelatedTools } from '../components/seo/RelatedTools';
 
 /** Crawlable intent page; the app itself remains client-side. */
-export default function FreeKundli(): ReactElement {
+export default function BirthChart(): ReactElement {
   return (
     <div className="min-h-screen bg-observatory font-sans text-text-primary antialiased">
       <LandingNav />

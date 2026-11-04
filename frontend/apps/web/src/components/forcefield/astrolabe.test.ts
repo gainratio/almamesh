@@ -20,13 +20,18 @@ import {
   MAX_THREADS,
   RING_RATE_MAX,
   RING_RATE_MIN,
+  computeLabelElevations,
   entrancePhase,
+  inSignDegree,
   labelVisible,
   planetReveal,
   planetRole,
+  planetSubLabel,
   revealOrder,
   ringRateFromNetFlux,
   selectThreads,
+  shouldShowPlanetLabel,
+  signAbbrFromLongitude,
 } from './astrolabe';
 
 /** Minimal synthetic wave row; only the fields the astrolabe logic reads. */
@@ -127,8 +132,6 @@ describe('selectThreads — beams 27 → ≤3', () => {
   });
 
   it('never picks a dasha lord as the discord thread', () => {
-    // Antar lord Mars is itself the strongest enemy of maha Saturn: the
-    // discord thread must fall through to the next hostile planet.
     const active: ActiveDasha = { maha: 'saturn', antar: 'mars' };
     const threads = selectThreads(planets, active);
     const discord = threads.find((t) => t.kind === 'discord');
@@ -166,15 +169,55 @@ describe('ringRateFromNetFlux — calm core pulse', () => {
   });
 });
 
-describe('labelVisible — progressive disclosure', () => {
-  it('is off by default', () => {
+describe('labelVisible & shouldShowPlanetLabel — orientation + disclosure', () => {
+  it('is off by default for halos', () => {
     expect(labelVisible(false, false)).toBe(false);
   });
-  it('shows on hover', () => {
+  it('shows on hover or selection', () => {
     expect(labelVisible(true, false)).toBe(true);
-  });
-  it('shows on selection', () => {
     expect(labelVisible(false, true)).toBe(true);
+  });
+  it('shows all labels in all mode, only key roles/hover in lords mode', () => {
+    expect(shouldShowPlanetLabel('all', false, false, false)).toBe(true);
+    expect(shouldShowPlanetLabel('lords', true, false, false)).toBe(true);
+    expect(shouldShowPlanetLabel('lords', false, false, false)).toBe(false);
+    expect(shouldShowPlanetLabel('lords', false, true, false)).toBe(true);
+    expect(shouldShowPlanetLabel('hover', true, false, false)).toBe(false);
+    expect(shouldShowPlanetLabel('hover', false, false, true)).toBe(true);
+  });
+});
+
+describe('signAbbrFromLongitude, planetSubLabel & computeLabelElevations', () => {
+  it('maps ecliptic longitudes to 3-letter sign abbreviations and degrees', () => {
+    expect(signAbbrFromLongitude(0)).toBe('ARI');
+    expect(signAbbrFromLongitude(44.9)).toBe('TAU');
+    expect(signAbbrFromLongitude(359.2)).toBe('PIS');
+    expect(inSignDegree(44.9)).toBe(14);
+  });
+
+  it('prioritizes maha, antar, and discord roles in sub-labels', () => {
+    const threads = [
+      { planetId: 'saturn' as const, kind: 'maha' as const },
+      { planetId: 'venus' as const, kind: 'antar' as const },
+      { planetId: 'mars' as const, kind: 'discord' as const },
+    ];
+    expect(planetSubLabel(wave('saturn'), ACTIVE, threads)).toBe('MAHA LORD');
+    expect(planetSubLabel(wave('venus'), ACTIVE, threads)).toBe('ANTAR LORD');
+    expect(planetSubLabel(wave('mars'), ACTIVE, threads)).toBe('FRICTION');
+    expect(
+      planetSubLabel(wave('sun', { eclipticLongitude: 134.5 }), ACTIVE, threads),
+    ).toBe('14° LEO');
+  });
+
+  it('staggers label elevations when two planets are conjunct', () => {
+    const planets = [
+      wave('sun', { eclipticLongitude: 50 }),
+      wave('mercury', { eclipticLongitude: 54 }),
+      wave('jupiter', { eclipticLongitude: 210 }),
+    ];
+    const elevations = computeLabelElevations(planets);
+    expect(elevations.get('mercury')).toBeGreaterThan(elevations.get('sun')!);
+    expect(elevations.get('jupiter')).toBe(elevations.get('sun'));
   });
 });
 

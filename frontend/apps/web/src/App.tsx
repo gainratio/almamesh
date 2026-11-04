@@ -178,12 +178,6 @@ function AppRoutes() {
         <Route path="/terms" element={page(<TermsOfService />)} />
         <Route path="/data-deletion" element={page(<DataDeletion />)} />
         <Route path="/how-we-test" element={page(<HowWeTest />)} />
-        <Route path="/free-kundli" element={page(<FreeKundliPage />)} />
-        <Route path="/birth-chart" element={page(<BirthChartPage />)} />
-        <Route path="/nakshatra" element={page(<NakshatraPage />)} />
-        <Route path="/dasha" element={page(<DashaPage />)} />
-        <Route path="/kundli-matching" element={page(<KundliMatchingPage />)} />
-        <Route path="/muhurta" element={page(<MuhurtaPage />)} />
 
         <Route path="*" element={<NotFoundPage />} />
       </AnimatedRoutes>
@@ -217,6 +211,14 @@ function App() {
           {/* Stable, shareable splash — always renders the landing, outside the
               app shell, even for a returning visitor with a saved chart. */}
           <Route path="/welcome" element={<WelcomeRoute />} />
+          {/* SEO calculator landing pages — own their own LandingNav, <main>, and
+              LandingFooter chrome outside AppLayout, and stay engine-free on arrival. */}
+          <Route path="/free-kundli" element={<FreeKundliPage />} />
+          <Route path="/birth-chart" element={<BirthChartPage />} />
+          <Route path="/nakshatra" element={<NakshatraPage />} />
+          <Route path="/dasha" element={<DashaPage />} />
+          <Route path="/kundli-matching" element={<KundliMatchingPage />} />
+          <Route path="/muhurta" element={<MuhurtaPage />} />
           <Route path="*" element={<AppRoutes />} />
         </Routes>
       </Suspense>

@@ -169,6 +169,13 @@ describe('AlmaMeshRuntimeProvider — auto-boot gating', () => {
     ['/welcome', false],
     ['/welcome', true],
     ['/welcome/', true],
+    ['/free-kundli', false],
+    ['/free-kundli', true],
+    ['/birth-chart', false],
+    ['/nakshatra', false],
+    ['/dasha', false],
+    ['/kundli-matching', false],
+    ['/muhurta', false],
   ])('does NOT auto-boot on the splash %s (saved chart: %s)', async (path, hasChart) => {
     vi.mocked(hasLocalChart).mockReturnValue(hasChart)
     setPath(path)

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { LAYMAN_JARGON } from '@almamesh/llm/layman-jargon';
 import { passOnboardingAiStep } from '../scripts/onboardingAiStep.mjs';
 import { LIFE_DOMAINS } from '../src/lib/lifeAtlas';
+import { E2E_REAL_MODEL } from './realModel';
 
 const execFileAsync = promisify(execFile);
 
@@ -151,7 +152,7 @@ async function seedOpenRouterPreset(page: Page, key: string): Promise<void> {
   const config = JSON.stringify({
     apiBase: 'https://openrouter.ai/api/v1',
     apiKey: key,
-    model: 'deepseek/deepseek-v4-pro',
+    model: E2E_REAL_MODEL,
     privacyMode: 'cloud_premium',
     engine: 'openai-http',
   });

@@ -52,6 +52,42 @@ const CARDS = [
     subtitle: 'No account. No email. Your chart is computed in your browser.',
   },
   {
+    slug: 'free-kundli',
+    kind: 'page',
+    headline: 'Free Kundli Calculator',
+    subtitle: 'Vedic birth chart — planets, nakshatras, dashas — in your browser.',
+  },
+  {
+    slug: 'birth-chart',
+    kind: 'page',
+    headline: 'Free Birth Chart Calculator',
+    subtitle: 'Authentic sidereal Vedic chart computed locally on your device.',
+  },
+  {
+    slug: 'nakshatra',
+    kind: 'page',
+    headline: 'Free Nakshatra Calculator',
+    subtitle: 'Find your birth nakshatra, pada, ruling planet, and rashi.',
+  },
+  {
+    slug: 'dasha',
+    kind: 'page',
+    headline: 'Free Vimshottari Dasha',
+    subtitle: 'Mahadasha and antardasha planetary periods in your browser.',
+  },
+  {
+    slug: 'kundli-matching',
+    kind: 'page',
+    headline: 'Free Kundli Matching',
+    subtitle: 'Vedic gun milan compatibility computed locally on your device.',
+  },
+  {
+    slug: 'muhurta',
+    kind: 'page',
+    headline: 'Free Muhurta Calculator',
+    subtitle: 'Auspicious Vedic timing using nakshatra, tithi, and weekday.',
+  },
+  {
     slug: 'privacy',
     kind: 'page',
     headline: 'Privacy Policy',

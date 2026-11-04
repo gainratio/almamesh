@@ -184,7 +184,11 @@ export function ChartVisualization({
         </div>
       </Card>
 
-      <PlanetaryTable geometry={geometry} />
+      <PlanetaryTable
+        geometry={geometry}
+        selectedPlanet={selectedPlanet}
+        onSelectPlanet={setSelectedPlanet}
+      />
     </div>
   );
 }

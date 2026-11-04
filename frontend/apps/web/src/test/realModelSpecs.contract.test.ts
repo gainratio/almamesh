@@ -97,7 +97,9 @@ function sendsProductDefault(code: string): string[] {
 }
 
 function realSpecs(): string[] {
-  return readdirSync(E2E_DIR).filter((name) => name.endsWith('.real.spec.ts'));
+  return readdirSync(E2E_DIR).filter(
+    (name) => name.endsWith('.real.spec.ts') || name === 'dual-voice-life-atlas.e2e.spec.ts',
+  );
 }
 
 function source(spec: string): string {
@@ -184,6 +186,7 @@ describe('real-model e2e specs', () => {
       expect.arrayContaining([
         'chat.rag.real.spec.ts',
         'dashboard.agentic.real.spec.ts',
+        'dual-voice-life-atlas.e2e.spec.ts',
         'interpretation.heal.real.spec.ts',
         'interpretation.real.spec.ts',
         'report.real.spec.ts',

@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import type { ReactElement } from 'react';
 
 const TOOLS = [
@@ -11,17 +11,30 @@ const TOOLS = [
 ] as const;
 
 export function RelatedTools(): ReactElement {
+  const { pathname } = useLocation();
+  const normalizedPath = pathname.replace(/\/+$/, '') || '/';
   return (
     <nav className="mt-10 border-t border-ui-border/60 pt-6" aria-label="Related astrology calculators">
       <h2 className="text-lg font-semibold">Related calculators</h2>
       <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-text-secondary">
-        {TOOLS.map((tool) => (
-          <li key={tool.to}>
-            <Link className="underline decoration-ui-border underline-offset-4 hover:text-accent-gold-bright" to={tool.to}>
-              {tool.label}
-            </Link>
-          </li>
-        ))}
+        {TOOLS.map((tool) => {
+          const isCurrent = normalizedPath === tool.to;
+          return (
+            <li key={tool.to}>
+              <Link
+                aria-current={isCurrent ? 'page' : undefined}
+                className={
+                  isCurrent
+                    ? 'font-medium text-accent-gold-bright underline decoration-accent-gold-bright underline-offset-4'
+                    : 'underline decoration-ui-border underline-offset-4 hover:text-accent-gold-bright'
+                }
+                to={tool.to}
+              >
+                {tool.label}
+              </Link>
+            </li>
+          );
+        })}
       </ul>
     </nav>
   );

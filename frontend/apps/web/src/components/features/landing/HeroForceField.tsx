@@ -55,7 +55,7 @@ export function HeroForceField(): ReactElement {
           {/* Dialed back from full strength so the animated core reads as a quiet
               backdrop, not a competitor to the headline seated over it. */}
           <div className="w-full max-w-3xl opacity-70">
-            <ForceFieldExperience chart={DEMO_CHART} height={560} />
+            <ForceFieldExperience chart={DEMO_CHART} height={560} decorative />
           </div>
         </Suspense>
       </WebGlGate>

@@ -26,12 +26,17 @@ import type { SiderealPlanet } from '@almamesh/shared-types';
 import { Badge, Card } from '../../ui';
 import { cn } from '../../ui/cn';
 
-interface GeometryProps {
+interface SharedSelectionProps {
+  readonly selectedPlanet?: string | null;
+  readonly onSelectPlanet?: (id: string | null) => void;
+}
+
+interface GeometryProps extends SharedSelectionProps {
   readonly geometry: ChartGeometry;
   readonly planets?: never;
 }
 
-interface LegacyProps {
+interface LegacyProps extends SharedSelectionProps {
   readonly planets: Record<string, SiderealPlanet> | null;
   readonly geometry?: never;
 }
@@ -170,35 +175,66 @@ export function PlanetaryTable(props: PlanetaryTableProps): ReactElement {
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b border-ui-border">
-              <th className={TH}>{t('tables.planet')}</th>
-              <th className={TH}>{t('tables.sign')}</th>
-              <th className={cn(TH, 'text-right')}>{t('tables.degree')}</th>
-              <th className={cn(TH, 'text-right')}>{t('tables.house')}</th>
-              <th className={TH}>{t('tables.nakshatra_pada')}</th>
-              <th className={TH}>{t('tables.dignity')}</th>
-              <th className={TH}>{t('tables.lords')}</th>
-              <th className={TH}>{t('tables.retro')}</th>
-              <th className={TH}>{t('tables.combust')}</th>
+              <th scope="col" className={TH}>{t('tables.planet')}</th>
+              <th scope="col" className={TH}>{t('tables.sign')}</th>
+              <th scope="col" className={cn(TH, 'text-right')}>{t('tables.degree')}</th>
+              <th scope="col" className={cn(TH, 'text-right')}>{t('tables.house')}</th>
+              <th scope="col" className={TH}>{t('tables.nakshatra_pada')}</th>
+              <th scope="col" className={TH}>{t('tables.dignity')}</th>
+              <th scope="col" className={TH}>{t('tables.lords')}</th>
+              <th scope="col" className={TH}>{t('tables.retro')}</th>
+              <th scope="col" className={TH}>{t('tables.combust')}</th>
             </tr>
           </thead>
           <tbody>
             {planets.map((planet) => {
               const dignity = dignityBadge(planet.dignity);
+              const isSelected = props.selectedPlanet === planet.name;
+              const handleToggle = () => {
+                props.onSelectPlanet?.(isSelected ? null : planet.name);
+              };
               return (
                 <tr
                   key={planet.name}
-                  className="border-b border-ui-border-dark transition-colors last:border-0 hover:bg-background-tertiary/40"
+                  onClick={props.onSelectPlanet ? handleToggle : undefined}
+                  className={cn(
+                    'border-b border-ui-border-dark transition-colors last:border-0',
+                    props.onSelectPlanet && 'cursor-pointer',
+                    isSelected
+                      ? 'bg-accent-gold/12 hover:bg-accent-gold/16'
+                      : 'hover:bg-background-tertiary/40',
+                  )}
                 >
                   <td className={cn(TD, 'whitespace-nowrap')}>
-                    <span className="inline-flex items-center gap-2">
-                      <span
-                        className="inline-flex h-5 w-7 items-center justify-center rounded-sm font-mono text-[11px] font-semibold"
-                        style={{ color: planet.color, backgroundColor: `${planet.color}1A` }}
+                    {props.onSelectPlanet ? (
+                      <button
+                        type="button"
+                        aria-pressed={isSelected}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleToggle();
+                        }}
+                        className="inline-flex min-h-6 items-center gap-2 rounded px-1 py-0.5 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-gold"
                       >
-                        {planet.label}
+                        <span
+                          className="inline-flex h-5 w-7 items-center justify-center rounded-sm font-mono text-[11px] font-semibold"
+                          style={{ color: planet.color, backgroundColor: `${planet.color}1A` }}
+                        >
+                          {planet.label}
+                        </span>
+                        <span className="capitalize text-text-primary">{planet.name}</span>
+                      </button>
+                    ) : (
+                      <span className="inline-flex items-center gap-2">
+                        <span
+                          className="inline-flex h-5 w-7 items-center justify-center rounded-sm font-mono text-[11px] font-semibold"
+                          style={{ color: planet.color, backgroundColor: `${planet.color}1A` }}
+                        >
+                          {planet.label}
+                        </span>
+                        <span className="capitalize text-text-primary">{planet.name}</span>
                       </span>
-                      <span className="capitalize text-text-primary">{planet.name}</span>
-                    </span>
+                    )}
                   </td>
                   <td className={cn(TD, 'capitalize')}>{planet.sign}</td>
                   <td className={cn(TD, 'text-right font-mono text-text-primary')}>

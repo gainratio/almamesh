@@ -956,6 +956,12 @@ describe("nonfatal IndexNow tail", () => {
       if (JSON.stringify(payload.urlList) !== JSON.stringify([
         "https://almamesh.com/",
         "https://almamesh.com/welcome",
+        "https://almamesh.com/free-kundli",
+        "https://almamesh.com/birth-chart",
+        "https://almamesh.com/nakshatra",
+        "https://almamesh.com/dasha",
+        "https://almamesh.com/kundli-matching",
+        "https://almamesh.com/muhurta",
         "https://almamesh.com/privacy",
         "https://almamesh.com/terms",
         "https://almamesh.com/data-deletion",

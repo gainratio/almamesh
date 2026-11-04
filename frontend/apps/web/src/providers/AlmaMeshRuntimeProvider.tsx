@@ -222,10 +222,20 @@ function engineStorageBlocked(error: unknown): EngineStorageBlockedError | null 
 
 const REPORTED_ONLINE_RETRY_DELAYS_MS = [250, 1_000, 5_000, 15_000] as const
 
-/** The marketing splash: `/welcome` always, `/` only before a chart exists. */
+const ENGINE_FREE_SPLASH_PATHS = new Set([
+  '/welcome',
+  '/free-kundli',
+  '/birth-chart',
+  '/nakshatra',
+  '/dasha',
+  '/kundli-matching',
+  '/muhurta',
+])
+
+/** The marketing splash and SEO landing pages: always engine-free; `/` only before a chart exists. */
 function isEngineFreeSplash(pathname: string): boolean {
   const path = pathname.replace(/\/+$/, '') || '/'
-  if (path === '/welcome') return true
+  if (ENGINE_FREE_SPLASH_PATHS.has(path)) return true
   return path === '/' && !hasLocalChart()
 }
 

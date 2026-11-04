@@ -23,7 +23,7 @@ export const LORD_SCALE = 1.6;
 /** Full presence for the lords. */
 export const LORD_OPACITY = 1.0;
 /** The seven non-lords recede into the engraved field. */
-export const FIELD_OPACITY = 0.55;
+export const FIELD_OPACITY = 0.72;
 /** Gentle breathing amplitude reserved for the lords; the field holds still. */
 export const LORD_PULSE = 0.06;
 
@@ -131,12 +131,114 @@ export function ringRateFromNetFlux(netFlux: number): number {
 }
 
 // ============================================================================
-// Labels — progressive disclosure (hover / selection only)
+// Labels & Zodiac wheel — legible orientation + progressive disclosure
 // ============================================================================
 
-/** Labels are off by default; hover or selection reveals them. */
+export type LabelMode = 'all' | 'lords' | 'hover';
+export type CameraViewMode = '3d' | 'top';
+
+/** 3-letter ASCII sign abbreviations (0 = Aries .. 11 = Pisces). */
+export const ZODIAC_ABBR: readonly string[] = [
+  'ARI',
+  'TAU',
+  'GEM',
+  'CAN',
+  'LEO',
+  'VIR',
+  'LIB',
+  'SCO',
+  'SAG',
+  'CAP',
+  'AQU',
+  'PIS',
+];
+
+/** Hover/selection helper kept for unit-test & halo compatibility. */
 export function labelVisible(hovered: boolean, selected: boolean): boolean {
   return hovered || selected;
+}
+
+/** Decide whether a planet's 3D label should render under the active mode. */
+export function shouldShowPlanetLabel(
+  mode: LabelMode,
+  isKeyRole: boolean,
+  hovered: boolean,
+  selected: boolean,
+): boolean {
+  if (mode === 'all') return true;
+  if (mode === 'lords') return isKeyRole || hovered || selected;
+  return hovered || selected;
+}
+
+/** 3-letter ASCII sign abbreviation from an ecliptic longitude (0..360). */
+export function signAbbrFromLongitude(longitude: number): string {
+  const norm = ((longitude % 360) + 360) % 360;
+  const idx = Math.floor(norm / 30) % 12;
+  return ZODIAC_ABBR[idx] ?? 'ARI';
+}
+
+/** Whole degree (0..29) within a 30-degree zodiac sign. */
+export function inSignDegree(longitude: number): number {
+  const norm = ((longitude % 30) + 30) % 30;
+  return Math.floor(norm);
+}
+
+/**
+ * Secondary ASCII sub-label for a planet in 3D space: highlights active
+ * Dasha / friction roles first, otherwise falls back to `<deg>deg <SIGN>`.
+ */
+export function planetSubLabel(
+  planet: PlanetWave,
+  active: ActiveDasha,
+  threads: readonly ThreadSpec[],
+): string {
+  if (planet.id === active.maha && planet.id === active.antar) {
+    return 'MAHA + ANTAR';
+  }
+  if (planet.id === active.maha) return 'MAHA LORD';
+  if (planet.id === active.antar) return 'ANTAR LORD';
+  const thread = threads.find((t) => t.planetId === planet.id);
+  if (thread?.kind === 'discord') return 'FRICTION';
+  const deg = inSignDegree(planet.eclipticLongitude);
+  const sign = signAbbrFromLongitude(planet.eclipticLongitude);
+  return `${deg}° ${sign}`;
+}
+
+/** Minimum angular separation (degrees) before two labels stagger vertically. */
+const LABEL_COLLISION_DEG = 18;
+const BASE_LABEL_Y = 0.56;
+const STAGGER_STEP_Y = 0.34;
+
+function angularDistanceDeg(a: number, b: number): number {
+  const diff = Math.abs(((a - b) % 360 + 540) % 360 - 180);
+  return diff;
+}
+
+/**
+ * Stagger 3D label heights when two or more planets sit in close ecliptic
+ * longitude so conjunct planets never collide visually.
+ */
+export function computeLabelElevations(
+  planets: readonly PlanetWave[],
+): ReadonlyMap<PlanetName, number> {
+  const sorted = [...planets].sort(
+    (a, b) => a.eclipticLongitude - b.eclipticLongitude,
+  );
+  const tiers = new Map<PlanetName, number>();
+  const placed: { lon: number; tier: number }[] = [];
+
+  for (const p of sorted) {
+    const usedTiers = new Set(
+      placed
+        .filter((prev) => angularDistanceDeg(prev.lon, p.eclipticLongitude) < LABEL_COLLISION_DEG)
+        .map((prev) => prev.tier),
+    );
+    let tier = 0;
+    while (usedTiers.has(tier) && tier < 3) tier++;
+    tiers.set(p.id, BASE_LABEL_Y + tier * STAGGER_STEP_Y);
+    placed.push({ lon: p.eclipticLongitude, tier });
+  }
+  return tiers;
 }
 
 // ============================================================================

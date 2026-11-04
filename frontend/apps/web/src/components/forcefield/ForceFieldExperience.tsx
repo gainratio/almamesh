@@ -5,21 +5,13 @@
  * force-field tree is fully typed (no `@ts-nocheck` anywhere): R3F v9 ships a
  * React-19-compatible `ThreeElements` JSX augmentation, and the one custom
  * shader element (`astrolabeDiscMaterial`) is registered through a typed
- * `ThreeElements` module augmentation in `PlanetMesh.tsx`. The pure
- * presentation decisions (lord hierarchy, thread selection, entrance timeline)
- * live typed + unit-tested in `astrolabe.ts`.
+ * `ThreeElements` module augmentation in `PlanetMesh.tsx`.
  *
- * Data feed (local-first, no server, no hooks): the static per-planet wave
- * params are computed ONCE from the persisted `SiderealChart` via the pure store
- * adapter `buildEnergyFrame(chart, 0)` (memoised on `chart`). The wave clock `t`
- * is advanced in a rAF loop and threaded into the scene, which evaluates the
- * cos/interference terms per frame. The aura aggregate is recomputed per frame
- * from the static waves (cheap; no per-frame allocation of the wave list).
- *
- * Perf/a11y: rAF pauses when offscreen (IntersectionObserver) or tab-hidden;
- * `prefers-reduced-motion` renders a single static frame; bloom is off on the
- * minimal device tier and the canvas dpr follows the tier; the canvas carries
- * `role="img"` + an aria summary.
+ * When `decorative` is false (default, used in Dashboard's ChartVisualization),
+ * wraps the 3D WebGL stage in the non-obstructing `ForceFieldHud` instrument
+ * frame (dedicated top header strip for Dasha legend + camera/label controls,
+ * unobstructed 3D viewport in the middle, and dedicated bottom dock for the
+ * selected-planet telemetry strip + 9-planet selector bar).
  */
 
 import {
@@ -49,9 +41,11 @@ import {
   type RGBColor,
 } from '@almamesh/shared-types';
 import { ForceFieldScene } from './ForceFieldScene';
+import { ForceFieldHud } from './ForceFieldHud';
 import { isSoftwareRenderer } from './softwareRenderer';
 import { forceFieldRenderSettings } from './renderSettings';
 import { SharedTextureRelease } from './SharedTextureRelease';
+import type { CameraViewMode, LabelMode } from './astrolabe';
 
 export interface ForceFieldExperienceProps {
   /** The engine's raw, lossless chart output (the richest feed). */
@@ -60,8 +54,10 @@ export interface ForceFieldExperienceProps {
   readonly selectedPlanet?: string | null;
   /** Lift selection up so the 2D chart and 3D scene highlight together. */
   readonly onSelectPlanet?: (id: string | null) => void;
-  /** Override the rendered height (px). Default 420. */
+  /** Override the rendered 3D viewport height (px). Default 440 (420 when decorative). */
   readonly height?: number;
+  /** Purely atmospheric mode (no interactive HUD, used on Landing hero). */
+  readonly decorative?: boolean;
 }
 
 /** The lagna tint = the wave colour of the ascendant's sign-lord planet. */
@@ -86,22 +82,32 @@ function describeField(frame: EnergyFrame): string {
 
 export function ForceFieldExperience({
   chart,
-  selectedPlanet = null,
+  selectedPlanet: controlledPlanet,
   onSelectPlanet,
-  height = 420,
+  height,
+  decorative = false,
 }: ForceFieldExperienceProps): ReactElement {
   const { t } = useTranslation('common');
   const containerRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number | null>(null);
   const [animationTime, setAnimationTime] = useState(0);
   const [reducedMotion, setReducedMotion] = useState(false);
-  // CPU-rendered WebGL (no GPU): an animated scene there takes most of a
-  // second per frame and starves the page, so it holds a still frame instead.
   const [softwareGl, setSoftwareGl] = useState(false);
   const still = reducedMotion || softwareGl;
   const [inView, setInView] = useState(true);
 
-  // Static per-planet wave params: computed ONCE from the chart (t=0).
+  const [uncontrolledPlanet, setUncontrolledPlanet] = useState<string | null>(null);
+  const selectedPlanet =
+    controlledPlanet !== undefined ? controlledPlanet : uncontrolledPlanet;
+
+  const [viewMode, setViewMode] = useState<CameraViewMode>('3d');
+  const [labelMode, setLabelMode] = useState<LabelMode>(
+    decorative ? 'hover' : 'all',
+  );
+  const [resetTrigger, setResetTrigger] = useState(0);
+
+  const resolvedHeight = height ?? (decorative ? 420 : 440);
+
   const baseFrame = useMemo(() => buildEnergyFrame(chart, 0), [chart]);
   const lagnaColor = useMemo(() => lagnaTint(chart), [chart]);
   const lagnaLongitude = chart.lagna.longitude;
@@ -111,7 +117,6 @@ export function ForceFieldExperience({
     [chart.houses],
   );
 
-  // Per-frame frame: reuse the static planet waves, recompute only the aura.
   const frame: EnergyFrame = useMemo(
     () => ({
       t: animationTime,
@@ -123,10 +128,8 @@ export function ForceFieldExperience({
   );
 
   const ariaLabel = useMemo(() => describeField(frame), [frame]);
-  // One device tier for the whole app: bloom and canvas resolution follow it.
   const render = useMemo(() => forceFieldRenderSettings(devicePolicy()), []);
 
-  // prefers-reduced-motion
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return;
     const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -136,7 +139,6 @@ export function ForceFieldExperience({
     return () => mq.removeEventListener('change', handler);
   }, []);
 
-  // Pause when scrolled offscreen.
   useEffect(() => {
     const el = containerRef.current;
     if (!el || typeof IntersectionObserver === 'undefined') return;
@@ -148,17 +150,12 @@ export function ForceFieldExperience({
     return () => io.disconnect();
   }, []);
 
-  // Pause when the tab is hidden.
   useEffect(() => {
     const onVisibility = (): void => setInView(!document.hidden);
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, []);
 
-  // rAF wave clock — only runs when visible and motion is allowed. Advances
-  // by REAL elapsed time (not a fixed per-frame step) so the entrance
-  // choreography completes in ~2.5 wall-seconds even when the device renders
-  // at low FPS; long gaps (tab jank) are clamped so the clock never jumps.
   useEffect(() => {
     if (still || !inView) {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
@@ -166,16 +163,20 @@ export function ForceFieldExperience({
       return;
     }
     let last: number | null = null;
+    let elapsed = 0;
+    let lastCommitted = 0;
     const tick = (now: number): void => {
       const delta = last === null ? 0.016 : Math.min((now - last) / 1000, 0.1);
       last = now;
-      // A transition, not an urgent update. An urgent setState every frame
-      // re-renders this tree ahead of everything else; on a slow device each
-      // render outlasts the frame, so the router's navigation (a transition)
-      // was interrupted and restarted forever and a click away from the
-      // landing page never landed. Transitions batch together instead, so a
-      // navigation commits with the next clock tick.
-      startTransition(() => setAnimationTime((t) => t + delta));
+      elapsed += delta;
+      // During the 2.5s entrance ease-out, commit every frame so the scale-in
+      // curve is smooth; once settled, commit at ~1 Hz for the HUD net-flux
+      // readout while R3F's useFrame drives 3D shaders at native 60/120fps.
+      if (elapsed <= 2.6 || elapsed - lastCommitted >= 1.0) {
+        const step = elapsed - lastCommitted;
+        lastCommitted = elapsed;
+        startTransition(() => setAnimationTime((prev) => prev + step));
+      }
       rafRef.current = requestAnimationFrame(tick);
     };
     rafRef.current = requestAnimationFrame(tick);
@@ -190,24 +191,30 @@ export function ForceFieldExperience({
   }, []);
 
   const handleSelect = useCallback(
-    (id: string | null) => onSelectPlanet?.(id),
-    [onSelectPlanet],
+    (id: string | null) => {
+      if (controlledPlanet === undefined) {
+        setUncontrolledPlanet(id);
+      }
+      onSelectPlanet?.(id);
+    },
+    [controlledPlanet, onSelectPlanet],
   );
 
-  return (
+  const handleResetView = useCallback(() => {
+    setResetTrigger((n) => n + 1);
+  }, []);
+
+  const canvasStage = (
     <div
-      ref={containerRef}
-      className="relative w-full overflow-hidden rounded-2xl border border-ui-border-dark"
+      className="relative w-full overflow-hidden"
       style={{
-        height,
-        // Observatory gradient base behind the (alpha) canvas — deep obsidian
-        // floor lifting to a faint lapis-indigo glow, so the scene never reads
-        // as a dead flat rectangle even before the GL paints.
+        height: resolvedHeight,
+        contain: 'layout paint',
         background: `radial-gradient(120% 90% at 50% 18%, ${colors.background.darker} 0%, ${colors.background.primary} 45%, ${colors.background.darkest} 100%)`,
       }}
     >
       <Canvas
-        camera={{ position: [0, 6, 14], fov: 50 }}
+        camera={{ position: [0, 6.2, 13.8], fov: 48 }}
         gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
         dpr={[render.dpr[0], render.dpr[1]]}
         frameloop={!still && inView ? 'always' : 'demand'}
@@ -226,24 +233,27 @@ export function ForceFieldExperience({
           lagnaColor={lagnaColor}
           houseSpokes={houseSpokes}
           lagnaLongitude={lagnaLongitude}
+          labelMode={labelMode}
+          viewMode={viewMode}
+          autoOrbit={!decorative}
+          resetTrigger={resetTrigger}
           effects={
             render.effects === 'full' ? (
               <EffectComposer>
                 <Bloom
-                  luminanceThreshold={0.22}
+                  luminanceThreshold={0.26}
                   luminanceSmoothing={0.9}
-                  intensity={0.7}
+                  intensity={0.62}
                   mipmapBlur
                 />
-                <Vignette eskil={false} offset={0.28} darkness={0.62} />
+                <Vignette eskil={false} offset={0.28} darkness={0.58} />
               </EffectComposer>
             ) : render.effects === 'lite' ? (
-              // Mid-tier: a single soft bloom (no mip chain, no vignette).
               <EffectComposer>
                 <Bloom
-                  luminanceThreshold={0.32}
+                  luminanceThreshold={0.34}
                   luminanceSmoothing={0.85}
-                  intensity={0.45}
+                  intensity={0.42}
                 />
               </EffectComposer>
             ) : null
@@ -251,14 +261,37 @@ export function ForceFieldExperience({
         />
       </Canvas>
 
-      {/* Screen-reader / reduced-motion text readout (visually hidden). */}
-      <p className="sr-only">{ariaLabel}</p>
-
       {reducedMotion && (
         <div className="absolute bottom-3 left-3 rounded bg-background-elevated/80 px-2 py-1 text-xs text-text-muted">
           {t('accessibility.reduced_motion')}
         </div>
       )}
+    </div>
+  );
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative w-full overflow-hidden rounded-2xl border border-ui-border-dark bg-background-darkest"
+    >
+      {decorative ? (
+        canvasStage
+      ) : (
+        <ForceFieldHud
+          chart={chart}
+          frame={frame}
+          selectedPlanet={selectedPlanet}
+          onSelectPlanet={handleSelect}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          labelMode={labelMode}
+          onLabelModeChange={setLabelMode}
+          onResetView={handleResetView}
+        >
+          {canvasStage}
+        </ForceFieldHud>
+      )}
+      <p className="sr-only">{ariaLabel}</p>
     </div>
   );
 }

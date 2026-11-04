@@ -49,6 +49,12 @@ const routeHead = await import(
 const PUBLIC_ROUTE_PATHS = routeHead?.PUBLIC_ROUTE_PATHS ?? [
   '/',
   '/welcome',
+  '/free-kundli',
+  '/birth-chart',
+  '/nakshatra',
+  '/dasha',
+  '/kundli-matching',
+  '/muhurta',
   '/privacy',
   '/terms',
   '/data-deletion',

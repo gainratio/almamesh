@@ -5,7 +5,7 @@ import { FaqJsonLd } from '../components/seo/FaqJsonLd';
 import { RelatedTools } from '../components/seo/RelatedTools';
 
 /** Crawlable intent page; the app itself remains client-side. */
-export default function FreeKundli(): ReactElement {
+export default function Muhurta(): ReactElement {
   return (
     <div className="min-h-screen bg-observatory font-sans text-text-primary antialiased">
       <LandingNav />
@@ -14,14 +14,14 @@ export default function FreeKundli(): ReactElement {
         <h1 className="mt-3 text-4xl font-semibold sm:text-5xl">Free Muhurta Calculator</h1>
         <p className="mt-5 text-lg text-text-secondary">
           Generate a free Vedic kundli (birth chart) from your birth date, time, and place.
-          AlmaMesh computes the sidereal chart — planets, rashis, muhurtas, and muhurtas — on
+          AlmaMesh computes the sidereal chart — planets, rashis, nakshatras, and dashas — on
           your own device. No account, no upload, no server.
         </p>
         <h2 className="mt-10 text-2xl font-semibold">What the muhurta report includes</h2>
         <ul className="mt-4 space-y-3 text-text-secondary">
           <li><strong>Auspicious windows:</strong> nakshatra, tithi, and weekday suitability, with the relevant planetary periods.</li>
           <li><strong>Nakshatras:</strong> the 27 lunar mansions, with pada.</li>
-          <li><strong>Dashas:</strong> Vimshottari mahamuhurta and antarmuhurta periods.</li>
+          <li><strong>Dashas:</strong> Vimshottari mahadasha and antardasha periods.</li>
           <li><strong>Divisional charts:</strong> D1 and the standard varga charts supported by the engine.</li>
           <li><strong>Plain-language reading:</strong> strengths and tensions, without fatalism or fear.</li>
         </ul>

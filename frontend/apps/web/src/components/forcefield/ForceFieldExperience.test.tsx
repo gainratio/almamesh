@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, render } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useEffect, type ReactNode } from 'react';
 import '../../i18n/config';
 import { DEMO_CHART } from '../../lib/demoChart';
 
 /** What the force field asked of the (mocked) R3F Canvas, plus the GPU it "got". */
-const canvas = vi.hoisted(() => ({ frameloop: [] as string[], renderer: 'ANGLE (Apple, Apple M2, OpenGL 4.1)' }));
+const canvas = vi.hoisted(() => ({
+  frameloop: [] as string[],
+  renderer: 'ANGLE (Apple, Apple M2, OpenGL 4.1)',
+}));
 
 function fakeRenderer(name: string) {
   const context = {
@@ -61,5 +64,45 @@ describe('ForceFieldExperience on a software WebGL renderer', () => {
     const raf = vi.spyOn(window, 'requestAnimationFrame');
     await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
     expect(raf).not.toHaveBeenCalled();
+  });
+});
+
+describe('ForceFieldExperience interactive HUD & planet inspector', () => {
+  it('renders the interactive HUD and 9-planet selector bar by default, and omits them when decorative', () => {
+    const { unmount } = render(<ForceFieldExperience chart={DEMO_CHART} />);
+    expect(screen.getByTestId('forcefield-hud')).toBeTruthy();
+    expect(screen.getByTestId('forcefield-core-status').textContent).toContain('Core:');
+    expect(screen.getByTestId('forcefield-planet-bar')).toBeTruthy();
+    unmount();
+
+    render(<ForceFieldExperience chart={DEMO_CHART} decorative />);
+    expect(screen.queryByTestId('forcefield-hud')).toBeNull();
+  });
+
+  it('selects a planet from the pill bar, opens the inspector, and notifies onSelectPlanet', () => {
+    const onSelect = vi.fn();
+    render(<ForceFieldExperience chart={DEMO_CHART} onSelectPlanet={onSelect} />);
+
+    const jupiterPill = screen.getByTestId('forcefield-pill-jupiter');
+    fireEvent.click(jupiterPill);
+
+    expect(onSelect).toHaveBeenCalledWith('jupiter');
+    expect(screen.getByTestId('forcefield-inspector').textContent).toContain('jupiter');
+
+    // Clicking Close clears selection.
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onSelect).toHaveBeenLastCalledWith(null);
+  });
+
+  it('toggles camera perspective and label mode controls', () => {
+    render(<ForceFieldExperience chart={DEMO_CHART} />);
+    const topWheelBtn = screen.getByRole('button', { name: 'Top Wheel' });
+    expect(topWheelBtn.getAttribute('aria-pressed')).toBe('false');
+    fireEvent.click(topWheelBtn);
+    expect(topWheelBtn.getAttribute('aria-pressed')).toBe('true');
+
+    const labelsBtn = screen.getByRole('button', { name: 'Labels: All' });
+    fireEvent.click(labelsBtn);
+    expect(screen.getByRole('button', { name: 'Labels: Lords' })).toBeTruthy();
   });
 });

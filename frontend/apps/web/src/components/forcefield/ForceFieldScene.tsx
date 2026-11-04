@@ -1,25 +1,14 @@
 /**
  * ForceFieldScene - composes "The Living Astrolabe": one radiant lagna-tinted
- * core (`NativeCore`), a quiet engraved wheel (house spokes + ONE outer zodiac
- * band), nine token-coloured graha discs at their REAL ecliptic longitudes,
- * and at most three `DashaThread`s (maha lord, antar lord, strongest discord —
- * see `astrolabe.ts`). The current dasha lords render dominant; the other
- * seven recede. Labels + friendliness halos are hover/selection-only.
+ * core (`NativeCore`), an engraved wheel (`AstrolabeWheel`: concentric orbit
+ * tracks, house spokes, Ascendant beacon, and 12 zodiac sign inscriptions),
+ * nine token-coloured graha discs at their REAL ecliptic longitudes, and at
+ * most three `DashaThread`s (maha lord, antar lord, strongest discord).
  *
- * Entrance (~2.5 s, once per mount, driven by the parent's wave clock):
- * core ignites -> zodiac band sweeps in -> planets fade in by longitude ->
- * threads draw in. Reduced motion skips straight to the final static frame.
- *
- * Selection is controlled by the parent (lifted to the chart UI store) so the
- * 3D scene and 2D kundli cross-highlight.
- *
- * Atmosphere: a token-coloured gradient backdrop (`Backdrop`) and a faint
- * instanced `Starfield` give the scene depth without cost; a calm auto-orbit
- * (`AutoOrbit`) drifts the camera and is suspended whenever the user drags.
- * Bloom/Vignette postprocessing is gated by the parent and passed as children.
- *
- * Palette: every colour derives from `@almamesh/constants` `colors` (brass-gold
- * / lapis observatory), never ad-hoc primary RGB literals.
+ * Labels are on by default (`labelMode = 'all'`), staggered vertically so
+ * conjunct planets never overlap, and switchable between `'all'`, `'lords'`,
+ * and `'hover'`. Camera supports both 3D Observatory perspective (`'3d'`) and
+ * Top-Down Ecliptic Wheel (`'top'`).
  */
 
 import {
@@ -31,26 +20,36 @@ import {
   type RefObject,
 } from 'react';
 import { OrbitControls } from '@react-three/drei';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { colors } from '@almamesh/constants';
 import type { EnergyFrame, RGBColor } from '@almamesh/shared-types';
 import { PlanetMesh } from './PlanetMesh';
 import { NativeCore } from './NativeCore';
 import { DashaThread } from './DashaThread';
+import {
+  GroundPlane,
+  HouseRing,
+  OrbitTracks,
+  ZodiacBand,
+} from './AstrolabeWheel';
 import { CENTER_Y } from './placement';
 import {
+  computeLabelElevations,
   entrancePhase,
   planetReveal,
   planetRole,
+  planetSubLabel,
   revealOrder,
   selectThreads,
+  shouldShowPlanetLabel,
+  type CameraViewMode,
+  type LabelMode,
 } from './astrolabe';
 
-/** Instance type behind drei's `<OrbitControls>` (three-stdlib's controls). */
 type OrbitControlsImpl = ComponentRef<typeof OrbitControls>;
 
-interface ForceFieldSceneProps {
+export interface ForceFieldSceneProps {
   frame: EnergyFrame;
   animationTime: number;
   reducedMotion?: boolean;
@@ -59,40 +58,37 @@ interface ForceFieldSceneProps {
   lagnaColor?: RGBColor;
   houseSpokes?: readonly number[];
   lagnaLongitude?: number;
+  labelMode?: LabelMode;
+  viewMode?: CameraViewMode;
+  autoOrbit?: boolean;
+  resetTrigger?: number;
   effects?: ReactNode;
 }
 
-// Observatory tokens, resolved once to THREE.Color (avoids per-frame parsing).
 const C = {
-  base: new THREE.Color(colors.background.primary), // #0B0E17
-  deep: new THREE.Color(colors.background.darkest), // #080A11
-  nebula: new THREE.Color(colors.accent.lapis), // #3A4FB0
-  brass: new THREE.Color(colors.accent.gold), // #C9A24B
-  brassBright: new THREE.Color(colors.accent['gold-bright']), // #E3B85A
-  lapisLight: new THREE.Color(colors.accent.blue), // #5468C8
-  spoke: new THREE.Color(colors.accent.lapis).multiplyScalar(0.55), // faint lapis engraving
-  star: new THREE.Color(colors.text.secondary), // muted brass-gray token
+  base: new THREE.Color(colors.background.primary),
+  deep: new THREE.Color(colors.background.darkest),
+  nebula: new THREE.Color(colors.accent.lapis),
+  brass: new THREE.Color(colors.accent.gold),
+  brassBright: new THREE.Color(colors.accent['gold-bright']),
+  lapisLight: new THREE.Color(colors.accent.blue),
+  star: new THREE.Color(colors.text.secondary),
 };
 
-/** Radius of the single outer zodiac band (planets sit at <= 7.5). */
-const ZODIAC_RADIUS = 8;
+const CAM_3D = new THREE.Vector3(0, 6.2, 13.8);
+const CAM_TOP = new THREE.Vector3(0, 17.5, 0.08);
+const TARGET_3D = new THREE.Vector3(0, 0.35, 0);
+const TARGET_TOP = new THREE.Vector3(0, 0, 0);
 
-/**
- * A large back-facing sphere shaded with a vertical gradient (deep obsidian at
- * the horizon → faint lapis "nebula" overhead). Replaces the dead flat clear
- * colour with a sense of atmosphere. Pure vertex-coloured basic material — no
- * lights, no cost.
- */
 function Backdrop() {
   const geometry = useMemo(() => {
     const geo = new THREE.SphereGeometry(60, 32, 24);
     const pos = geo.getAttribute('position');
     const count = pos.count;
     const colorAttr = new Float32Array(count * 3);
-    const top = C.nebula.clone().lerp(C.base, 0.72); // very subtle lapis wash
+    const top = C.nebula.clone().lerp(C.base, 0.72);
     const bottom = C.deep;
     for (let i = 0; i < count; i++) {
-      // Normalised height -1..1 → 0..1, eased so the wash sits high up.
       const h = THREE.MathUtils.clamp((pos.getY(i) / 60) * 0.5 + 0.5, 0, 1);
       const t = Math.pow(h, 1.8);
       const c = bottom.clone().lerp(top, t);
@@ -116,27 +112,21 @@ function Backdrop() {
   );
 }
 
-/**
- * Faint instanced starfield on a far shell. Low count, points material, no
- * per-frame work (a whole-group slow yaw only). Cheap on mobile.
- */
 function Starfield({ reducedMotion }: { reducedMotion: boolean }) {
   const groupRef = useRef<THREE.Group>(null);
   const { geometry, material } = useMemo(() => {
     const COUNT = 320;
     const positions = new Float32Array(COUNT * 3);
     const sizes = new Float32Array(COUNT);
-    // Deterministic LCG so the starfield is identical every mount.
     let seed = 0x9e3779b9;
     const rnd = () => {
       seed = (seed * 1664525 + 1013904223) >>> 0;
       return seed / 0xffffffff;
     };
     for (let i = 0; i < COUNT; i++) {
-      // Scatter on a far shell, biased to the upper hemisphere.
       const r = 30 + rnd() * 18;
       const theta = rnd() * Math.PI * 2;
-      const phi = Math.acos(1 - rnd() * 1.4); // bias upward
+      const phi = Math.acos(1 - rnd() * 1.4);
       positions[i * 3] = Math.sin(phi) * Math.cos(theta) * r;
       positions[i * 3 + 1] = Math.cos(phi) * r * 0.9 + 4;
       positions[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * r;
@@ -160,7 +150,7 @@ function Starfield({ reducedMotion }: { reducedMotion: boolean }) {
 
   useFrame((_, delta) => {
     if (reducedMotion || !groupRef.current) return;
-    groupRef.current.rotation.y += delta * 0.006; // glacial drift
+    groupRef.current.rotation.y += delta * 0.006;
   });
 
   return (
@@ -170,193 +160,62 @@ function Starfield({ reducedMotion }: { reducedMotion: boolean }) {
   );
 }
 
-// Shared flag the OrbitControls toggles on drag start/end so AutoOrbit yields.
 const userDragging = { value: false };
 
-/**
- * Calm cinematic auto-orbit: a slow azimuthal drift + a gentle vertical breathe
- * applied to the camera around the scene centre. Suspended while the user is
- * dragging the OrbitControls (resumes after release). Never spinny.
- */
-function AutoOrbit({
+function CameraController({
   controlsRef,
+  viewMode,
+  autoOrbit,
   reducedMotion,
+  selectedPlanet,
+  resetTrigger,
 }: {
   controlsRef: RefObject<OrbitControlsImpl | null>;
+  viewMode: CameraViewMode;
+  autoOrbit: boolean;
   reducedMotion: boolean;
+  selectedPlanet: string | null;
+  resetTrigger: number;
 }) {
+  const { camera } = useThree();
+  const transitionFrames = useRef(0);
+
+  useEffect(() => {
+    transitionFrames.current = 45;
+  }, [viewMode, resetTrigger]);
+
   useFrame((_, delta) => {
-    if (reducedMotion) return;
     const controls = controlsRef.current;
+    if (!controls) return;
+
+    if (transitionFrames.current > 0 && !userDragging.value) {
+      const destPos = viewMode === 'top' ? CAM_TOP : CAM_3D;
+      const destTarget = viewMode === 'top' ? TARGET_TOP : TARGET_3D;
+      camera.position.lerp(destPos, 0.14);
+      if ('target' in controls && controls.target instanceof THREE.Vector3) {
+        controls.target.lerp(destTarget, 0.16);
+      }
+      controls.update?.();
+      transitionFrames.current -= 1;
+      return;
+    }
+
     if (
-      !controls ||
+      reducedMotion ||
+      !autoOrbit ||
+      viewMode === 'top' ||
+      selectedPlanet !== null ||
       userDragging.value ||
       typeof controls.getAzimuthalAngle !== 'function' ||
       typeof controls.setAzimuthalAngle !== 'function'
     ) {
       return;
     }
-    // Nudge the controls' own azimuth so damping/zoom keep working naturally.
-    // ~0.045 rad/s → a calm full lap roughly every 2.3 minutes. Never spinny.
-    controls.setAzimuthalAngle(controls.getAzimuthalAngle() + delta * 0.045);
+    controls.setAzimuthalAngle(controls.getAzimuthalAngle() + delta * 0.038);
     controls.update?.();
   });
 
   return null;
-}
-
-function GroundPlane() {
-  return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.3, 0]} receiveShadow>
-      <circleGeometry args={[12, 64]} />
-      <meshStandardMaterial
-        color={colors.background.darker}
-        transparent
-        opacity={0.55}
-        roughness={1}
-        metalness={0}
-      />
-    </mesh>
-  );
-}
-
-/**
- * The ONE outer zodiac band: an engraved brass ring at r≈8 with twelve sign
- * ticks. Replaces the nine per-planet orbit shells. `sweep` (0..1) draws the
- * band in during the entrance via the geometry's index draw-range.
- */
-function ZodiacBand({ sweep }: { sweep: number }) {
-  const bandGeometry = useMemo(
-    () => new THREE.RingGeometry(ZODIAC_RADIUS - 0.045, ZODIAC_RADIUS + 0.045, 180, 1),
-    [],
-  );
-  const tickGeometry = useMemo(() => {
-    const verts: number[] = [];
-    for (let i = 0; i < 12; i++) {
-      const a = (i * 30 * Math.PI) / 180;
-      verts.push(
-        Math.cos(a) * (ZODIAC_RADIUS - 0.36), 0, Math.sin(a) * (ZODIAC_RADIUS - 0.36),
-        Math.cos(a) * (ZODIAC_RADIUS - 0.12), 0, Math.sin(a) * (ZODIAC_RADIUS - 0.12),
-      );
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
-    return geo;
-  }, []);
-  const tickMaterial = useMemo(
-    () =>
-      new THREE.LineBasicMaterial({
-        color: C.brass,
-        transparent: true,
-        opacity: 0.24,
-      }),
-    [],
-  );
-  const ticks = useMemo(
-    () => new THREE.LineSegments(tickGeometry, tickMaterial),
-    [tickGeometry, tickMaterial],
-  );
-
-  useEffect(() => {
-    const indexCount = bandGeometry.index ? bandGeometry.index.count : 0;
-    const clamped = Math.max(0, Math.min(1, sweep));
-    bandGeometry.setDrawRange(0, Math.floor((indexCount * clamped) / 3) * 3);
-    tickMaterial.opacity = 0.24 * clamped;
-  }, [bandGeometry, tickMaterial, sweep]);
-
-  useEffect(() => {
-    return () => {
-      bandGeometry.dispose();
-      tickGeometry.dispose();
-      tickMaterial.dispose();
-    };
-  }, [bandGeometry, tickGeometry, tickMaterial]);
-
-  return (
-    <group position={[0, -0.02, 0]}>
-      <mesh geometry={bandGeometry} rotation={[-Math.PI / 2, 0, 0]}>
-        <meshBasicMaterial
-          color={C.brass}
-          transparent
-          opacity={0.22}
-          side={THREE.DoubleSide}
-          depthWrite={false}
-        />
-      </mesh>
-      <primitive object={ticks} />
-    </group>
-  );
-}
-
-/** Faint radial spokes at each house cusp longitude + a brighter lagna dot. */
-function HouseRing({
-  spokes,
-  lagnaLongitude,
-  sweep,
-}: {
-  spokes: readonly number[];
-  lagnaLongitude?: number;
-  sweep: number;
-}) {
-  const { lines, materials } = useMemo(() => {
-    const inner = 1.6;
-    const outer = ZODIAC_RADIUS - 0.25;
-    const mats: THREE.LineBasicMaterial[] = [];
-    const objs = spokes.map((lon) => {
-      const a = (-lon * Math.PI) / 180;
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute(
-        'position',
-        new THREE.Float32BufferAttribute(
-          [Math.cos(a) * inner, 0, Math.sin(a) * inner, Math.cos(a) * outer, 0, Math.sin(a) * outer],
-          3,
-        ),
-      );
-      const mat = new THREE.LineBasicMaterial({
-        color: C.spoke,
-        transparent: true,
-        opacity: 0.3,
-      });
-      mats.push(mat);
-      return new THREE.Line(geo, mat);
-    });
-    return { lines: objs, materials: mats };
-  }, [spokes]);
-
-  useEffect(() => {
-    const clamped = Math.max(0, Math.min(1, sweep));
-    for (const mat of materials) mat.opacity = 0.3 * clamped;
-  }, [materials, sweep]);
-
-  useEffect(() => {
-    return () => {
-      for (const line of lines) {
-        line.geometry.dispose();
-        (line.material as THREE.Material).dispose();
-      }
-    };
-  }, [lines]);
-
-  return (
-    <group position={[0, -0.02, 0]}>
-      {lines.map((line, i) => (
-        <primitive key={`spoke-${i}`} object={line} />
-      ))}
-      {typeof lagnaLongitude === 'number' && (
-        <mesh
-          position={[
-            Math.cos((-lagnaLongitude * Math.PI) / 180) * (ZODIAC_RADIUS + 0.35),
-            0,
-            Math.sin((-lagnaLongitude * Math.PI) / 180) * (ZODIAC_RADIUS + 0.35),
-          ]}
-          rotation={[-Math.PI / 2, 0, 0]}
-        >
-          <circleGeometry args={[0.18, 24]} />
-          <meshBasicMaterial color={C.brassBright} transparent opacity={0.85 * sweep} />
-        </mesh>
-      )}
-    </group>
-  );
 }
 
 export function ForceFieldScene({
@@ -368,6 +227,10 @@ export function ForceFieldScene({
   lagnaColor,
   houseSpokes,
   lagnaLongitude,
+  labelMode = 'all',
+  viewMode = '3d',
+  autoOrbit = true,
+  resetTrigger = 0,
   effects,
 }: ForceFieldSceneProps) {
   const controlsRef = useRef<OrbitControlsImpl>(null);
@@ -381,28 +244,41 @@ export function ForceFieldScene({
     [frame.planets],
   );
 
-  // The Living Astrolabe decisions (pure, chart-derived, unit-tested).
+  const orbitRadii = useMemo(
+    () => sortedPlanets.map((p) => p.orbitRadius),
+    [sortedPlanets],
+  );
+
   const threads = useMemo(
     () => selectThreads(frame.planets, frame.active),
     [frame.planets, frame.active],
   );
+
+  const threadPlanetIds = useMemo(
+    () => new Set(threads.map((t) => t.planetId)),
+    [threads],
+  );
+
+  const labelElevations = useMemo(
+    () => computeLabelElevations(frame.planets),
+    [frame.planets],
+  );
+
   const revealIndex = useMemo(() => {
     const order = revealOrder(frame.planets);
     return new Map(order.map((id, i) => [id, i]));
   }, [frame.planets]);
+
   const entrance = entrancePhase(animationTime, reducedMotion);
 
   return (
     <>
-      {/* Atmosphere (drawn first, never fogged). */}
       <Backdrop />
       <Starfield reducedMotion={reducedMotion} />
 
-      {/* Lighting: soft brass key + cool lapis fill + ambient so spheres read
-          as lit 3D bodies. */}
-      <ambientLight intensity={0.5} color={C.base} />
+      <ambientLight intensity={0.52} color={C.base} />
       <hemisphereLight
-        intensity={0.35}
+        intensity={0.38}
         color={C.lapisLight}
         groundColor={C.deep}
       />
@@ -433,8 +309,8 @@ export function ForceFieldScene({
         minDistance={6}
         maxDistance={24}
         maxPolarAngle={Math.PI * 0.82}
-        minPolarAngle={Math.PI * 0.14}
-        target={[0, 0.5, 0]}
+        minPolarAngle={0.02}
+        target={[0, 0.35, 0]}
         enableDamping
         dampingFactor={0.06}
         rotateSpeed={0.55}
@@ -446,21 +322,28 @@ export function ForceFieldScene({
         }}
       />
 
-      <AutoOrbit controlsRef={controlsRef} reducedMotion={reducedMotion} />
+      <CameraController
+        controlsRef={controlsRef}
+        viewMode={viewMode}
+        autoOrbit={autoOrbit}
+        reducedMotion={reducedMotion}
+        selectedPlanet={selectedPlanet}
+        resetTrigger={resetTrigger}
+      />
 
       <GroundPlane />
-
-      <ZodiacBand sweep={entrance.ring} />
+      <OrbitTracks radii={orbitRadii} sweep={entrance.ring} />
+      <ZodiacBand sweep={entrance.ring} showSignLabels={labelMode !== 'hover'} />
 
       {houseSpokes && houseSpokes.length > 0 && (
         <HouseRing
           spokes={houseSpokes}
           lagnaLongitude={lagnaLongitude}
           sweep={entrance.ring}
+          showLabels={labelMode !== 'hover'}
         />
       )}
 
-      {/* At most three threads: the lords of the moment (+ one discord). */}
       {threads.map((spec) => {
         const planet = sortedPlanets.find((p) => p.id === spec.planetId);
         if (!planet) return null;
@@ -483,30 +366,43 @@ export function ForceFieldScene({
           reducedMotion={reducedMotion}
           lagnaColor={lagnaColor}
           ignition={entrance.core}
+          showLabel={labelMode === 'all'}
         />
       </group>
 
-      {sortedPlanets.map((planet) => (
-        <PlanetMesh
-          key={planet.id}
-          planet={planet}
-          time={animationTime}
-          role={planetRole(planet.id, frame.active)}
-          reveal={planetReveal(
-            animationTime,
-            revealIndex.get(planet.id) ?? 0,
-            sortedPlanets.length,
-            reducedMotion,
-          )}
-          onSelect={handlePlanetSelect}
-          isSelected={selectedPlanet === planet.id}
-          isDimmed={selectedPlanet !== null && selectedPlanet !== planet.id}
-          showLabel={selectedPlanet === planet.id}
-          reducedMotion={reducedMotion}
-        />
-      ))}
+      {sortedPlanets.map((planet) => {
+        const role = planetRole(planet.id, frame.active);
+        const isKeyRole = role.isLord || threadPlanetIds.has(planet.id);
+        const isSelected = selectedPlanet === planet.id;
+        return (
+          <PlanetMesh
+            key={planet.id}
+            planet={planet}
+            time={animationTime}
+            role={role}
+            reveal={planetReveal(
+              animationTime,
+              revealIndex.get(planet.id) ?? 0,
+              sortedPlanets.length,
+              reducedMotion,
+            )}
+            onSelect={handlePlanetSelect}
+            isSelected={isSelected}
+            isDimmed={selectedPlanet !== null && !isSelected}
+            showLabel={shouldShowPlanetLabel(
+              labelMode,
+              isKeyRole,
+              false,
+              isSelected,
+            )}
+            subLabel={planetSubLabel(planet, frame.active, threads)}
+            labelElevation={labelElevations.get(planet.id) ?? 0.56}
+            reducedMotion={reducedMotion}
+          />
+        );
+      })}
 
-      <fog attach="fog" args={[colors.background.darkest, 12, 34]} />
+      <fog attach="fog" args={[colors.background.darkest, 14, 36]} />
 
       {effects}
     </>
