@@ -18,12 +18,12 @@ import {
   type ThreeEvent,
   type ThreeElement,
 } from '@react-three/fiber';
-import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { colors } from '@almamesh/constants';
 import type { PlanetWave } from '@almamesh/shared-types';
 import { planetPosition } from './placement';
 import { labelVisible, type PlanetRole } from './astrolabe';
+import { CanvasLabel } from './CanvasLabel';
 
 const RING_FRIEND = colors.status.exalted;
 const RING_ENEMY = colors.status.debilitated;
@@ -32,7 +32,6 @@ const LABEL_COLOR = colors.text.primary;
 const LABEL_OUTLINE = colors.background.darkest;
 const RAHU_TINT = new THREE.Color(colors.forcefield.rahuTint);
 const KETU_TINT = new THREE.Color(colors.forcefield.ketuTint);
-const FONT_URL = '/fonts/HankenGrotesk-Bold.ttf';
 
 type AstrolabeDiscUniforms = {
   baseColor: THREE.IUniform<THREE.Color>;
@@ -318,34 +317,15 @@ export function PlanetMesh({
 
       {revealLabel && reveal > 0.35 && (
         <group ref={labelGroupRef} position={[initialX, labelElevation, initialZ]}>
-          <Text
-            font={FONT_URL}
-            fontSize={isEmphasized ? 0.24 : 0.19}
+          <CanvasLabel
+            text={primaryText}
+            subText={subLabel}
             color={isSelected ? colors.accent['gold-bright'] : LABEL_COLOR}
-            fillOpacity={labelOpacity}
-            anchorX="center"
-            anchorY="bottom"
-            outlineWidth={0.032}
+            subColor={subLabel ? getSubLabelColor(subLabel, isSelected) : undefined}
             outlineColor={LABEL_OUTLINE}
-            fontWeight="bold"
-          >
-            {primaryText}
-          </Text>
-          {subLabel && (
-            <Text
-              position={[0, -0.03, 0]}
-              font={FONT_URL}
-              fontSize={isEmphasized ? 0.145 : 0.125}
-              color={getSubLabelColor(subLabel, isSelected)}
-              fillOpacity={labelOpacity * 0.92}
-              anchorX="center"
-              anchorY="top"
-              outlineWidth={0.024}
-              outlineColor={LABEL_OUTLINE}
-            >
-              {subLabel}
-            </Text>
-          )}
+            opacity={labelOpacity}
+            worldHeight={subLabel ? (isEmphasized ? 0.44 : 0.36) : isEmphasized ? 0.28 : 0.23}
+          />
         </group>
       )}
 

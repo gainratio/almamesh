@@ -13,17 +13,16 @@
 
 import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { colors } from '@almamesh/constants';
 import type { AuraState, RGBColor } from '@almamesh/shared-types';
 import { ringRateFromNetFlux } from './astrolabe';
+import { CanvasLabel } from './CanvasLabel';
 
 const FLUX_CONSTRUCTIVE = new THREE.Color(colors.forcefield.fluxConstructive);
 const FLUX_DESTRUCTIVE = new THREE.Color(colors.forcefield.fluxDestructive);
 const FLUX_BALANCED = new THREE.Color(colors.forcefield.fluxBalanced);
 const BRASS = new THREE.Color(colors.accent.gold);
-const FONT_URL = '/fonts/HankenGrotesk-Bold.ttf';
 
 interface NativeCoreProps {
   aura: AuraState;
@@ -198,18 +197,13 @@ export function NativeCore({
 
       {showLabel && ignition > 0.7 && (
         <group ref={labelRef} position={[0, -0.78, 0]}>
-          <Text
-            font={FONT_URL}
-            fontSize={0.16}
+          <CanvasLabel
+            text="SELF · LAGNA"
             color={colors.text.secondary}
-            fillOpacity={0.78}
-            anchorX="center"
-            anchorY="top"
-            outlineWidth={0.024}
             outlineColor={colors.background.darkest}
-          >
-            SELF · LAGNA
-          </Text>
+            opacity={0.78}
+            worldHeight={0.22}
+          />
         </group>
       )}
 

@@ -9,14 +9,13 @@
 
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Text } from '@react-three/drei';
 import * as THREE from 'three';
 import { colors } from '@almamesh/constants';
 import { ZODIAC_ABBR, signAbbrFromLongitude } from './astrolabe';
+import { CanvasLabel } from './CanvasLabel';
 
 export const ZODIAC_RADIUS = 8;
 const OUTER_RIM_RADIUS = 8.55;
-const FONT_URL = '/fonts/HankenGrotesk-Bold.ttf';
 
 const C = {
   brass: new THREE.Color(colors.accent.gold),
@@ -180,21 +179,16 @@ export function ZodiacBand({
           const x = Math.cos(a) * labelRadius;
           const z = Math.sin(a) * labelRadius;
           return (
-            <Text
+            <CanvasLabel
               key={abbr}
+              text={abbr}
               position={[x, 0.02, z]}
               rotation={[-Math.PI / 2, 0, a - Math.PI / 2]}
-              font={FONT_URL}
-              fontSize={0.21}
               color={colors.text.secondary}
-              fillOpacity={0.72 * Math.min(1, (sweep - 0.65) / 0.35)}
-              anchorX="center"
-              anchorY="middle"
-              outlineWidth={0.018}
               outlineColor={colors.background.darkest}
-            >
-              {abbr}
-            </Text>
+              opacity={0.72 * Math.min(1, (sweep - 0.65) / 0.35)}
+              worldHeight={0.25}
+            />
           );
         })}
     </group>
@@ -302,17 +296,12 @@ export function HouseRing({
           </mesh>
           {showLabels && sweep > 0.6 && (
             <group ref={ascLabelRef} position={[0, 0.38, 0]}>
-              <Text
-                font={FONT_URL}
-                fontSize={0.2}
+              <CanvasLabel
+                text={`ASC · ${ascSign}`}
                 color={colors.accent['gold-bright']}
-                anchorX="center"
-                anchorY="bottom"
-                outlineWidth={0.03}
                 outlineColor={colors.background.darkest}
-              >
-                {`ASC · ${ascSign}`}
-              </Text>
+                worldHeight={0.25}
+              />
             </group>
           )}
         </group>
