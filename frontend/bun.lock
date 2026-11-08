@@ -616,7 +616,7 @@
 
     "@gainratio/avow": ["@gainratio/avow@0.5.3", "", { "dependencies": { "@noble/ed25519": "^3.1.0", "canonicalize": "^3.0.0" } }, "sha512-EeIvZ2xkXDiLpJRhVyODbTNscURy0Xqnzxucbkn9UfZSUIuSqwDfG/EvfSl0AcOLnJQ8PNMM2s2Oq41ACC8uqQ=="],
 
-    "@gainratio/browser": ["@gainratio/browser@0.4.2", "", { "dependencies": { "@hpcc-js/wasm-zstd": "^1.16.1", "@noble/ed25519": "^3.2.0", "age-encryption": "^0.3.1" } }, "sha512-/h6QbjmCrMrd4Ee2F9K/P6nmbdMzRLEDWSPCYwNgb60S+PnZxcE5SSUt61+As8iVHnoUP8Da13cqTChP4va3ig=="],
+    "@gainratio/browser": ["@gainratio/browser@0.4.5", "", { "dependencies": { "@hpcc-js/wasm-zstd": "^1.16.1", "@noble/ed25519": "^3.2.0", "age-encryption": "^0.3.1" } }, "sha512-TpqJt4DRHb5IaKydvusdzZPCf9mxE7edR9AwkiFyLENBV/AjfdZiQ0O6zh5VrdE8AaeUZBj2uyoCRo015FQyHw=="],
 
     "@gainratio/errors": ["@gainratio/errors@0.3.1", "", {}, "sha512-+pmoXvBem3EKzoM+4KNkQ4Whk6HRQ80fxEPJRQmPwyLgOzdmxcDaAalMdpXVVARYUc+mIUbMyAf17udjiTVJ+g=="],
 
