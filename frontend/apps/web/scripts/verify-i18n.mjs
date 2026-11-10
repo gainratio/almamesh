@@ -22,6 +22,7 @@ const CASES = [
   { lang: 'en', title: "What's your name?", cta: 'Continue' },
   { lang: 'es', title: '¿Cómo te llamas?', cta: 'Continuar' },
   { lang: 'pt', title: 'Qual é o seu nome?', cta: 'Continuar' },
+  { lang: 'hi', title: 'आपका नाम क्या है?', cta: 'जारी रखें' },
 ]
 
 const PERSIST_KEY = 'almamesh-language'
@@ -72,6 +73,21 @@ try {
     }
     await context.close()
   }
+
+  for (const { lang, title, cta } of CASES) {
+    const context = await browser.newContext()
+    const page = await context.newPage()
+    await page.goto(`${BASE_URL}${ONBOARDING_URL}?lang=${lang}`, { waitUntil: 'domcontentloaded' })
+    await page.waitForSelector(`text=${title}`, { timeout: 15000 }).catch(() => {})
+    const bodyText = await page.evaluate(() => document.body.innerText)
+    const htmlLang = await page.evaluate(() => document.documentElement.lang)
+    if (bodyText.includes(title) && bodyText.includes(cta) && htmlLang === lang) {
+      console.log(`✅ [?lang=${lang}] step="${title}"  cta="${cta}"  <html lang>=${htmlLang}`)
+    } else {
+      fail(`[?lang=${lang}] URL query boot failed (htmlLang="${htmlLang}", title=${bodyText.includes(title)}, cta=${bodyText.includes(cta)})`)
+    }
+    await context.close()
+  }
 } finally {
   await browser.close()
 }
@@ -79,5 +95,5 @@ try {
 if (process.exitCode) {
   console.error('\ni18n live-drive FAILED')
 } else {
-  console.log('\n✅ i18n live-drive PASSED — offline catalogs render translated screens in en/es/pt')
+  console.log('\n✅ i18n live-drive PASSED — offline catalogs render translated screens in en/es/pt/hi')
 }

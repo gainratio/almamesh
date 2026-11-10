@@ -10,7 +10,7 @@ import { Footer } from '../../components/Footer';
 import HowWeTest from './HowWeTest';
 import { RETRODICTION_RESULTS } from './howWeTestResults';
 
-function renderPage(language: 'en' | 'es' | 'pt' = 'en') {
+function renderPage(language: 'en' | 'es' | 'pt' | 'hi' = 'en') {
   void i18n.changeLanguage(language);
   return render(
     <MemoryRouter>
@@ -57,11 +57,19 @@ describe('How we test', () => {
     }
   });
 
-  it.each(['en', 'es', 'pt'] as const)('says the classical dasha rules show no lift, with the best corrected p, and publishes aggregates only (%s)', (language) => {
+  it.each(['en', 'es', 'pt', 'hi'] as const)('says the classical dasha rules show no lift, with the best corrected p, and publishes aggregates only (%s)', (language) => {
     renderPage(language);
     const text = document.body.textContent ?? '';
-    expect(text).toMatch(language === 'es' ? /0,80/ : language === 'pt' ? /0,80/ : /0\.80/);
-    expect(text).toMatch(language === 'en' ? /finds no lift from them/ : language === 'es' ? /no encuentra mejora alguna con ellas/ : /não encontra ganho algum com elas/);
+    expect(text).toMatch(language === 'es' || language === 'pt' ? /0,80/ : /0\.80/);
+    expect(text).toMatch(
+      language === 'en'
+        ? /finds no lift from them/
+        : language === 'es'
+          ? /no encuentra mejora alguna con ellas/
+          : language === 'pt'
+            ? /não encontra ganho algum com elas/
+            : /अतिरिक्त उछाल नहीं मिला/,
+    );
     expect(text).not.toMatch(/\bp\s*=\s*0[.,]10\b/);
   });
 
@@ -90,6 +98,7 @@ describe('How we test', () => {
     ['en', ['71', '0.69', '0.08 to 1.95', 'p = 0.72', '4.56', 'did not replicate', 'reflective only']],
     ['es', ['71', '0,69', '0,08 a 1,95', 'p = 0,72', '4,56', 'no se replicó', 'solo para reflexión']],
     ['pt', ['71', '0,69', '0,08 a 1,95', 'p = 0,72', '4,56', 'não se replicou', 'apenas para reflexão']],
+    ['hi', ['71', '0.69', '0.08 से 1.95', 'p = 0.72', '4.56', 'दोहराया नहीं जा सका', 'केवल आत्म-चिंतन हेतु']],
   ] as const)('publishes the relocation held-out null with its numbers, aggregates only (%s)', (language, parts) => {
     renderPage(language);
     const text = document.body.textContent ?? '';
@@ -103,6 +112,7 @@ describe('How we test', () => {
     ['en', /being re-tested|held-out data\./],
     ['es', /volviendo a probar/],
     ['pt', /testada de novo/],
+    ['hi', /दोबारा परखा जा रहा है/],
   ] as const)('claims no re-test in progress (%s)', (language, stale) => {
     renderPage(language);
     expect(document.body.textContent ?? '').not.toMatch(stale);
@@ -111,12 +121,13 @@ describe('How we test', () => {
   it.each([
     ['es', /cada versión/i],
     ['pt', /cada versão/i],
+    ['hi', /हर संस्करण|प्रत्येक संस्करण/],
   ] as const)('makes no per-release promise in %s either', (language, perRelease) => {
     renderPage(language);
     expect(document.body.textContent ?? '').not.toMatch(perRelease);
   });
 
-  it.each(['en', 'es', 'pt'] as const)('leaks no record-level data and publishes no lead as a finding (%s)', (language) => {
+  it.each(['en', 'es', 'pt', 'hi'] as const)('leaks no record-level data and publishes no lead as a finding (%s)', (language) => {
     renderPage(language);
     const text = document.body.textContent ?? '';
     expect(text).not.toMatch(/\b\d{4}-\d{2}-\d{2}\b/);

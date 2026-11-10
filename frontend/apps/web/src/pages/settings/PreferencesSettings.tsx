@@ -158,6 +158,7 @@ export default function PreferencesSettings() {
                 <option value="en">{t('language.english')}</option>
                 <option value="es">{t('language.spanish')}</option>
                 <option value="pt">{t('language.portuguese')}</option>
+                <option value="hi">{t('language.hindi')}</option>
               </Select>
             </div>
           </div>

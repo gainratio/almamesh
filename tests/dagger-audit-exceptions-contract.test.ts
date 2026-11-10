@@ -34,9 +34,12 @@ describe("bun audit exception list", () => {
     expect(MAX_AUDIT_EXCEPTION_DAYS).toBe(90)
   })
 
-  test("the committed list ignores exactly the braces advisory, nothing else", () => {
+  test("the committed list ignores only the reviewed build-time advisories with no upstream patch", () => {
     const exceptions = parseAuditExceptions(readFileSync(REAL_FILE, "utf8"), TODAY)
-    expect(auditIgnoreArgs(exceptions)).toEqual(["--ignore=GHSA-vfj7-8cjw-p6xm"])
+    expect(auditIgnoreArgs(exceptions)).toEqual([
+      "--ignore=GHSA-vfj7-8cjw-p6xm",
+      "--ignore=GHSA-gcqx-w48m-w2h4",
+    ])
   })
 
   test("the committed list is still in date today (goes red on expiry)", () => {

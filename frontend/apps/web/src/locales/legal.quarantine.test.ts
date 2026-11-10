@@ -2,26 +2,30 @@ import { describe, expect, it } from 'vitest';
 import en from './en/legal.json';
 import es from './es/legal.json';
 import pt from './pt/legal.json';
+import hi from './hi/legal.json';
 import enCommon from './en/common.json';
 import esCommon from './es/common.json';
 import ptCommon from './pt/common.json';
+import hiCommon from './hi/common.json';
 import enSettings from './en/settings.json';
 import esSettings from './es/settings.json';
 import ptSettings from './pt/settings.json';
+import hiSettings from './hi/settings.json';
 
 // The quarantine keeps user data, so the storage inventory and the deletion
 // page must disclose where it lives in every language. Since 2026-10-04 it is a
 // table in the on-device SQLite database, not a localStorage key.
 const LEGACY_KEY = 'almamesh-interpretations.quarantine';
-const LEGAL = { en, es, pt } as const;
-const COMMON = { en: enCommon, es: esCommon, pt: ptCommon } as const;
-const SETTINGS = { en: enSettings, es: esSettings, pt: ptSettings } as const;
+const LEGAL = { en, es, pt, hi } as const;
+const COMMON = { en: enCommon, es: esCommon, pt: ptCommon, hi: hiCommon } as const;
+const SETTINGS = { en: enSettings, es: esSettings, pt: ptSettings, hi: hiSettings } as const;
 
 // Pinned literals for the storage inventory sentence about the quarantine.
 const QUARANTINE_STORAGE = {
   en: 'If a saved interpretation cannot be read, it is set aside on this device in a quarantine table inside that same SQLite database for up to 30 days instead of being lost.',
   es: 'Si una interpretación guardada no se puede leer, se aparta en este dispositivo en una tabla de cuarentena dentro de esa misma base SQLite durante un máximo de 30 días en lugar de perderse.',
   pt: 'Se uma interpretação salva não puder ser lida, ela é separada neste dispositivo em uma tabela de quarentena dentro desse mesmo banco SQLite por até 30 dias em vez de ser perdida.',
+  hi: 'यदि कोई सहेजा गया पठन पढ़ा नहीं जा सकता, तो खोने के बजाय उसे इसी SQLite डेटाबेस के भीतर एक क्वारंटीन तालिका में इस डिवाइस पर 30 दिनों तक अलग रखा जाता है।',
 } as const;
 
 // Pinned: what profile delete does to set-aside rows, including the rows it
@@ -30,6 +34,7 @@ const QUARANTINE_PROFILE_DELETE = {
   en: "Deleting a profile removes the set-aside records that hold that profile's readings; a record that matches no profile stays until Reset chart / start fresh, Reset & reload, clearing site data, or the 30-day expiry removes it.",
   es: 'Eliminar un perfil borra los registros apartados que contienen lecturas de ese perfil; un registro que no corresponde a ningún perfil permanece hasta que lo eliminen Restablecer carta / empezar de cero, Restablecer y recargar, borrar los datos del sitio o el vencimiento de 30 días.',
   pt: 'Excluir um perfil remove os registros separados que contêm leituras desse perfil; um registro que não corresponde a nenhum perfil permanece até ser apagado por Redefinir mapa / começar do zero, Redefinir e recarregar, limpar os dados do site ou o prazo de 30 dias.',
+  hi: 'किसी प्रोफ़ाइल को हटाने पर उस प्रोफ़ाइल के पठन वाले अलग रखे गए रिकॉर्ड भी हट जाते हैं; जो रिकॉर्ड किसी प्रोफ़ाइल से मेल नहीं खाता वह कुंडली रीसेट करें / नई शुरुआत करें, रीसेट और रीलोड करें, साइट डेटा साफ़ करने, या 30-दिन की अवधि समाप्त होने तक रहता है।',
 } as const;
 
 // Contract reversed (2026-10-04): profile delete used to leave the quarantine
@@ -39,8 +44,9 @@ const QUARANTINE_DELETION = {
   en: 'Interpretations set aside as unreadable (the quarantine table in the on-device SQLite database) are removed when you delete the profile they belong to. A record too damaged to match to any profile is erased by Reset & reload, Settings → Preferences → Reset chart / start fresh, or clearing site data; otherwise it is deleted automatically after 30 days.',
   es: 'Las interpretaciones apartadas por ilegibles (la tabla de cuarentena de la base SQLite del dispositivo) se eliminan al borrar el perfil al que pertenecen. Un registro demasiado dañado para asociarlo a un perfil se borra con Restablecer y recargar, Ajustes → Preferencias → Restablecer carta / empezar de cero, o al borrar los datos del sitio; si no, se elimina automáticamente a los 30 días.',
   pt: 'As interpretações separadas por serem ilegíveis (a tabela de quarentena do banco SQLite do dispositivo) são removidas quando você exclui o perfil a que pertencem. Um registro danificado demais para ser associado a um perfil é apagado por Redefinir e recarregar, Configurações → Preferências → Redefinir mapa / começar do zero, ou ao limpar os dados do site; caso contrário, é excluído automaticamente após 30 dias.',
+  hi: 'अपठनीय होने के कारण अलग रखे गए पठन (ऑन-डिवाइस SQLite डेटाबेस की क्वारंटीन तालिका) संबंधित प्रोफ़ाइल हटाने पर हट जाते हैं। यदि कोई रिकॉर्ड इतना क्षतिग्रस्त हो कि किसी प्रोफ़ाइल से न जुड़ सके, तो वह रीसेट और रीलोड करें, सेटिंग्स → प्राथमिकताएँ → कुंडली रीसेट करें / नई शुरुआत करें, या साइट डेटा साफ़ करने से मिट जाता है; अन्यथा 30 दिनों के बाद स्वतः हट जाता है।',
 } as const;
-const PEOPLE_SECTION = { en: 'People', es: 'Personas', pt: 'Pessoas' } as const;
+const PEOPLE_SECTION = { en: 'People', es: 'Personas', pt: 'Pessoas', hi: 'लोग' } as const;
 
 describe.each(Object.keys(LEGAL) as (keyof typeof LEGAL)[])('[%s] quarantine disclosure', (lang) => {
   const privacyStorage = LEGAL[lang].privacy.s1_sub2_li1_text;

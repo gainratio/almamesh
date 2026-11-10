@@ -36,5 +36,6 @@ export function resolveConfig(): ProviderConfig {
 export function toPromptLanguage(i18nLang: string): PromptLanguage {
   if (i18nLang.startsWith('es')) return 'es';
   if (i18nLang.startsWith('pt')) return 'pt';
+  if (i18nLang.startsWith('hi')) return 'hi';
   return 'en';
 }

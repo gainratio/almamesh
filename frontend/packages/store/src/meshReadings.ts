@@ -78,7 +78,10 @@ function isMeshReadingEntry(value: unknown, pairKey: string): value is MeshReadi
     profileIds.every((profileId) => typeof profileId === 'string' && profileId.length > 0) &&
     typeof value.edgeRequestKey === 'string' &&
     value.edgeRequestKey.length > 0 &&
-    (value.language === 'en' || value.language === 'es' || value.language === 'pt') &&
+    (value.language === 'en' ||
+      value.language === 'es' ||
+      value.language === 'pt' ||
+      value.language === 'hi') &&
     (value.generationMode === 'layman' || value.generationMode === 'expert') &&
     isRecord(provider) &&
     provider.engine === 'openai-http' &&

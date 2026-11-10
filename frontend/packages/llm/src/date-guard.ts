@@ -54,6 +54,10 @@ const MONTH_NUMBER: Readonly<Record<string, number>> = {
   janeiro: 1, fevereiro: 2, "março": 3, marco: 3, maio: 5, junho: 6, julho: 7,
   setembro: 9, outubro: 10, novembro: 11, dezembro: 12,
   fev: 2, mai: 5, set: 9, out: 10, dez: 12,
+  // hi
+  "जनवरी": 1, "फ़रवरी": 2, "फरवरी": 2, "मार्च": 3, "अप्रैल": 4, "मई": 5, "जून": 6,
+  "जुलाई": 7, "अगस्त": 8, "सितंबर": 9, "सितम्बर": 9, "अक्टूबर": 10, "अक्तूबर": 10,
+  "नवंबर": 11, "नवम्बर": 11, "दिसंबर": 12, "दिसम्बर": 12,
 };
 
 // Longest first, so "sept" is tried before "sep" and "marzo" before "mar".
@@ -61,17 +65,20 @@ const MONTH_NAMES = Object.keys(MONTH_NUMBER)
   .sort((a, b) => b.length - a.length)
   .join("|");
 
-// Names of 4+ letters ("March", "junio", "sept") are never ordinary words
-// after a day number; 3-letter ones ("may", "set", "mar") need a year too.
+const DEVANAGARI = /\p{Script=Devanagari}/u;
+
+// Names of 4+ letters ("March", "junio", "sept") and Devanagari month names
+// ("मई", "जून") are never ordinary words after a day number; Latin 3-letter
+// ones ("may", "set", "mar") need capitalization or a year too.
 const LONG_MONTH_NAMES = Object.keys(MONTH_NUMBER)
-  .filter((name) => name.length >= 4)
+  .filter((name) => name.length >= 4 || DEVANAGARI.test(name))
   .sort((a, b) => b.length - a.length)
   .join("|");
 
 // 3-letter names count before a day number only when written as a name
 // ("Oct", "OCT"), so lowercase prose ("may 5 times", "set 3 goals") is left alone.
 const SHORT_NAMES = Object.keys(MONTH_NUMBER)
-  .filter((name) => name.length === 3)
+  .filter((name) => name.length === 3 && !DEVANAGARI.test(name))
   .join("|");
 const CAPITALIZED_SHORT_NAMES = SHORT_NAMES.split("|")
   .flatMap((name) => [name[0].toUpperCase() + name.slice(1), name.toUpperCase()])
@@ -80,40 +87,40 @@ const CAPITALIZED_SHORT_NAMES = SHORT_NAMES.split("|")
 // Between a month name and its year: "March 2027", "March, 2027",
 // "marzo de/del 2027", "March of 2027", "março/2027".
 const TO_YEAR = `(?:,?(?:\\s+(?:del?|of))?\\s+|\\s*/\\s*)`;
-const MONTH = `(?<!\\p{L})(?:${MONTH_NAMES})\\.?`;
+const MONTH = `(?<![\\p{L}\\p{M}])(?:${MONTH_NAMES})\\.?`;
 
 // "<month> <year>"; the name must start a word.
-const NAMED_MONTH = new RegExp(`(?<!\\p{L})(${MONTH_NAMES})\\.?${TO_YEAR}(\\d{4})\\b`, "giu");
+const NAMED_MONTH = new RegExp(`(?<![\\p{L}\\p{M}])(${MONTH_NAMES})\\.?${TO_YEAR}(\\d{4})\\b`, "giu");
 
 // The start of a month range that shares the end month's year, as quarter
 // titles print it: "Feb-Apr 2027", "fev.-abr. 2027", "Feb/Mar 2027". The start
 // month is read with that year.
 const RANGE_START = new RegExp(
-  `(?<!\\p{L})(${MONTH_NAMES})\\.?\\s*(?:${DASH}|/)\\s*${MONTH}${TO_YEAR}(\\d{4})\\b`,
+  `(?<![\\p{L}\\p{M}])(${MONTH_NAMES})\\.?\\s*(?:${DASH}|/)\\s*${MONTH}${TO_YEAR}(\\d{4})\\b`,
   "giu",
 );
 
 const DAY_SUFFIX = `(?:st|nd|rd|th|º|°)?`;
 // A day number after a month name, year or not: "October 12", "marzo 14",
 // "março de 14", "March 14th".
-const THEN_DAY = `\\.?(?:\\s+de)?\\s+\\d{1,2}${DAY_SUFFIX}(?![\\d\\p{L}])`;
+const THEN_DAY = `\\.?(?:\\s+de)?\\s+\\d{1,2}${DAY_SUFFIX}(?![\\d\\p{L}\\p{M}])`;
 const DAY_PRECISION: readonly RegExp[] = [
   // ISO date or timestamp, any dash: 2027-03-14, 2027‑03‑14, 2027-03-14T00:00.
   new RegExp(`(?<!\\d)\\d{4}${DASH}\\d{1,2}${DASH}\\d{1,2}(?!\\d)`),
   // Month, day, year: "March 14, 2027", "Mar. 14th 2027".
   new RegExp(`${MONTH}\\s+\\d{1,2}${DAY_SUFFIX},?\\s+\\d{4}\\b`, "iu"),
   // Long month name then a day, no year: "October 12", "marzo 14", "MARCH 3".
-  new RegExp(`(?<!\\p{L})(?:${LONG_MONTH_NAMES})${THEN_DAY}`, "iu"),
+  new RegExp(`(?<![\\p{L}\\p{M}])(?:${LONG_MONTH_NAMES})${THEN_DAY}`, "iu"),
   // Capitalized 3-letter name then a day, no year: "Oct 12", "Oct. 12", "Set 3".
-  new RegExp(`(?<!\\p{L})(?:${CAPITALIZED_SHORT_NAMES})${THEN_DAY}`, "u"),
-  // Day before a long month name, year optional: "14 March", "1º de junho".
-  new RegExp(`(?<![\\d\\p{L}])\\d{1,2}${DAY_SUFFIX}(?:\\s+(?:de|of))?\\s+(?:${LONG_MONTH_NAMES})(?!\\p{L})`, "iu"),
+  new RegExp(`(?<![\\p{L}\\p{M}])(?:${CAPITALIZED_SHORT_NAMES})${THEN_DAY}`, "u"),
+  // Day before a long month name, year optional: "14 March", "1º de junho", "14 मार्च".
+  new RegExp(`(?<![\\d\\p{L}\\p{M}])\\d{1,2}${DAY_SUFFIX}(?:\\s+(?:de|of))?\\s+(?:${LONG_MONTH_NAMES})(?![\\p{L}\\p{M}])`, "iu"),
   // Day before any month name with a year: "3 de jun. de 2027".
-  new RegExp(`(?<![\\d\\p{L}])\\d{1,2}${DAY_SUFFIX}(?:\\s+(?:de|of))?\\s+${MONTH}${TO_YEAR}\\d{4}\\b`, "iu"),
+  new RegExp(`(?<![\\d\\p{L}\\p{M}])\\d{1,2}${DAY_SUFFIX}(?:\\s+(?:de|of))?\\s+${MONTH}${TO_YEAR}\\d{4}\\b`, "iu"),
   // Day before a 3-letter name, no year: "12 Oct", "3rd of Dec" written as a
   // name, or any case after "de" ("14 de out"), so "3 set tries" is left alone.
-  new RegExp(`(?<![\\d\\p{L}])\\d{1,2}${DAY_SUFFIX}(?:\\s+(?:de|of))?\\s+(?:${CAPITALIZED_SHORT_NAMES})(?!\\p{L})`, "u"),
-  new RegExp(`(?<![\\d\\p{L}])\\d{1,2}${DAY_SUFFIX}\\s+de\\s+(?:${SHORT_NAMES})(?!\\p{L})`, "iu"),
+  new RegExp(`(?<![\\d\\p{L}\\p{M}])\\d{1,2}${DAY_SUFFIX}(?:\\s+(?:de|of))?\\s+(?:${CAPITALIZED_SHORT_NAMES})(?![\\p{L}\\p{M}])`, "u"),
+  new RegExp(`(?<![\\d\\p{L}\\p{M}])\\d{1,2}${DAY_SUFFIX}\\s+de\\s+(?:${SHORT_NAMES})(?![\\p{L}\\p{M}])`, "iu"),
   // Numeric: 3/14/2027, 14.03.2027, 03/2027, 2027/03, 2027.03. The month of a
   // YYYY-MM is not a day ("2026-10/2027-01" is two engine months).
   new RegExp(
@@ -125,9 +132,9 @@ const DAY_PRECISION: readonly RegExp[] = [
 // end a sentence: an abbreviated month's, when a number, connector or range
 // mark follows ("dez. 2027", "Mar. 14", "fev.-abr."), and one between digits
 // ("14.03.2027"). Concatenating every piece still reproduces the input.
-const ABBREVIATION_DOT = `(?<!\\p{L})(?:${MONTH_NAMES})\\.(?=\\s*[-–/,]|\\s+(?:(?:del?|of)\\s+)?\\d)`;
+const ABBREVIATION_DOT = `(?<![\\p{L}\\p{M}])(?:${MONTH_NAMES})\\.(?=\\s*[-–/,]|\\s+(?:(?:del?|of)\\s+)?\\d)`;
 const SENTENCE_OR_BREAK = new RegExp(
-  `(?:${ABBREVIATION_DOT}|(?<=\\d)\\.(?=\\d)|[^.!?…\\n])+(?:[.!?…]+["'”’)\\]]*)?[ \\t]*|[.!?…]+[ \\t]*|\\n+`,
+  `(?:${ABBREVIATION_DOT}|(?<=\\d)\\.(?=\\d)|[^.!?…।\\n])+(?:[.!?…।]+["'”’)\\]]*)?[ \\t]*|[.!?…।]+[ \\t]*|\\n+`,
   "giu",
 );
 

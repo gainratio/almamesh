@@ -137,6 +137,8 @@ describe("a rendered period answer", () => {
     expect(en).not.toMatch(/confidence/i);
     expect(renderAnswer(answer, { voice: "layman", language: "es" })).not.toMatch(/confianza/i);
     expect(renderAnswer(answer, { voice: "layman", language: "pt" })).not.toMatch(/confiança/i);
+    expect(renderAnswer(answer, { voice: "layman", language: "hi" })).toContain("(सहायक, अधिकांश संकेतक सहमत हैं)");
+    expect(renderAnswer(answer, { voice: "layman", language: "hi" })).not.toMatch(/विश्वास/u);
   });
 });
 
@@ -156,6 +158,10 @@ describe("the scan can fail", () => {
     ["pt", "O mapa prevê uma mudança."],
     ["pt", "Provavelmente muda."],
     ["pt", "Isso acontecerá em junho."],
+    ["hi", "यह कुंडली बदलाव की भविष्यवाणी करती है।"],
+    ["hi", "इंजन का पूर्वानुमान"],
+    ["hi", "संभवतः जून में बदलाव होगा।"],
+    ["hi", "यह बताएगा कि क्या घटित होगा।"],
   ] as const)("%s: %s", (language, text) => {
     expect(predictionClaims(text, language)).not.toEqual([]);
   });
@@ -164,10 +170,11 @@ describe("the scan can fail", () => {
     expect(predictionClaims("an unpredictable inaccurate unlikely day", "en")).toEqual([]);
     expect(predictionClaims("Fecha exacta; precisión de la fecha", "es")).toEqual([]);
     expect(predictionClaims("O AlmaMesh precisa de permissão; prevenção", "pt")).toEqual([]);
+    expect(predictionClaims("सटीक जन्म समय से दशा तिथियाँ स्पष्ट होती हैं।", "hi")).toEqual([]);
   });
 
-  it("covers the three app languages", () => {
-    expect(Object.keys(PREDICTION_CLAIM_PATTERNS).sort()).toEqual(["en", "es", "pt"]);
+  it("covers the four app languages", () => {
+    expect(Object.keys(PREDICTION_CLAIM_PATTERNS).sort()).toEqual(["en", "es", "hi", "pt"]);
   });
 });
 
@@ -210,8 +217,9 @@ describe("the narration scans", () => {
     expect([...toolNarration(text, "en"), ...lifeGuesses(text, "en")]).toEqual([]);
   });
 
-  it("leaves Spanish and Portuguese indicator sentences alone", () => {
+  it("leaves Spanish, Portuguese and Hindi indicator sentences alone", () => {
     expect([...toolNarration("Saturno se estaciona directo el 17; la lectura destaca la casa 9.", "es"), ...lifeGuesses("Saturno se estaciona directo el 17.", "es")]).toEqual([]);
     expect([...toolNarration("Saturno fica direto no dia 17; a leitura destaca a casa 9.", "pt"), ...lifeGuesses("Saturno fica direto no dia 17.", "pt")]).toEqual([]);
+    expect([...toolNarration("शनि 17 सितंबर को मार्गी होता है; यह नवम भाव को रेखांकित करता है।", "hi"), ...lifeGuesses("शनि 17 सितंबर को मार्गी होता है।", "hi")]).toEqual([]);
   });
 });

@@ -13,8 +13,8 @@ import { describe, expect, it } from 'vitest';
 import { asksToTravel, claimsMove, isPlaceReply, MAX_INTENT_CHARS, pendingTravelIn, travelGrant } from '../travelIntent';
 import { TRAVEL_NEEDS_PLACE, TRAVEL_TOOL_NAME } from '../travelTool';
 
-/** Every request is checked as typed and with its accents dropped (phone keyboards often do). */
-const stripped = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '');
+/** Every request is checked as typed and with Latin accents dropped (phone keyboards often do). */
+const stripped = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/gu, '');
 
 describe('asksToTravel: an explicit request to move', () => {
   it.each([
@@ -114,6 +114,13 @@ describe('asksToTravel: an explicit request to move', () => {
     'take me home',
     'Take me home, please.',
     'Ok, bring me back home',
+    // hi
+    'मुझे मई 2019 में ले चलो',
+    'मुझे 2019 में पुणे ले चलिए',
+    'चलो 2019 में चलते हैं',
+    '2019 में समय-यात्रा करें',
+    'वापस आज पर चलो',
+    'इस यात्रा से बाहर निकलो',
   ])('%s', (question) => {
     expect(asksToTravel(question)).toBe(true);
     expect(asksToTravel(stripped(question))).toBe(true);
@@ -374,6 +381,8 @@ describe('claimsMove: an answer that says the conversation moved', () => {
     'Ya estamos de vuelta en hoy.',
     'Saímos da viagem de setembro de 2017.',
     'Estamos de volta a hoje.',
+    'हम इस यात्रा से बाहर आ गए हैं।',
+    'हम आज पर वापस आ गए हैं।',
   ])('%s', (answer) => {
     expect(claimsMove(answer)).toBe(true);
   });

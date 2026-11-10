@@ -73,8 +73,9 @@ describe("round two of the re-grade", () => {
     expect(reflectionIssues(text)).not.toEqual([]);
   });
 
-  it("still holds a Devanagari line longer than a short mantra", () => {
-    expect(reflectionIssues(LONG_DEVANAGARI).map((issue) => issue.kind)).toEqual(["unreadable_script"]);
+  it("passes Devanagari reflective prose and mantras now that Hindi is an app language", () => {
+    expect(reflectionIssues(LONG_DEVANAGARI)).toEqual([]);
+    expect(reflectionIssues("मार्च 2027 में बृहस्पति की अंतर्दशा शुरू होगी।")).toEqual([]);
   });
 
   it("asks for mantras in IAST, so a remedies section is not held for its script", () => {
@@ -87,8 +88,10 @@ describe("round two of the re-grade", () => {
     }
   });
 
-  it("still holds a short Devanagari line that carries a date", () => {
-    expect(reflectionIssues("मार्च 2027 में").map((issue) => issue.kind)).toEqual(["unreadable_script"]);
+  it("still holds a sentence in a non-app script", () => {
+    expect(reflectionIssues("২০২৭ সালের মার্চে বৃহস্পতি মিথুন রাশিতে প্রবেশ করবে").map((issue) => issue.kind)).toEqual([
+      "unreadable_script",
+    ]);
   });
 });
 
@@ -139,12 +142,13 @@ describe("the app's own words", () => {
   });
 
   it("withholds in each app language", () => {
-    expect(Object.keys(REFLECTION_WITHHELD).sort()).toEqual(["en", "es", "pt"]);
+    expect(Object.keys(REFLECTION_WITHHELD).sort()).toEqual(["en", "es", "hi", "pt"]);
     // Round two: the notice says how to ask instead, in plain words.
     expect(REFLECTION_WITHHELD).toEqual({
       en: "I couldn't word this as a reflection. Try asking what the chart shows for that period instead of what is coming.",
       es: "No pude expresar esto como una reflexión. Prueba a preguntar qué muestra la carta para ese periodo, en lugar de qué viene.",
       pt: "Não consegui formular isto como uma reflexão. Tente perguntar o que o mapa mostra para esse período, em vez do que vem pela frente.",
+      hi: "मैं इसे आत्म-चिंतन के रूप में व्यक्त नहीं कर सका। आगे क्या है यह पूछने के बजाय यह पूछकर देखें कि कुंडली उस अवधि के लिए क्या दर्शाती है।",
     });
   });
 });
@@ -155,10 +159,10 @@ describe("each issue names what it found", () => {
     expect(kinds("You will get married in 2027.")).toContain("foretelling");
     expect(kinds("The reading is silent on career.")).toContain("narration");
     expect(kinds("You may have felt stuck.")).toContain("life_guess");
-    // A short Hindi line is read by its future verb ending now (round two exempts short mantra lines
-    // from the script rule); a long one is still held for its script.
     expect(kinds("आपको मार्च में नई नौकरी मिलेगी।")).toContain("foretelling");
-    expect(kinds(LONG_DEVANAGARI)).toContain("unreadable_script");
+    expect(kinds("पठन में कोई करियर विषय नहीं है।")).toContain("narration");
+    expect(kinds("आपने शायद महसूस किया होगा कि काम रुका हुआ था।")).toContain("life_guess");
+    expect(kinds("২০২৭ সালের মার্চে বৃহস্পতি মিথুন রাশিতে প্রবেশ করবে")).toContain("unreadable_script");
   });
 });
 
@@ -347,7 +351,7 @@ describe("a reading's JSON", () => {
   });
 
   it("withholds in each app language, in words that pass the check", () => {
-    expect(Object.keys(READING_WITHHELD).sort()).toEqual(["en", "es", "pt"]);
+    expect(Object.keys(READING_WITHHELD).sort()).toEqual(["en", "es", "hi", "pt"]);
     for (const text of Object.values(READING_WITHHELD)) expect(reflectionIssues(text)).toEqual([]);
   });
 });

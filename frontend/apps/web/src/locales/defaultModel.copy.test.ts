@@ -9,11 +9,14 @@ import esDashboard from './es/dashboard.json';
 import esSettings from './es/settings.json';
 import ptDashboard from './pt/dashboard.json';
 import ptSettings from './pt/settings.json';
+import hiDashboard from './hi/dashboard.json';
+import hiSettings from './hi/settings.json';
 
 const LOCALES = [
   ['en', enSettings, enDashboard],
   ['es', esSettings, esDashboard],
   ['pt', ptSettings, ptDashboard],
+  ['hi', hiSettings, hiDashboard],
 ] as const;
 
 describe.each(LOCALES)('%s copy for the default model', (_lang, settings, dashboard) => {

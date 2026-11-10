@@ -100,14 +100,24 @@ describe('routeHead — the single per-route SEO source', () => {
     expect(new Set(shapes).size).toBe(1);
   });
 
-  it('emits reciprocal hreflang for the Hindi kundli page', () => {
-    const alternates = headElementsFor('/free-kundli')
+  it.each([
+    'free-kundli',
+    'birth-chart',
+    'nakshatra',
+    'dasha',
+    'kundli-matching',
+    'muhurta',
+  ])('emits full reciprocal hreflang mesh (en, en-IN, hi, es, pt, x-default) for /%s', (slug) => {
+    const alternates = headElementsFor(`/${slug}`)
       .filter((el) => el.props.rel === 'alternate')
       .map((el) => `${el.props.hreflang}=${el.props.href}`);
     expect(alternates).toEqual([
-      `en=${SITE_ORIGIN}/free-kundli`,
-      `hi=${SITE_ORIGIN}/hi/free-kundli/`,
-      `x-default=${SITE_ORIGIN}/free-kundli`,
+      `en=${SITE_ORIGIN}/${slug}`,
+      `en-IN=${SITE_ORIGIN}/${slug}`,
+      `hi=${SITE_ORIGIN}/hi/${slug}/`,
+      `es=${SITE_ORIGIN}/es/${slug}/`,
+      `pt=${SITE_ORIGIN}/pt/${slug}/`,
+      `x-default=${SITE_ORIGIN}/${slug}`,
     ]);
   });
 

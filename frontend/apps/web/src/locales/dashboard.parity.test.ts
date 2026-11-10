@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import en from './en/dashboard.json';
 import es from './es/dashboard.json';
 import pt from './pt/dashboard.json';
+import hi from './hi/dashboard.json';
 
 /** Flatten to dotted leaf keys, skipping `_meta` annotation blocks. */
 const keys = (o: unknown, p = ''): string[] =>
@@ -14,10 +15,11 @@ const keys = (o: unknown, p = ''): string[] =>
 describe('dashboard i18n parity', () => {
   it('es matches en keys', () => expect(keys(es).sort()).toEqual(keys(en).sort()));
   it('pt matches en keys', () => expect(keys(pt).sort()).toEqual(keys(en).sort()));
+  it('hi matches en keys', () => expect(keys(hi).sort()).toEqual(keys(en).sort()));
 });
 
 /**
- * es/pt `time_travel` values allowed to equal en, each with its reason.
+ * es/pt/hi `time_travel` values allowed to equal en, each with its reason.
  * Empty today: every Dashboard time-travel string is translated.
  */
 const SAME_AS_EN: Readonly<Record<string, string>> = {};
@@ -26,7 +28,7 @@ const placeholders = (value: string): string[] => (value.match(/\{\{\s*\w+\s*\}\
 
 describe('dashboard:time_travel keys and values', () => {
   const enBlock: Readonly<Record<string, string>> = en.time_travel;
-  const locales = { es: es.time_travel, pt: pt.time_travel } as const;
+  const locales = { es: es.time_travel, pt: pt.time_travel, hi: hi.time_travel } as const;
 
   it('the en block is not empty', () => expect(Object.keys(enBlock).length).toBeGreaterThan(0));
 

@@ -17,16 +17,18 @@ import { type Catalog, defineErrors, httpStatusOf, starterPack } from '@gainrati
 import esCanonicalErrors from '@gainratio/errors/locales/es.json';
 import ptCanonicalErrors from '@gainratio/errors/locales/pt.json';
 import { safeCauseWarn, safeError } from '@almamesh/shared-types';
+import hiCanonicalErrors from '../i18n/canonicalErrors.hi.json';
 import i18n from '../i18n/config';
 
 /**
- * The i18next namespace holding the es/pt sentences @gainratio/errors ships
+ * The i18next namespace holding the es/pt/hi sentences @gainratio/errors ships
  * for its built-in codes (`errors.<code>`). English has no bundle on purpose:
  * `describe` falls back to the catalog's own `en`.
  */
 const CANONICAL_ERRORS_NS = 'canonicalErrors';
 i18n.addResourceBundle('es', CANONICAL_ERRORS_NS, esCanonicalErrors);
 i18n.addResourceBundle('pt', CANONICAL_ERRORS_NS, ptCanonicalErrors);
+i18n.addResourceBundle('hi', CANONICAL_ERRORS_NS, hiCanonicalErrors);
 
 /**
  * Error codes for internal reference / support correlation. The codes

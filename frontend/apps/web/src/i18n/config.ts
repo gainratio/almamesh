@@ -68,6 +68,23 @@ import ptLanding from '../locales/pt/landing.json';
 import ptRectify from '../locales/pt/rectify.json';
 import ptFeedback from '../locales/pt/feedback.json';
 
+// --- Hindi ---
+import hiCommon from '../locales/hi/common.json';
+import hiOnboarding from '../locales/hi/onboarding.json';
+import hiDashboard from '../locales/hi/dashboard.json';
+import hiChat from '../locales/hi/chat.json';
+import hiReport from '../locales/hi/report.json';
+import hiSettings from '../locales/hi/settings.json';
+import hiAstrology from '../locales/hi/astrology.json';
+import hiLegal from '../locales/hi/legal.json';
+import hiErrors from '../locales/hi/errors.json';
+import hiPredictive from '../locales/hi/predictive.json';
+import hiLife from '../locales/hi/life.json';
+import hiMesh from '../locales/hi/mesh.json';
+import hiLanding from '../locales/hi/landing.json';
+import hiRectify from '../locales/hi/rectify.json';
+import hiFeedback from '../locales/hi/feedback.json';
+
 /** The namespaces registered now (later agents fill the per-screen strings). */
 export const I18N_NAMESPACES = [
   'common',
@@ -139,6 +156,23 @@ const resources = {
     rectify: ptRectify,
     feedback: ptFeedback,
   },
+  hi: {
+    common: hiCommon,
+    onboarding: hiOnboarding,
+    dashboard: hiDashboard,
+    chat: hiChat,
+    report: hiReport,
+    settings: hiSettings,
+    astrology: hiAstrology,
+    legal: hiLegal,
+    errors: hiErrors,
+    predictive: hiPredictive,
+    life: hiLife,
+    mesh: hiMesh,
+    landing: hiLanding,
+    rectify: hiRectify,
+    feedback: hiFeedback,
+  },
 } as const;
 
 const initialLanguage: Language = getInitialLanguage();
@@ -147,7 +181,7 @@ void i18n.use(initReactI18next).init({
   resources,
   lng: initialLanguage,
   fallbackLng: 'en',
-  supportedLngs: ['en', 'es', 'pt'],
+  supportedLngs: ['en', 'es', 'pt', 'hi'],
   ns: I18N_NAMESPACES,
   defaultNS: 'common',
   returnNull: false,

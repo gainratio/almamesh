@@ -98,7 +98,7 @@ the first run while images and caches build).
 | `backend/src/almamesh/edge/` | The chart runtime the browser calls, plus the `almamesh-chart` and `almamesh-bundle` CLIs. |
 | `backend/tests/` | pytest suite, including golden fixtures and the README contract test. |
 | `frontend/apps/web/` | The React + Vite app (the whole product surface). |
-| `frontend/apps/web/src/locales/{en,es,pt}/` | UI text in three languages, with parity tests. |
+| `frontend/apps/web/src/locales/{en,es,pt,hi}/` | UI text in four languages, with parity tests. |
 | `frontend/packages/browser/` | Runs the Python engine in the browser (Pyodide in a Web Worker) and syncs the signed bundle. |
 | `frontend/packages/store/` | Local data (SQLite in the browser) and adapters from engine output to UI types. |
 | `frontend/packages/llm/` | Optional AI reading and chat (off by default). |

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import en from './en/report.json';
 import es from './es/report.json';
 import pt from './pt/report.json';
+import hi from './hi/report.json';
 
 /** Flatten to dotted leaf keys, skipping `_meta` annotation blocks. */
 const keys = (o: unknown, p = ''): string[] =>
@@ -21,14 +22,16 @@ const leaf = (o: Record<string, unknown>, path: string): unknown =>
 describe('report i18n parity', () => {
   it('es matches en keys', () => expect(keys(es).sort()).toEqual(keys(en).sort()));
   it('pt matches en keys', () => expect(keys(pt).sort()).toEqual(keys(en).sort()));
+  it('hi matches en keys', () => expect(keys(hi).sort()).toEqual(keys(en).sort()));
 
-  it('es/pt cover templates carry the same {{placeholders}} as en', () => {
+  it('es/pt/hi cover templates carry the same {{placeholders}} as en', () => {
     for (const key of keys(en).filter((k) => k.startsWith('cover.'))) {
       const enVal = leaf(en as Record<string, unknown>, key);
       if (typeof enVal !== 'string') continue;
       const want = placeholders(enVal);
       expect(placeholders(leaf(es as Record<string, unknown>, key) as string)).toEqual(want);
       expect(placeholders(leaf(pt as Record<string, unknown>, key) as string)).toEqual(want);
+      expect(placeholders(leaf(hi as Record<string, unknown>, key) as string)).toEqual(want);
     }
   });
 });

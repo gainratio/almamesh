@@ -3,11 +3,11 @@
  * language preference. There is no backend and no account: the choice lives in
  * the portable on-device SQLite database and survives a refresh / PWA reopen.
  *
- * Default language is DETECTED from `navigator.language` on first run (es* → es,
- * pt* → pt, everything else → en), then the user's explicit choice (persisted)
- * takes over. The web app wires `setLanguage` to `i18n.changeLanguage(lang)` and
- * `document.documentElement.lang`, and threads `language` into the LLM prompts so
- * readings/chat answer in the chosen language.
+ * Default language is DETECTED from `?lang=` or `navigator.language` on first run
+ * (es* → es, pt* → pt, hi* → hi, everything else → en), then the user's explicit
+ * choice (persisted) takes over. The web app wires `setLanguage` to
+ * `i18n.changeLanguage(lang)` and `document.documentElement.lang`, and threads
+ * `language` into the LLM prompts so readings/chat answer in the chosen language.
  *
  * Production persistence is canonical SQLite. Node-based SSR/tests use the
  * explicit in-memory fallback seam.
@@ -18,7 +18,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import { portablePreferenceStorage } from './deletionTombstones';
 
 /** The supported UI + AI languages (kept in lockstep with i18next `supportedLngs`). */
-export type Language = 'en' | 'es' | 'pt';
+export type Language = 'en' | 'es' | 'pt' | 'hi';
 
 /** Portable SQLite key for the persisted language choice. */
 export const LANGUAGE_PERSIST_NAME = 'almamesh-language';
@@ -31,7 +31,14 @@ export interface PersistedLanguageState {
   readonly language: Language;
 }
 
-const SUPPORTED_LANGUAGES: readonly Language[] = ['en', 'es', 'pt'];
+export const SUPPORTED_LANGUAGES: readonly Language[] = ['en', 'es', 'pt', 'hi'];
+
+/** Parse a `?lang=` query string value when it names a supported language. */
+export function parseQueryLanguage(search: string | undefined | null): Language | null {
+  if (!search) return null;
+  const raw = new URLSearchParams(search).get('lang')?.trim().toLowerCase();
+  return raw && SUPPORTED_LANGUAGES.includes(raw as Language) ? (raw as Language) : null;
+}
 
 /**
  * Defensive hydration: tolerate ANY old/unknown/corrupt persisted blob and
@@ -55,8 +62,8 @@ export function migrateLanguagePersistedState(
 }
 
 /**
- * Map a raw BCP-47 tag (e.g. `es-AR`, `pt-BR`, `en-US`) to a supported language.
- * Anything outside Spanish/Portuguese falls back to English.
+ * Map a raw BCP-47 tag (e.g. `es-AR`, `pt-BR`, `hi-IN`, `en-US`) to a supported language.
+ * Anything outside Spanish/Portuguese/Hindi falls back to English.
  */
 export function detectLanguage(raw: string | undefined | null): Language {
   const tag = (raw ?? '').toLowerCase();
@@ -66,15 +73,24 @@ export function detectLanguage(raw: string | undefined | null): Language {
   if (tag.startsWith('pt')) {
     return 'pt';
   }
+  if (tag.startsWith('hi')) {
+    return 'hi';
+  }
   return 'en';
 }
 
 /**
- * The boot-time default: the browser's preferred language, mapped to a supported
- * one. Used by the i18n init (`lng`) so the very first render is already in the
- * right language before the store hydrates.
+ * The boot-time default: explicit `?lang=` query parameter when valid, else the
+ * browser's preferred language mapped to a supported one. Used by the i18n init
+ * (`lng`) so the very first render is already in the right language before the
+ * store hydrates.
  */
 export function getInitialLanguage(): Language {
+  const loc = (globalThis as { location?: { search?: string } }).location;
+  const queryLang = parseQueryLanguage(loc?.search);
+  if (queryLang !== null) {
+    return queryLang;
+  }
   const nav = (globalThis as { navigator?: { language?: string } }).navigator;
   return detectLanguage(nav?.language);
 }

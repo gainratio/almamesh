@@ -23,10 +23,15 @@
  */
 import type { ChatMessage, ChatToolCallPart } from '@almamesh/shared-types';
 
-/** Lower case, accents dropped, curly apostrophes straightened: "Lléveme" and "Lleveme" read alike. */
+/** Lower case, Latin accents dropped, curly apostrophes straightened: "Lléveme" and "Lleveme" read alike while Devanagari matras stay intact. */
 function plain(text: string): string {
-  return text.normalize('NFD').replace(/\p{M}/gu, '').replace(/[’‘]/g, "'").toLowerCase();
+  return text.normalize('NFD').replace(/[\u0300-\u036f]/gu, '').replace(/[’‘]/g, "'").toLowerCase();
 }
+
+const HI_MONTHS = 'जनवरी|फ़रवरी|फरवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितंबर|सितम्बर|अक्टूबर|नवंबर|नवम्बर|दिसंबर|दिसम्बर';
+const HI_TIME = `(?:\\d{4}|${HI_MONTHS}|आज|अभी|वर्तमान)`;
+const HI_BOUND_START = String.raw`(?<![\p{L}\p{M}])`;
+const HI_BOUND_END = String.raw`(?![\p{L}\p{M}])`;
 
 const MONTHS = [
   'january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
@@ -69,6 +74,9 @@ const MOVE_WITH_TIME: readonly RegExp[] = [
   new RegExp(`${ATTACHED} ${PREP}\\b.*\\b${TIME}\\b`),
   new RegExp(`\\btime[- ]?travel\\b.*\\b${TIME}\\b`),
   new RegExp(`\\bmove (?:this|the) (?:chat|conversation|thread)\\b.*\\b${TIME}\\b`),
+  new RegExp(`${HI_BOUND_START}(?:मुझे|हमें)\\s+[^.!?।]{0,40}${HI_BOUND_START}${HI_TIME}${HI_BOUND_END}[^.!?।]{0,20}(?:ले\\s+(?:चलो|चलिए|जाओ|जाएं|जाइये)|वापस\\s+ले\\s+(?:चलो|चलिए|जाओ))${HI_BOUND_END}`, 'u'),
+  new RegExp(`${HI_BOUND_START}(?:चलो|आइए)\\s+[^.!?।]{0,30}${HI_BOUND_START}${HI_TIME}${HI_BOUND_END}\\s+(?:में|पर)?\\s*(?:चलते\\s+हैं|चलें|लौटते\\s+हैं|लौटें)${HI_BOUND_END}`, 'u'),
+  new RegExp(`${HI_BOUND_START}${HI_TIME}${HI_BOUND_END}\\s+(?:में|पर)\\s+समय[- ]?यात्रा\\s+(?:करो|करें|करते\\s+हैं)${HI_BOUND_END}`, 'u'),
 ];
 
 /** Leaving the trip needs no time: it goes back to today. */
@@ -84,6 +92,8 @@ const LEAVE_TRIP: readonly RegExp[] = [
   /\b(?:sair|saia|saiamos|encerrar|encerre|encerra|terminar|termine|termina|acabar|fechar|feche)(?: da| de| dessa| desta| dessa)?(?: esta| essa| a| minha)? viagem\b/,
   /\b(?:me tira|me tire|tira-me|tire-me) daqui\b/,
   new RegExp(`\\bterminei com ${TIME}\\b`),
+  new RegExp(`${HI_BOUND_START}(?:वापस\\s+)?(?:आज|अभी|वर्तमान)\\s+(?:पर|में)\\s+(?:चलो|चलिए|लौटो|लौटिए|वापस\\s+चलो|वापस\\s+ले\\s+चलो)${HI_BOUND_END}`, 'u'),
+  new RegExp(`${HI_BOUND_START}(?:इस\\s+)?(?:यात्रा|समय[- ]?यात्रा)\\s+(?:से\\s+बाहर\\s+(?:निकलो|निकालो|आओ)|को\\s+(?:समाप्त|बंद|खत्म)\\s+(?:करो|करें|कर\\s+दो)|समाप्त\\s+(?:करो|करें))${HI_BOUND_END}`, 'u'),
 ];
 
 const matches = (patterns: readonly RegExp[], text: string) => patterns.some((pattern) => pattern.test(text));
@@ -176,6 +186,9 @@ const MOVE_CLAIMS: readonly RegExp[] = [
   /\b(?:ya no estamos en|volvimos a|regresamos a|salimos del viaje)\b/,
   /\b(?:saimos da|voltamos para|voltamos a|encerramos a viagem|ja nao estamos em)\b/,
   /\b(?:estamos|esta|voce esta) de volta\b/,
+  new RegExp(`${HI_BOUND_START}(?:हम|मैं)\\s+(?:अब\\s+)?(?:इस\\s+)?यात्रा\\s+से\\s+बाहर\\s+आ\\s+गए\\s+हैं${HI_BOUND_END}`, 'u'),
+  new RegExp(`${HI_BOUND_START}(?:हम|आप)\\s+(?:अब\\s+)?(?:आज|वर्तमान)\\s+(?:पर|में)\\s+वापस\\s+आ\\s+गए\\s+हैं${HI_BOUND_END}`, 'u'),
+  new RegExp(`${HI_BOUND_START}(?:यह\\s+)?(?:यात्रा\\s+अब\\s+समाप्त\\s+हो\\s+गई\\s+है|बातचीत\\s+अब\\s+(?:आज|वर्तमान)\\s+पर\\s+आ\\s+गई\\s+है)${HI_BOUND_END}`, 'u'),
 ];
 
 export function claimsMove(answer: string): boolean {

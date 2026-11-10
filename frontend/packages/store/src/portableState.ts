@@ -1206,7 +1206,8 @@ function validateCanonicalDataset(
     language !== undefined &&
     language.language !== 'en' &&
     language.language !== 'es' &&
-    language.language !== 'pt'
+    language.language !== 'pt' &&
+    language.language !== 'hi'
   ) {
     throw new Error('Portable state row "almamesh-language" has an invalid language.');
   }

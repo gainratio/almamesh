@@ -51,7 +51,7 @@ describe('Hero', () => {
 
   it('renders the microcopy', () => {
     renderHero();
-    expect(screen.getByText(/Works offline · 3 languages · open engine\./i)).toBeTruthy();
+    expect(screen.getByText(/Works offline · 4 languages · open engine\./i)).toBeTruthy();
   });
 
   describe('first-time visitor (no local chart)', () => {

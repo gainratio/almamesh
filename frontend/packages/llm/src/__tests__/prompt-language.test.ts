@@ -45,6 +45,14 @@ describe("buildChatMessages — language awareness", () => {
     expect(system).toMatch(/entire response in Portuguese/i);
   });
 
+  it("injects a Hindi instruction into the system prompt for hi", () => {
+    const msgs = buildChatMessages(CHART, "How is my year?", "layman", [], [], undefined, "hi");
+    const system = msgs[0].content ?? "";
+    expect(system).toMatch(/Hindi/);
+    expect(system).toMatch(/हिन्दी/);
+    expect(system).toMatch(/entire response in Hindi/i);
+  });
+
   it("preserves Sanskrit / astrology proper-noun guidance in non-English instructions", () => {
     const msgs = buildChatMessages(CHART, "q", "layman", [], [], undefined, "es");
     const system = msgs[0].content ?? "";
@@ -52,12 +60,12 @@ describe("buildChatMessages — language awareness", () => {
     expect(system.toLowerCase()).toMatch(/sanskrit|proper noun|nakshatra/);
   });
 
-  it("does NOT mention Spanish/Portuguese for en (default)", () => {
+  it("does NOT mention Spanish/Portuguese/Hindi for en (default)", () => {
     const enExplicit = buildChatMessages(CHART, "q", "layman", [], [], undefined, "en")[0].content ?? "";
     const enDefault = buildChatMessages(CHART, "q", "layman")[0].content ?? "";
-    expect(enExplicit).not.toMatch(/Spanish|Español|Portuguese|Português/);
+    expect(enExplicit).not.toMatch(/Spanish|Español|Portuguese|Português|Hindi|हिन्दी/);
     // Default (no language arg) is back-compatible and also English-only.
-    expect(enDefault).not.toMatch(/Spanish|Español|Portuguese|Português/);
+    expect(enDefault).not.toMatch(/Spanish|Español|Portuguese|Português|Hindi|हिन्दी/);
   });
 });
 
@@ -74,6 +82,14 @@ describe("buildInterpretationMessages — language awareness", () => {
     const system = msgs[0].content ?? "";
     expect(system).toMatch(/Portuguese/);
     expect(system).toMatch(/entire response in Portuguese/i);
+  });
+
+  it("injects a Hindi instruction into the system prompt for hi", () => {
+    const msgs = buildInterpretationMessages(CHART, "layman", "hi");
+    const system = msgs[0].content ?? "";
+    expect(system).toMatch(/Hindi/);
+    expect(system).toMatch(/हिन्दी/);
+    expect(system).toMatch(/entire response in Hindi/i);
   });
 
   it("is English-only for the default (no language) call", () => {

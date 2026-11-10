@@ -87,11 +87,14 @@ describe('Landing', () => {
     expect(screen.getByTestId('final-cta').getAttribute('href')).toBe('/dashboard');
   });
 
-  it('renders a footer with a link to the privacy policy', () => {
+  it('renders a footer with a link to the privacy policy and non-English SEO clusters', () => {
     renderLanding();
     const footer = screen.getByRole('contentinfo');
     const privacy = within(footer).getByRole('link', { name: /Privacy Policy/i });
     expect(privacy.getAttribute('href')).toBe('/privacy');
+    expect(within(footer).getByRole('link', { name: /हिन्दी कुंडली/ }).getAttribute('href')).toBe('/hi/free-kundli/');
+    expect(within(footer).getByRole('link', { name: /Carta Astral Gratis/ }).getAttribute('href')).toBe('/es/birth-chart/');
+    expect(within(footer).getByRole('link', { name: /Mapa Astral Grátis/ }).getAttribute('href')).toBe('/pt/birth-chart/');
   });
 
   it('renders every content section in spec order under <main>', () => {

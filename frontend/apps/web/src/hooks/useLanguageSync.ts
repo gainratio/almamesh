@@ -23,8 +23,29 @@ export interface LanguageSyncTarget {
   changeLanguage: (language: Language) => unknown;
 }
 
+const QUERY_LANGUAGES: ReadonlySet<string> = new Set(['en', 'es', 'pt', 'hi']);
+
+function readQueryLanguage(): Language | null {
+  if (typeof window === 'undefined') return null;
+  const raw = new URLSearchParams(window.location.search).get('lang')?.trim().toLowerCase();
+  return raw && QUERY_LANGUAGES.has(raw) ? (raw as Language) : null;
+}
+
 export function useLanguageSync(i18n: LanguageSyncTarget = defaultI18n): void {
   const language = useLanguageStore((s) => s.language);
+
+  useEffect(() => {
+    const queryLang = readQueryLanguage();
+    if (!queryLang) return;
+    if (useLanguageStore.getState().language !== queryLang) {
+      useLanguageStore.getState().setLanguage(queryLang);
+    }
+    return useLanguageStore.persist?.onFinishHydration?.(() => {
+      if (useLanguageStore.getState().language !== queryLang) {
+        useLanguageStore.getState().setLanguage(queryLang);
+      }
+    });
+  }, []);
 
   useEffect(() => {
     void i18n.changeLanguage(language);

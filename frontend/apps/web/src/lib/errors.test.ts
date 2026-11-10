@@ -552,7 +552,7 @@ describe('runaway reasoning (ai.reasoning_timeout)', () => {
     expect(chatErrorMessage(capped)).toBe(
       'The model thought for over 3 minutes without starting its answer. Try again, or pick a faster model in Settings → AI.',
     );
-    for (const lang of ['es', 'pt']) {
+    for (const lang of ['es', 'pt', 'hi']) {
       await i18n.changeLanguage(lang);
       const text = chatErrorMessage(capped);
       expect(text).not.toBe('');
@@ -562,19 +562,19 @@ describe('runaway reasoning (ai.reasoning_timeout)', () => {
   });
 });
 
-describe('one translation path: registry.describe with the shipped es/pt resources', () => {
+describe('one translation path: registry.describe with the shipped es/pt/hi resources', () => {
   // Every code the app registers renders through `aiErrorText`, which is
   // `aiErrorRegistry.describe(code, params, t)`. Codes whose meaning matches
   // the library sentence use the shipped @gainratio/errors locales; codes with
-  // product-specific copy keep it through `i18nKey`. Either way, a Spanish or
-  // Portuguese user never gets an English sentence or a raw key.
+  // product-specific copy keep it through `i18nKey`. Either way, a Spanish,
+  // Portuguese, or Hindi user never gets an English sentence or a raw key.
   const PARAMS = { endpoint: 'https://example.invalid/v1' };
   const SHIPPED = ['ai.provider.rate_limited', 'ai.provider.server_error'] as const;
   const CODES = aiErrorRegistry.codes as readonly AiErrorCode[];
   const render = (code: AiErrorCode): string =>
     code === 'ai.privacy.violation' ? aiErrorText(code, PARAMS) : aiErrorText(code);
 
-  it.each(['es', 'pt'])('renders every registered code non-English in %s', async (lang) => {
+  it.each(['es', 'pt', 'hi'])('renders every registered code non-English in %s', async (lang) => {
     await i18n.changeLanguage('en');
     const english = new Map(CODES.map((code) => [code, render(code)]));
     await i18n.changeLanguage(lang);
@@ -603,6 +603,9 @@ describe('one translation path: registry.describe with the shipped es/pt resourc
     expect(aiErrorText('ai.provider.server_error')).toBe(
       'Ocorreu um erro no servidor do provedor de IA. Tente de novo daqui a pouco.',
     );
+    await i18n.changeLanguage('hi');
+    expect(aiErrorText('ai.provider.server_error')).toContain('AI प्रदाता');
+    expect(aiErrorText('ai.provider.rate_limited')).toContain('AI प्रदाता');
   });
 
   it('English for a shipped code comes from the catalog en', async () => {
@@ -626,15 +629,15 @@ describe('one translation path: registry.describe with the shipped es/pt resourc
     expect(aiErrorText('ai.privacy.violation', PARAMS)).toContain('nothing was sent to https://example.invalid/v1');
   });
 
-  it('every i18nKey the catalog points at exists in en, es and pt', () => {
+  it('every i18nKey the catalog points at exists in en, es, pt and hi', () => {
     // getResource reads ONE language's bundle; i18n.exists would fall back to
-    // en and pass for a key missing from es/pt.
+    // en and pass for a key missing from es/pt/hi.
     const missing: string[] = [];
     for (const code of aiErrorRegistry.codes) {
       const key = aiErrorRegistry.get(code)?.i18nKey;
       if (key === undefined) continue;
       const [ns = '', path = ''] = key.split(':');
-      for (const lng of ['en', 'es', 'pt']) {
+      for (const lng of ['en', 'es', 'pt', 'hi']) {
         if (typeof i18n.getResource(lng, ns, path) !== 'string') missing.push(`${lng}:${key}`);
       }
     }
@@ -649,7 +652,7 @@ describe('a namespaced i18nKey with no translation falls back to the English sen
   // a miss, so that bare key reached the screen. 0.3.1 treats both as a miss
   // and renders the catalog's English instead.
   const PARAMS = { endpoint: 'https://example.invalid/v1' };
-  const LANGS = ['en', 'es', 'pt'] as const;
+  const LANGS = ['en', 'es', 'pt', 'hi'] as const;
   const originals = new Map<string, Record<string, unknown>>();
   const keyed = aiErrorRegistry.codes.filter((code) =>
     aiErrorRegistry.get(code)?.i18nKey?.startsWith('chat:'),

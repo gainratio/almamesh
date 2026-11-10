@@ -20,6 +20,7 @@ describe('localeForLanguage', () => {
     expect(localeForLanguage('en')).toBe('en-US');
     expect(localeForLanguage('es')).toBe('es-ES');
     expect(localeForLanguage('pt')).toBe('pt-BR');
+    expect(localeForLanguage('hi')).toBe('hi-IN');
   });
 });
 
@@ -29,6 +30,8 @@ describe('activeLocale', () => {
     expect(activeLocale()).toBe('es-ES');
     useLanguageStore.setState({ language: 'pt' });
     expect(activeLocale()).toBe('pt-BR');
+    useLanguageStore.setState({ language: 'hi' });
+    expect(activeLocale()).toBe('hi-IN');
     useLanguageStore.setState({ language: 'en' });
     expect(activeLocale()).toBe('en-US');
   });
@@ -61,7 +64,7 @@ describe('formatBirthDateForDisplay', () => {
   });
 
   it('preserves the day even at the western-tz rollover boundary in every locale', () => {
-    for (const lang of ['en', 'es', 'pt'] as const) {
+    for (const lang of ['en', 'es', 'pt', 'hi'] as const) {
       useLanguageStore.setState({ language: lang });
       // a date-only string must surface "08" (Aug 8) in the output, never "07".
       const out = formatBirthDateForDisplay('1988-08-08');
@@ -105,7 +108,7 @@ describe('formatBirthTimeForDisplay', () => {
   });
 
   it('keeps the wall-clock hour exactly as stored (no tz shift) across locales', () => {
-    for (const lang of ['en', 'es', 'pt'] as const) {
+    for (const lang of ['en', 'es', 'pt', 'hi'] as const) {
       useLanguageStore.setState({ language: lang });
       // 06:44 wall clock must surface :44 minutes and the 6 o'clock hour.
       const out = formatBirthTimeForDisplay('1988-08-08T06:44:00');

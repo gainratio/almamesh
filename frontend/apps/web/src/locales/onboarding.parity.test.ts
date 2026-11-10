@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import en from './en/onboarding.json';
 import es from './es/onboarding.json';
 import pt from './pt/onboarding.json';
+import hi from './hi/onboarding.json';
 
 /** Flatten to dotted leaf keys, skipping `_meta` annotation blocks. */
 const keys = (o: unknown, p = ''): string[] =>
@@ -21,14 +22,16 @@ const leaf = (o: Record<string, unknown>, path: string): unknown =>
 describe('onboarding i18n parity', () => {
   it('es matches en keys', () => expect(keys(es).sort()).toEqual(keys(en).sort()));
   it('pt matches en keys', () => expect(keys(pt).sort()).toEqual(keys(en).sort()));
+  it('hi matches en keys', () => expect(keys(hi).sort()).toEqual(keys(en).sort()));
 
-  it('es/pt carry the same {{placeholders}} as en for every string', () => {
+  it('es/pt/hi carry the same {{placeholders}} as en for every string', () => {
     for (const key of keys(en)) {
       const enVal = leaf(en as Record<string, unknown>, key);
       if (typeof enVal !== 'string') continue;
       const want = placeholders(enVal);
       expect(placeholders(leaf(es as Record<string, unknown>, key) as string)).toEqual(want);
       expect(placeholders(leaf(pt as Record<string, unknown>, key) as string)).toEqual(want);
+      expect(placeholders(leaf(hi as Record<string, unknown>, key) as string)).toEqual(want);
     }
   });
 
