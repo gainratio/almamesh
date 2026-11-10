@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import en from './en/chat.json';
 import es from './es/chat.json';
 import pt from './pt/chat.json';
+import hi from './hi/chat.json';
 
 const keys = (o: unknown, p = ''): string[] =>
   o && typeof o === 'object'
@@ -26,12 +27,13 @@ const placeholders = (value: unknown): string =>
 describe('chat i18n parity', () => {
   it('es matches en keys', () => expect(keys(es).sort()).toEqual(keys(en).sort()));
   it('pt matches en keys', () => expect(keys(pt).sort()).toEqual(keys(en).sort()));
+  it('hi matches en keys', () => expect(keys(hi).sort()).toEqual(keys(en).sort()));
 
   // The app-copy error keys (the catalog's i18nKey targets) must exist in EVERY
   // language, or an offline non-English user hits a raw i18n key. 429 and 5xx
-  // use the es/pt sentences shipped by @gainratio/errors (see lib/errors.test.ts).
-  it('carries every coded AI-error key in all three languages', () => {
-    for (const catalog of [en, es, pt]) {
+  // use the es/pt/hi sentences registered on CANONICAL_ERRORS_NS (see lib/errors.test.ts).
+  it('carries every coded AI-error key in all four languages', () => {
+    for (const catalog of [en, es, pt, hi]) {
       for (const key of [
         'insufficient_credits',
         'auth_failed',
@@ -52,6 +54,7 @@ describe('chat i18n parity', () => {
   it.each([
     ['es', es],
     ['pt', pt],
+    ['hi', hi],
   ] as const)('%s keeps every en {{placeholder}}', (_lang, catalog) => {
     const enValues = new Map(leaves(en));
     const drift = leaves(catalog)

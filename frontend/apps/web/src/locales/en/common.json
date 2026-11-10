@@ -195,7 +195,8 @@
     "label": "Language",
     "english": "English",
     "spanish": "Español",
-    "portuguese": "Português"
+    "portuguese": "Português",
+    "hindi": "हिन्दी"
   },
   "engine_rollback": {
     "warning": "This server offered an older version of the engine than the one you already have. That can mean someone is tampering with it. Only clear it if you trust this site and your network.",

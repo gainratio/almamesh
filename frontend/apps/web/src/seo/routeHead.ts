@@ -68,6 +68,19 @@ function route(
   };
 }
 
+function calculatorAlternates(
+  slug: string,
+): readonly { readonly hreflang: string; readonly href: string }[] {
+  return [
+    { hreflang: 'en', href: `${SITE_ORIGIN}/${slug}` },
+    { hreflang: 'en-IN', href: `${SITE_ORIGIN}/${slug}` },
+    { hreflang: 'hi', href: `${SITE_ORIGIN}/hi/${slug}/` },
+    { hreflang: 'es', href: `${SITE_ORIGIN}/es/${slug}/` },
+    { hreflang: 'pt', href: `${SITE_ORIGIN}/pt/${slug}/` },
+    { hreflang: 'x-default', href: `${SITE_ORIGIN}/${slug}` },
+  ];
+}
+
 export const PUBLIC_ROUTE_HEADS: readonly RouteHead[] = [
   route(
     '/',
@@ -81,63 +94,39 @@ export const PUBLIC_ROUTE_HEADS: readonly RouteHead[] = [
   ),
   route(
     '/free-kundli',
-    'Free Kundli Calculator — Vedic Birth Chart in Your Browser',
-    'Generate a free Vedic kundli with planets, nakshatras, dashas, and divisional charts. Computed locally in your browser; no account or upload.',
-    [
-      { hreflang: 'en', href: `${SITE_ORIGIN}/free-kundli` },
-      { hreflang: 'hi', href: `${SITE_ORIGIN}/hi/free-kundli/` },
-      { hreflang: 'x-default', href: `${SITE_ORIGIN}/free-kundli` },
-    ],
+    'Free Kundli & Janam Kundali Calculator — Vedic Birth Chart Online',
+    'Generate a 100% free Vedic Kundli (Janam Kundali) with Lagna, Rashi, Nakshatra, Dasha & Navamsa (D9). Runs locally in your browser; no login or paywall.',
+    calculatorAlternates('free-kundli'),
   ),
   route(
     '/birth-chart',
-    'Free Birth Chart Calculator — Vedic Sidereal Chart Online',
-    'Calculate a free Vedic birth chart with sidereal planets, nakshatras, dashas, and divisional charts. Runs locally in your browser; no signup.',
-    [
-      { hreflang: 'en', href: `${SITE_ORIGIN}/birth-chart` },
-      { hreflang: 'hi', href: `${SITE_ORIGIN}/hi/birth-chart/` },
-      { hreflang: 'x-default', href: `${SITE_ORIGIN}/birth-chart` },
-    ],
+    'Free Vedic Birth Chart Calculator — Sidereal Lagna & Rashi Online',
+    'Calculate your 100% free Vedic sidereal birth chart (Janma Kundali) with Lahiri Ayanamsa, planets, Nakshatras, Dashas & varga charts in your browser.',
+    calculatorAlternates('birth-chart'),
   ),
   route(
     '/nakshatra',
-    'Free Nakshatra Calculator — Find Your Birth Nakshatra & Pada',
-    'Find your birth nakshatra, pada, ruling planet, and rashi from your birth details. Vedic calculations run locally in your browser.',
-    [
-      { hreflang: 'en', href: `${SITE_ORIGIN}/nakshatra` },
-      { hreflang: 'hi', href: `${SITE_ORIGIN}/hi/nakshatra/` },
-      { hreflang: 'x-default', href: `${SITE_ORIGIN}/nakshatra` },
-    ],
+    'Free Nakshatra Calculator — Find Janma Nakshatra, Pada & Rashi',
+    'Find your birth Nakshatra (Janma Nakshatra), Pada (1–4), ruling Graha, and Chandra Rashi 100% free from your birth date, time & place in your browser.',
+    calculatorAlternates('nakshatra'),
   ),
   route(
     '/dasha',
     'Free Vimshottari Dasha Calculator — Mahadasha & Antardasha',
-    'Calculate your Vimshottari dasha timeline: mahadasha, antardasha, and planetary periods from your birth details. Computed locally in your browser.',
-     [
-      { hreflang: 'en', href: `${SITE_ORIGIN}/dasha` },
-      { hreflang: 'hi', href: `${SITE_ORIGIN}/hi/dasha/` },
-      { hreflang: 'x-default', href: `${SITE_ORIGIN}/dasha` },
-    ],
+    'Calculate your 100% free 120-year Vimshottari Dasha timeline: Mahadasha and Antardasha (Bhukti) planetary periods from your birth details in your browser.',
+    calculatorAlternates('dasha'),
   ),
   route(
     '/kundli-matching',
-    'Free Kundli Matching — Vedic Gun Milan Compatibility',
-    'Check Vedic kundli matching for two birth charts: rashi, nakshatra, graha maitri, and traditional kuta scores. Runs locally in your browser.',
-    [
-      { hreflang: 'en', href: `${SITE_ORIGIN}/kundli-matching` },
-      { hreflang: 'hi', href: `${SITE_ORIGIN}/hi/kundli-matching/` },
-      { hreflang: 'x-default', href: `${SITE_ORIGIN}/kundli-matching` },
-    ],
+    'Free Kundli Matching — 36 Guna Ashtakoot Gun Milan Online',
+    'Check 100% free Vedic Kundli Matching (Ashtakoot 36 Gun Milan) for marriage compatibility: Rashi, Nakshatra, Graha Maitri, Bhakoot & Nadi in your browser.',
+    calculatorAlternates('kundli-matching'),
   ),
   route(
     '/muhurta',
-    'Free Muhurta Calculator — Auspicious Vedic Timing',
-    'Find an auspicious muhurta for weddings, griha pravesh, business, or travel using nakshatra, tithi, and Vedic timing. Computed locally.',
-     [
-      { hreflang: 'en', href: `${SITE_ORIGIN}/muhurta` },
-      { hreflang: 'hi', href: `${SITE_ORIGIN}/hi/muhurta/` },
-      { hreflang: 'x-default', href: `${SITE_ORIGIN}/muhurta` },
-    ],
+    'Free Shubh Muhurta Calculator — Vedic Panchang & Auspicious Timing',
+    'Find 100% free auspicious Shubh Muhurta for marriage, Griha Pravesh, business, or travel using Vedic Panchang (Nakshatra, Tithi, Vara) in your browser.',
+    calculatorAlternates('muhurta'),
   ),
   route(
     '/privacy',

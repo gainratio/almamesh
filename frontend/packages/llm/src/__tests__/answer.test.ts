@@ -995,6 +995,7 @@ describe("datedEventLabel: what happens on a dated day, in the answer's language
     ["en", "Mars enters Leo", "Saturn stations direct", "Jupiter stations retrograde", "maha Jupiter begins", "pratyantar Mars begins", "antar dasha junction (sandhi)"],
     ["es", "Marte entra en Leo", "Saturno pasa a directo", "Júpiter pasa a retrógrado", "comienza el maha dasha de Júpiter", "comienza el pratyantar dasha de Marte", "transición del antar dasha (sandhi)"],
     ["pt", "Marte entra em Leão", "Saturno fica direto", "Júpiter fica retrógrado", "começa o maha dasha de Júpiter", "começa o pratyantar dasha de Marte", "transição do antar dasha (sandhi)"],
+    ["hi", "मंगल सिंह में प्रवेश करता है", "शनि मार्गी होता है", "बृहस्पति वक्री होता है", "बृहस्पति की maha दशा शुरू होती है", "मंगल की pratyantar दशा शुरू होती है", "antar दशा संधि"],
   ] as const)("%s", (language, ingress, direct, retrograde, maha, pratyantar, sandhi) => {
     expect(datedEventLabel({ kind: "ingress", graha: "mars", sign: "leo" }, language)).toBe(ingress);
     expect(datedEventLabel({ kind: "station", graha: "saturn", motion: "direct" }, language)).toBe(direct);
@@ -1011,8 +1012,12 @@ describe("datedEventLabel: what happens on a dated day, in the answer's language
       expect(names.every((name) => /^\p{Lu}/u.test(name))).toBe(true);
       expect(new Set(names).size).toBe(12);
     }
+    const hiNames = signs.map((sign) => datedEventLabel({ kind: "ingress", graha: "sun", sign }, "hi").split(" ")[1] ?? "");
+    expect(hiNames.every((name) => /\p{Script=Devanagari}/u.test(name))).toBe(true);
+    expect(new Set(hiNames).size).toBe(12);
     expect(datedEventLabel({ kind: "ingress", graha: "sun", sign: "cancer" }, "es")).toBe("Sol entra en Cáncer");
     expect(datedEventLabel({ kind: "ingress", graha: "venus", sign: "pisces" }, "pt")).toBe("Vênus entra em Peixes");
+    expect(datedEventLabel({ kind: "ingress", graha: "venus", sign: "pisces" }, "hi")).toBe("शुक्र मीन में प्रवेश करता है");
   });
 
   it("an engine descriptor it cannot phrase stays as written", () => {
@@ -1021,7 +1026,7 @@ describe("datedEventLabel: what happens on a dated day, in the answer's language
 });
 
 describe("answerLanguage: the chat language as the answer speaks it", () => {
-  it.each([["en", "en"], ["es", "es"], ["es-MX", "es"], ["pt-BR", "pt"], ["fr", "en"]] as const)("%s -> %s", (tag, expected) => {
+  it.each([["en", "en"], ["es", "es"], ["es-MX", "es"], ["pt-BR", "pt"], ["hi", "hi"], ["hi-IN", "hi"], ["fr", "en"]] as const)("%s -> %s", (tag, expected) => {
     expect(answerLanguage(tag)).toBe(expected);
   });
 });

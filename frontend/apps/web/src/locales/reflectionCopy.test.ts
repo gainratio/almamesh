@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
  * es/pt equivalents). Readings are "what your chart highlights", for reflection.
  * Every catalog file is globbed, so a new namespace is covered the day it lands.
  */
-const CATALOGS = import.meta.glob<{ default: unknown }>('./{en,es,pt}/*.json', { eager: true });
+const CATALOGS = import.meta.glob<{ default: unknown }>('./{en,es,pt,hi}/*.json', { eager: true });
 
 interface CopyLine {
   readonly file: string;
@@ -29,7 +29,7 @@ function catalogLines(language: ReflectionLanguage): CopyLine[] {
     .flatMap(([path, module]) => linesOf(module.default, path));
 }
 
-const LANGUAGES: readonly ReflectionLanguage[] = ['en', 'es', 'pt'];
+const LANGUAGES: readonly ReflectionLanguage[] = ['en', 'es', 'pt', 'hi'];
 
 describe('locale copy frames readings as reflection, not prediction', () => {
   it('reads every catalog file of every language', () => {

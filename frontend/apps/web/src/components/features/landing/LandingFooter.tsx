@@ -74,6 +74,27 @@ export function LandingFooter(): ReactElement {
             <Link to="/muhurta" className="transition-colors hover:text-accent-gold-bright">
               Muhurta
             </Link>
+            <a
+              href="/hi/free-kundli/"
+              lang="hi"
+              className="transition-colors hover:text-accent-gold-bright"
+            >
+              हिन्दी कुंडली (Hindi)
+            </a>
+            <a
+              href="/es/birth-chart/"
+              lang="es"
+              className="transition-colors hover:text-accent-gold-bright"
+            >
+              Carta Astral Gratis (Español)
+            </a>
+            <a
+              href="/pt/birth-chart/"
+              lang="pt"
+              className="transition-colors hover:text-accent-gold-bright"
+            >
+              Mapa Astral Grátis (Português)
+            </a>
             <Link to="/privacy" className="transition-colors hover:text-accent-gold-bright">
               {t('footer.privacy')}
             </Link>
@@ -117,6 +138,7 @@ export function LandingFooter(): ReactElement {
               <option value="en">English</option>
               <option value="es">Español</option>
               <option value="pt">Português</option>
+              <option value="hi">हिन्दी</option>
             </Select>
           </div>
         </div>

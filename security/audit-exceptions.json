@@ -11,6 +11,17 @@
       "owner": "hseshadr",
       "added": "2026-10-03",
       "expires": "2027-01-01"
+    },
+    {
+      "id": "GHSA-gcqx-w48m-w2h4",
+      "cve": "CVE-2026-93753",
+      "package": "deepmerge",
+      "vulnerableRange": ">=4.2.0 <=4.3.1 (no patched release)",
+      "path": "workspace:@almamesh/web > vite-plugin-pwa@2.0.0 (devDependency) > workbox-build@7.4.1 > @rollup/plugin-node-resolve@16.0.3 > deepmerge",
+      "reason": "Build-time only, with no patched upstream release (4.3.1 is the latest npm release and first_patched_version is null). Workbox's internal Rollup resolver merges static build options when bundling the service worker during `vite build`; no untrusted input reaches deepmerge and nothing from it ships to the browser.",
+      "owner": "hseshadr",
+      "added": "2026-11-10",
+      "expires": "2027-02-08"
     }
   ]
 }

@@ -10,12 +10,13 @@
 import type { ChatMessage } from "./client";
 
 /** The UI/narration languages the prompts can target. Mirrors the i18n catalog. */
-export type PromptLanguage = "en" | "es" | "pt";
+export type PromptLanguage = "en" | "es" | "pt" | "hi";
 
 /** Endonym + English name for each non-default target language. */
 const LANGUAGE_NAMES: Record<Exclude<PromptLanguage, "en">, { english: string; native: string }> = {
   es: { english: "Spanish", native: "Español" },
   pt: { english: "Portuguese", native: "Português" },
+  hi: { english: "Hindi", native: "हिन्दी" },
 };
 
 /**

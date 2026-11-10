@@ -2,18 +2,23 @@ import { describe, it, expect } from 'vitest';
 import en from './en/landing.json';
 import es from './es/landing.json';
 import pt from './pt/landing.json';
+import hi from './hi/landing.json';
 import enMesh from './en/mesh.json';
 import esMesh from './es/mesh.json';
 import ptMesh from './pt/mesh.json';
+import hiMesh from './hi/mesh.json';
 import enLegal from './en/legal.json';
 import esLegal from './es/legal.json';
 import ptLegal from './pt/legal.json';
+import hiLegal from './hi/legal.json';
 import enSettings from './en/settings.json';
 import esSettings from './es/settings.json';
 import ptSettings from './pt/settings.json';
+import hiSettings from './hi/settings.json';
 import enDashboard from './en/dashboard.json';
 import esDashboard from './es/dashboard.json';
 import ptDashboard from './pt/dashboard.json';
+import hiDashboard from './hi/dashboard.json';
 
 /**
  * Privacy-honesty invariant: the landing hero + footer must NOT claim an
@@ -66,6 +71,15 @@ const LOCALES: Record<string, { copy: LocaleCopy; scoped: string; bannedAbsolute
       'nada sai do seu navegador',
       'seus dados nunca saem do seu navegador',
       'seus dados de nascimento nunca saem do seu navegador',
+    ],
+  },
+  hi: {
+    copy: hi as LocaleCopy,
+    scoped: 'आपकी जन्म तिथि, समय और कुंडली आपके ब्राउज़र में ही रहते हैं जब तक आप वैकल्पिक ai चालू न करें',
+    bannedAbsolutes: [
+      'आपकी जन्म तिथि, समय और कुंडली कभी बाहर नहीं जाते',
+      'कुछ भी आपके ब्राउज़र से बाहर नहीं जाता',
+      'कभी बाहर नहीं',
     ],
   },
 };
@@ -140,6 +154,13 @@ const ENGINE_SURFACES: Record<
     bannedMeshAbsolute: 'nunca saem',
     bannedLegalAbsolute: 'nunca saem',
   },
+  hi: {
+    meshNote: (hiMesh as MeshCopy).page.computed_note,
+    legalRights: (hiLegal as LegalCopy).privacy.s5_p1,
+    scoped: 'जब तक आप',
+    bannedMeshAbsolute: 'कभी बाहर नहीं',
+    bannedLegalAbsolute: 'कभी बाहर नहीं',
+  },
 };
 
 describe('engine-surface privacy copy is scoped to birth data (anti-overclaim)', () => {
@@ -206,6 +227,14 @@ const AI_EGRESS: Record<string, { copy: AiEgressCopy; reveal: string; banned: st
       'nada dele sai do seu dispositivo;',
     ],
   },
+  hi: {
+    copy: { landing: hi, dashboard: hiDashboard, settings: hiSettings, legal: hiLegal } as AiEgressCopy,
+    reveal: 'उजागर कर सकते हैं',
+    banned: [
+      'जन्म तिथि और समय कभी बाहर नहीं',
+      'कभी बाहर नहीं जाते',
+    ],
+  },
 };
 
 describe('AI disclosures say chart data can reveal the birth date', () => {
@@ -267,6 +296,14 @@ const PERSONAL_DATA_ABSOLUTES: Record<
       'são anonimizadas',
     ],
   },
+  hi: {
+    copy: { settings: hiSettings, legal: hiLegal } as ConsentCopy,
+    reveal: 'उजागर कर सकते हैं',
+    banned: [
+      'कोई व्यक्तिगत डेटा नहीं',
+      'व्यक्तिगत डेटा शामिल नहीं',
+    ],
+  },
 };
 
 describe('AI consent copy never calls the chart prompt free of personal data', () => {
@@ -312,6 +349,11 @@ const AI_SETTINGS_DISCLOSURE: Record<string, { body: string; narrative: string; 
     narrative: 'narrativa',
     birth: 'dados de nascimento',
   },
+  hi: {
+    body: (hiSettings as SettingsCopy).tiers.cloud_body,
+    narrative: 'विवरण',
+    birth: 'जन्म विवरण',
+  },
 };
 
 describe('AI settings disclose free-form life-event egress', () => {
@@ -330,7 +372,7 @@ type FeedbackLegalCopy = {
 };
 
 describe('legal copy discloses feedback storage separately from browser data', () => {
-  for (const [lang, legal] of Object.entries({ en: enLegal, es: esLegal, pt: ptLegal })) {
+  for (const [lang, legal] of Object.entries({ en: enLegal, es: esLegal, pt: ptLegal, hi: hiLegal })) {
     it(`[${lang}] names Turnstile and D1 retention`, () => {
       const copy = legal as FeedbackLegalCopy;
       expect(copy.privacy.s2_li4).toContain('Turnstile');
@@ -355,6 +397,7 @@ const PORTABILITY: Record<string, { note: string; mustMention: string[] }> = {
   en: { note: (en as HowPortabilityCopy).how.portability, mustMention: ['export', 'device'] },
   es: { note: (es as HowPortabilityCopy).how.portability, mustMention: ['export', 'dispositivo'] },
   pt: { note: (pt as HowPortabilityCopy).how.portability, mustMention: ['export', 'dispositivo'] },
+  hi: { note: (hi as HowPortabilityCopy).how.portability, mustMention: ['एक्सपोर्ट', 'डिवाइस'] },
 };
 
 describe('landing how.portability states the export/restore promise', () => {

@@ -18,7 +18,7 @@ Your Vedic (traditional Indian) astrology chart, free and computed in your own b
 - **What it does** — Like the birth-chart readings on paid astrology sites, but free and calculated on your own device. Enter a birth date, time, and place and it draws your Vedic chart (the Indian tradition, which measures against the fixed stars rather than the Western calendar zodiac): where each planet was, which sign was rising, and the planetary time periods astrologers use for timing. No AI touches your chart unless you switch it on.
 - **Who it's for** — Someone curious about Vedic astrology who wants to see their own chart without typing their birth details into a site that demands an email and then sells a "full reading". Also for skeptics who want to check the math themselves, and practitioners who want a careful tool that costs nothing.
 - **What stays on your device / what leaves it** — Stays: your name, birth date and time, every chart, and your saved chats. No server holds your birth data or charts, and the chart calculation makes no network calls. Leaves: the city name you type to find your birthplace (sent to Open-Meteo, a free place-lookup service; a built-in city list works offline); and — only if you turn on the optional AI — your chart details without your name or birth date (the planet positions and period dates it sends can still reveal your birth date and approximate time), the questions you ask, and any life story you explicitly ask it to organize, sent to the AI service you choose. Optional feedback sends a thumbs up or down, the page it is about, and whatever you type. The app tells your browser to refuse connections to any address not on a short fixed list. [Full list of network requests](#runtime-network-and-data-flow).
-- **Runs on** — Any modern browser on any operating system; checked in CI on the engines behind Chrome and Safari. Install it from the browser like an app; once the engine has downloaded, it keeps working with no internet. English, Spanish, and Portuguese.
+- **Runs on** — Any modern browser on any operating system; checked in CI on the engines behind Chrome and Safari. Install it from the browser like an app; once the engine has downloaded, it keeps working with no internet. English, Hindi, Spanish, and Portuguese.
 - **Not for** — Certain predictions: it is an honest experiment, not a fortune-teller, and relationship scores are a traditional convention, never a verdict. Also not for syncing through an account — there isn't one; you move your data by exporting a single file and restoring it on another device.
 - **Status** — Beta: v0.4.0 (pre-1.0), live at [almamesh.com](https://almamesh.com) and deployed from `main`; changes since v0.4.0 are listed under Unreleased. See [CHANGELOG](CHANGELOG.md).
 
@@ -193,7 +193,7 @@ full set of dev/build/test commands.
 - Download a PDF report. The report is available without AI: export the same chart twice and the two files are byte-for-byte identical. Long life histories become dated,
   categorized table rows with bounded text and controlled page breaks —
   [spec](docs/specs/062-robust-rectifier-comprehensive-report.md).
-- Use it in English, Spanish, or Portuguese, bundled for offline use.
+- Use it in English, Hindi, Spanish, or Portuguese, bundled for offline use.
 - Keep everything in one portable, on-device SQLite database: canonical profiles,
   charts, life events, chat, chart and relationship readings, language, content
   mode, and AI settings. Settings exposes both **Export data** and **Import
@@ -504,7 +504,7 @@ build you publish — build-time values end up in the shipped JavaScript.
 | Birth-time rectification | Per-profile rectified time + confidence in Settings; recomputes the chart | ✅ shipped |
 | Named profiles | Multiple password-less people per device, each owning its charts; rename + delete (chart cascade) | ✅ shipped |
 | Birthplace search | Online-primary Open-Meteo lookup with a bundled offline fallback; the city query and ordinary network metadata leave the device, never chart/profile data | ✅ shipped |
-| Internationalization | English / Spanish / Portuguese; react-i18next, offline bundled catalogs (zero-egress), persisted language + `<html lang>` sync, AI answers in-language; en authoritative, es/pt machine-translated | ✅ shipped |
+| Internationalization | English / Hindi / Spanish / Portuguese; react-i18next, offline bundled catalogs (zero-egress), persisted language + `<html lang>` + `?lang=` sync, AI answers in-language | ✅ shipped |
 | PWA delivery | Service worker + offline reboot + provenance footer | ✅ shipped |
 
 The old SaaS backend (FastAPI, Postgres, Redis, Supabase auth) has been

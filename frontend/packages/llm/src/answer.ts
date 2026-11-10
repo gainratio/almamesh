@@ -103,7 +103,7 @@ export type DeepPartial<T> = T extends readonly (infer U)[]
 
 export interface RenderOptions {
   readonly voice: "layman" | "expert";
-  readonly language: "en" | "es" | "pt";
+  readonly language: "en" | "es" | "pt" | "hi";
 }
 
 type Language = RenderOptions["language"];
@@ -173,8 +173,8 @@ const PERIOD_KEYS = ["period", "opening", "dashas", "moon", "themes", "windows"]
 
 const unique = (values: readonly string[]): string[] => [...new Set(values)];
 const lower = (value: string): string => value.toLowerCase();
-/** Lowercase without accents, so "Sao Paulo" names "São Paulo". */
-const plain = (value: string): string => lower(value.normalize("NFD").replace(/\p{M}/gu, ""));
+/** Lowercase without Latin accents, so "Sao Paulo" names "São Paulo" while keeping Devanagari matras intact. */
+const plain = (value: string): string => lower(value.normalize("NFD").replace(/[\u0300-\u036f]/gu, "").normalize("NFC"));
 
 function checkLord(level: "maha" | "antar" | "pratyantar", lord: Graha, readings: readonly GroundingReading[], issue: Issue): void {
   const allowed = unique(readings.flatMap((reading) => reading[level].map(lower)));
@@ -210,7 +210,13 @@ function checkDashas(value: PeriodAnswer["dashas"], readings: readonly Grounding
   checkRules("pratyantar", value.pratyantar, readings, issue);
 }
 
-const wordIn = (text: string, word: string): boolean => new RegExp(`(?<![\\p{L}\\p{N}_])${word}(?![\\p{L}\\p{N}_])`, "iu").test(text);
+const wordIn = (text: string, word: string): boolean =>
+  new RegExp(`(?<![\\p{L}\\p{M}\\p{N}_])${word}(?![\\p{L}\\p{M}\\p{N}_])`, "iu").test(text);
+
+const HI_GRAHA_ALIASES: Readonly<Partial<Record<Graha, readonly string[]>>> = {
+  moon: ["चन्द्र", "चंद्रमा", "चन्द्रमा"],
+  jupiter: ["गुरु"],
+};
 
 /** A graha as the answer's language names it ("Mercúrio" in pt); a name that is not a graha, as is. */
 const grahaLabel = (lord: string, language: Language): string => (isGraha(lord) ? LABELS[language].grahas[lord] : lord);
@@ -218,7 +224,8 @@ const grahaLabel = (lord: string, language: Language): string => (isGraha(lord) 
 /** The text names the lord in English or in the answer's language, any case, with or without accents. */
 function namesLord(text: string, lord: string, language: Language): boolean {
   const said = plain(text);
-  return [lord, grahaLabel(lord, language)].some((name) => wordIn(said, plain(name)));
+  const aliases = language === "hi" && isGraha(lord) ? (HI_GRAHA_ALIASES[lord] ?? []) : [];
+  return [lord, grahaLabel(lord, language), ...aliases].some((name) => wordIn(said, plain(name)));
 }
 
 /**
@@ -521,6 +528,7 @@ function ordinal(n: number): string {
 const EN_CONFIDENCE = { high: "most indicators agree", medium: "some indicators agree", low: "few indicators agree" } as const;
 const ES_CONFIDENCE = { high: "coinciden casi todos los indicadores", medium: "coinciden algunos indicadores", low: "coinciden pocos indicadores" } as const;
 const PT_CONFIDENCE = { high: "quase todos os indicadores concordam", medium: "alguns indicadores concordam", low: "poucos indicadores concordam" } as const;
+const HI_CONFIDENCE = { high: "अधिकांश संकेतक सहमत हैं", medium: "कुछ संकेतक सहमत हैं", low: "कम संकेतक सहमत हैं" } as const;
 
 const LABELS: Readonly<Record<Language, LanguageLabels>> = {
   en: {
@@ -610,6 +618,35 @@ const LABELS: Readonly<Record<Language, LanguageLabels>> = {
     begins: (level, lord) => `começa o ${level} dasha de ${lord}`,
     sandhi: (level) => `transição do ${level} dasha (sandhi)`,
   },
+  hi: {
+    layman: { chapters: "आपके अध्याय", moon: "चंद्र का आकाश", themes: "इसका अर्थ", windows: "ध्यान देने योग्य तिथियाँ" },
+    expert: { chapters: "दशाएँ", moon: "चंद्र से गोचर", themes: "विषय", windows: "अवधियाँ" },
+    in: "—",
+    grahas: { sun: "सूर्य", moon: "चंद्र", mars: "मंगल", mercury: "बुध", jupiter: "बृहस्पति", venus: "शुक्र", saturn: "शनि", rahu: "राहु", ketu: "केतु" },
+    months: ["जन", "फ़र", "मार्च", "अप्रैल", "मई", "जून", "जुल", "अग", "सित", "अक्टू", "नव", "दिस"],
+    and: "और",
+    roles: {
+      maha: "आपका मुख्य अध्याय (महादशा) है",
+      antar: "उसके भीतर उप-अध्याय (अंतर्दशा) है",
+      pratyantar: "उसके भीतर संक्षिप्त अध्याय (प्रत्यंतर्दशा) है",
+    },
+    lordOf: "स्वामी:",
+    rules: (graha, houses, list) => `${graha} ${houses.length > 1 ? "आपके भाव" : "आपके भाव"} ${list(houses.map(String))} का स्वामी है।`,
+    direction: { supportive: "सहायक", mixed: "मिश्रित", challenging: "चुनौतीपूर्ण" },
+    confidence: (level) => HI_CONFIDENCE[level],
+    phases: ["प्रथम", "द्वितीय", "तृतीय"],
+    phase: "चरण",
+    fromMoon: (graha, house) => `आपके चंद्र से ${house}वें भाव में ${graha}`,
+    signs: {
+      aries: "मेष", taurus: "वृषभ", gemini: "मिथुन", cancer: "कर्क", leo: "सिंह", virgo: "कन्या",
+      libra: "तुला", scorpio: "वृश्चिक", sagittarius: "धनु", capricorn: "मकर", aquarius: "कुंभ", pisces: "मीन",
+    },
+    motions: { direct: "मार्गी", retrograde: "वक्री" },
+    enters: (graha, sign) => `${graha} ${sign} में प्रवेश करता है`,
+    stations: (graha, motion) => `${graha} ${motion} होता है`,
+    begins: (level, lord) => `${lord} की ${level} दशा शुरू होती है`,
+    sandhi: (level) => `${level} दशा संधि`,
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -675,10 +712,10 @@ export function datedEventLabel(event: DatedEvent, language: Language): string {
   }
 }
 
-/** A chat language tag ("es", "pt-BR") as the answer speaks it: es, pt, else en. */
+/** A chat language tag ("es", "pt-BR", "hi-IN") as the answer speaks it: es, pt, hi, else en. */
 export function answerLanguage(tag: string): Language {
   const base = tag.toLowerCase().split("-")[0];
-  return base === "es" || base === "pt" ? base : "en";
+  return base === "es" || base === "pt" || base === "hi" ? base : "en";
 }
 
 function renderDate(date: string, language: Language): string {

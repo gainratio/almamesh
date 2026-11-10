@@ -32,14 +32,19 @@ export const REFLECTION_RULE = [
 ].join("\n");
 
 
-export type ReflectionLanguage = "en" | "es" | "pt";
+export type ReflectionLanguage = "en" | "es" | "pt" | "hi";
 
-const LANGUAGES: readonly ReflectionLanguage[] = ["en", "es", "pt"];
+const LANGUAGES: readonly ReflectionLanguage[] = ["en", "es", "pt", "hi"];
 
 /** A whole word (or word prefix, when `open`) with Unicode-aware edges. */
 function word(source: string, open = false): RegExp {
   const end = open ? "" : "(?![\\p{L}\\p{N}])";
   return new RegExp(`(?<![\\p{L}\\p{N}])(?:${source})${end}`, "iu");
+}
+
+/** A whole word in Devanagari/mixed script, treating combining vowel marks (\p{M}) as word characters. */
+function hiWord(source: string): RegExp {
+  return new RegExp(`(?<![\\p{L}\\p{M}\\p{N}])(?:${source})(?![\\p{L}\\p{M}\\p{N}])`, "iu");
 }
 
 // Life events a reading may name as a theme ("a job or career change") but never foretell.
@@ -72,17 +77,15 @@ const aboutThePage = (verbs: string, nouns: string): string => `(?:${verbs})\\s+
 const NOT_A_HOUSE_EN = "(?<!(?:of|in|for|through|on|about|house|houses|bhava)\\s)";
 const NOT_A_HOUSE_ES = "(?<!(?:de|del|en|para)\\s)";
 const NOT_A_HOUSE_PT = "(?<!(?:de|do|da|dos|das|no|na|para)\\s)";
-// Hindi futures (मिलेगा, होगी, आएंगे): a future suffix after a vowel sign, where a mantra's "गंगे" or "दुर्गा" has none.
-const HINDI_FUTURE = /(?:[\u0947\u094B\u0948\u094C]|[\u0947\u094B\u0942]\u0902|\u0942\u0901|[\u090F\u0913\u090A]\u0902?|\u090A\u0901)\u0917[\u093E\u0940\u0947](?![\p{L}\p{M}])|\u0939\u094B\u0928\u0947\s+\u0935\u093E\u0932[\u093E\u0940\u0947]/u;
+const EVENTS_HI =
+  "पदोन्नति|प्रमोशन|(?:नई\\s+)?नौकरी|विवाह|शादी|तलाक|अलगाव|संतान|गर्भधारण|मुकदमा|दुर्घटना|बीमारी|सर्जरी|तबादला|सफलता|प्रसिद्धि|धनलाभ";
+const LIFE_HI = "करियर|व्यापार|वित्त|पैसा|आय|स्वास्थ्य|प्रेम\\s+जीवन|रिश्ते|परिवार";
 
 /**
  * Words that claim or imply prediction or predictive accuracy, per language.
  * en: predict*, forecast*, accurate/accuracy, likely, "will happen", "what happened".
- * es/pt: the same claims. Their words for accuracy (precis-, exat-) are left out on
- * purpose: they also mean "exact birth time", "date precision" and "to need" (pt
- * "preciso"), which are not claims about readings. "An accurate birth time" is not a
- * claim either, and the es/pt stems stop short of "predicament" and "predecessor":
- * answers are read with every language's patterns.
+ * es/pt/hi: the same claims. Words for birth-time exactness (precis-, exat-, सटीक जन्म समय) are
+ * left out on purpose; answers are read with every language's patterns.
  */
 export const PREDICTION_CLAIM_PATTERNS: Readonly<Record<ReflectionLanguage, readonly RegExp[]>> = {
   en: [
@@ -113,6 +116,14 @@ export const PREDICTION_CLAIM_PATTERNS: Readonly<Record<ReflectionLanguage, read
     word("acontecer[aá]o?|vai acontecer"),
     word("o que aconteceu"),
   ],
+  hi: [
+    hiWord("भविष्यवाण[\\p{L}\\p{M}]*"),
+    hiWord("पूर्वानुमान"),
+    hiWord("सटीक\\s+(?:भविष्य|परिणाम|फल)"),
+    hiWord("संभवतः|संभावना\\s+है\\s+कि"),
+    hiWord("क्या\\s+घटित\\s+होगा"),
+    hiWord("क्या\\s+घटित\\s+हुआ"),
+  ],
 };
 
 /** Every prediction claim found in `text`, as the matched words; [] when clean. */
@@ -122,12 +133,12 @@ export function predictionClaims(text: string, language: ReflectionLanguage): re
 
 /**
  * Text that foretells: a person-directed future ("you will get married", "expect a promotion",
- * "vas a conseguir", "você vai conseguir"), a life event set to come ("a breakup may well occur"),
+ * "vas a conseguir", "você vai conseguir", "आपको नई नौकरी मिलेगी"), a life event set to come ("a breakup may well occur"),
  * or odds put on it ("chances are", "almost certain"). A sky fact in the future tense ("Saturn will
- * station direct on 17 September", "the Jupiter antardasha will begin in March 2027") is not one:
+ * station direct on 17 September", "शनि 17 सितंबर को मार्गी होगा") is not one:
  * its subject is a graha or a dasha, never the person or a life event.
  */
-export const FORETELLING_PATTERNS: Readonly<Record<ReflectionLanguage | "fr" | "hi", readonly RegExp[]>> = {
+export const FORETELLING_PATTERNS: Readonly<Record<ReflectionLanguage | "fr", readonly RegExp[]>> = {
   en: [
     word(
       "you(?:'ll|\\s+will|\\s+shall|\\s+are\\s+going\\s+to|'re\\s+going\\s+to|\\s+are\\s+gonna)\\s+" +
@@ -182,10 +193,15 @@ export const FORETELLING_PATTERNS: Readonly<Record<ReflectionLanguage | "fr" | "
     word("te\\s+espera|espera\\s+por\\s+voc[eê]|aguarda\\s+voc[eê]|reservad[oa]\\s+para\\s+voc[eê]"),
     word("com\\s+certeza|certamente|sem\\s+d[uú]vida|[eé]\\s+(?:muito\\s+)?(?:poss[ií]vel|prov[aá]vel)\\s+que"),
   ],
+  hi: [
+    hiWord("मिलेग[ाीे]|मिलेंगे"),
+    hiWord("आपको\\s+[^.!?।\\n]{0,60}?(?:मिलेग[ाीे]|होग[ाीे]|होंगे|प्राप्त\\s+होग[ाीे]|लाभ\\s+होग[ाीे]|सामना\\s+करना\\s+पड़ेगा)"),
+    hiWord("आप\\s+(?:जल्द\\s+ही\\s+|अवश्य\\s+)?[^.!?।\\n]{0,40}?(?:बनेंगे|बनेंगी|पाएंगे|पाएंगी|जीतेंगे|खोएंगे)"),
+    hiWord(`(?:${EVENTS_HI}|${LIFE_HI})\\s+(?:में\\s+)?[^.!?।\\n]{0,30}?(?:होग[ाीे]|होंगे|आएग[ाीे]|आएंगे|बढ़ेग[ाीे]|सुधरेग[ाीे]|बिगड़ेग[ाीे]|बदलेग[ाीे])`),
+    hiWord("होने\\s+वाल[ाीे]\\s+ह[ैैं]|निश्चित\\s+रूप\\s+से\\s+होग[ाीे]|तय\\s+है\\s+कि|पक्का\\s+होग[ाीे]"),
+  ],
   // Not an app language: a model that drifts into French still meets the check.
   fr: [word("(?:tu\\s+vas|vous\\s+allez|tu\\s+auras|vous\\s+aurez)\\s+\\p{L}+", true)],
-  // Not an app language either: a Hindi future verb, alone or inside an English line.
-  hi: [HINDI_FUTURE],
 };
 
 /**
@@ -220,6 +236,10 @@ export const TOOL_NARRATION_PATTERNS: Readonly<Record<ReflectionLanguage, readon
     word("(?:a leitura|os dados)\\s+(?:silencia|omite)"),
     word("read_?period"),
   ],
+  hi: [
+    hiWord("(?:पठन|रीडिंग|डेटा|टूल|परिणाम)\\s+(?:में\\s+)?(?:कोई\\s+[^.!?।\\n]{0,25}?नहीं|उपलब्ध\\s+नहीं|उल्लेख\\s+नहीं|मौन\\s+है)"),
+    word("read_?period"),
+  ],
 };
 
 /**
@@ -245,6 +265,7 @@ export const LIFE_GUESS_PATTERNS: Readonly<Record<ReflectionLanguage, readonly R
   ],
   es: [word("(?:hayas|habr[aá]s|pudiste|puedes haber)\\s+sentido|te sentiste|sentiste")],
   pt: [word("(?:pode|deve|possa)\\s+ter\\s+(?:se\\s+)?sentido|voc[eê]\\s+(?:se\\s+)?sentiu|sentiu-se")],
+  hi: [hiWord("(?:आपने\\s+(?:शायद\\s+|अवश्य\\s+)?महसूस\\s+किया\\s+होगा|आपको\\s+(?:शायद\\s+)?लगा\\s+होगा)")],
 };
 
 function scan(patterns: readonly RegExp[], text: string): readonly string[] {
@@ -281,6 +302,7 @@ export const REFLECTION_WITHHELD: Readonly<Record<ReflectionLanguage, string>> =
   en: "I couldn't word this as a reflection. Try asking what the chart shows for that period instead of what is coming.",
   es: "No pude expresar esto como una reflexión. Prueba a preguntar qué muestra la carta para ese periodo, en lugar de qué viene.",
   pt: "Não consegui formular isto como uma reflexão. Tente perguntar o que o mapa mostra para esse período, em vez do que vem pela frente.",
+  hi: "मैं इसे आत्म-चिंतन के रूप में व्यक्त नहीं कर सका। आगे क्या है यह पूछने के बजाय यह पूछकर देखें कि कुंडली उस अवधि के लिए क्या दर्शाती है।",
 };
 
 /** Characters that render as nothing (zero-width spaces and joiners, soft hyphen, bidi controls, variation selectors). */
@@ -317,33 +339,23 @@ export function normalizeForReflection(text: string): string {
 
 const SENTENCES = /[^.!?…。！？।\n]+/gu;
 const LETTER = /\p{L}/gu;
-const FOREIGN_LETTER = /[^\P{L}\p{Script=Latin}]/gu; // a letter outside the Latin script
-
-const MANTRA_MAX_CHARS = 60;
-const NON_DEVANAGARI_LETTER = /[^\p{Script=Devanagari}\P{L}]/u;
-const DIGIT = /\p{N}/u;
-
-/** A short line in Devanagari alone, with no number in it: a mantra ("ॐ नमः शिवाय") or a graha's name. */
-function isShortMantra(sentence: string): boolean {
-  const line = sentence.trim();
-  return line.length <= MANTRA_MAX_CHARS && !DIGIT.test(line) && !NON_DEVANAGARI_LETTER.test(line);
-}
+const FOREIGN_LETTER = /[^\P{L}\p{Script=Latin}\p{Script=Devanagari}]/gu; // a letter outside app scripts (Latin + Devanagari)
 
 /**
- * A sentence written mostly outside the Latin script: no app language's patterns can read it. A
- * short mantra line is exempt; a Hindi future in it is still caught by its verb ending.
+ * A sentence written mostly outside the app scripts (Latin and Devanagari): no app language's
+ * patterns can read it.
  */
 function unreadableSentences(text: string): readonly string[] {
   return (text.match(SENTENCES) ?? []).filter((sentence) => {
     const foreign = sentence.match(FOREIGN_LETTER)?.length ?? 0;
-    if (foreign < 2 || isShortMantra(sentence)) return false;
+    if (foreign < 2) return false;
     return foreign * 2 > (sentence.match(LETTER)?.length ?? 0);
   });
 }
 
 const PATTERN_SETS: readonly (readonly [ReflectionIssueKind, readonly RegExp[]])[] = [
   ...LANGUAGES.map((language) => ["prediction", PREDICTION_CLAIM_PATTERNS[language]] as const),
-  ...[...LANGUAGES, "fr" as const, "hi" as const].map((language) => ["foretelling", FORETELLING_PATTERNS[language]] as const),
+  ...[...LANGUAGES, "fr" as const].map((language) => ["foretelling", FORETELLING_PATTERNS[language]] as const),
   ...LANGUAGES.map((language) => ["narration", TOOL_NARRATION_PATTERNS[language]] as const),
   ...LANGUAGES.map((language) => ["life_guess", LIFE_GUESS_PATTERNS[language]] as const),
 ];
@@ -497,6 +509,7 @@ export const READING_WITHHELD: Readonly<Record<ReflectionLanguage, string>> = {
   en: "I couldn't word this part as a reflection. Generate the reading again to retry.",
   es: "No pude expresar esta parte como una reflexión. Vuelve a generar la lectura.",
   pt: "Não consegui formular esta parte como uma reflexão. Gere a leitura de novo.",
+  hi: "मैं इस भाग को आत्म-चिंतन के रूप में व्यक्त नहीं कर सका। पठन को फिर से जनरेट करें।",
 };
 
 /** The JSON value with every string value mapped; keys are structure and stay as they are. */

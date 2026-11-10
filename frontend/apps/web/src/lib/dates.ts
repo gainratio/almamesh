@@ -18,9 +18,10 @@ const LOCALE_BY_LANGUAGE: Record<Language, string> = {
   en: 'en-US',
   es: 'es-ES',
   pt: 'pt-BR',
+  hi: 'hi-IN',
 };
 
-/** Map a supported UI language to its display locale (en→en-US, es→es-ES, pt→pt-BR). */
+/** Map a supported UI language to its display locale (en→en-US, es→es-ES, pt→pt-BR, hi→hi-IN). */
 export function localeForLanguage(lang: Language): string {
   return LOCALE_BY_LANGUAGE[lang];
 }

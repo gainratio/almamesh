@@ -192,7 +192,7 @@ function chartReferenceBlock(chart: SanitizedChart): string {
   ].join("\n");
 }
 
-const PROMPT_LANGUAGES: readonly string[] = ["en", "es", "pt"];
+const PROMPT_LANGUAGES: readonly string[] = ["en", "es", "pt", "hi"];
 
 /** Narrow a caller-supplied language string to a supported one; `en` otherwise. */
 function asPromptLanguage(language: string | undefined): PromptLanguage {

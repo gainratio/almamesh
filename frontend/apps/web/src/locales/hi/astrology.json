@@ -1,0 +1,180 @@
+{
+  "labels": {
+    "ascendant": "लग्न",
+    "moon_sign": "चंद्र राशि",
+    "current_dasha": "वर्तमान दशा",
+    "ascendant_lagna": "लग्न (Ascendant)",
+    "lagna_ascendant": "लग्न (Ascendant)",
+    "rising_sign_lagna": "उदय राशि (लग्न)",
+    "sign_rising": "{{sign}} लग्न",
+    "degrees_in_sign": "{{sign}} में {{degrees}}",
+    "nakshatra": "नक्षत्र",
+    "sign": "राशि",
+    "sign_lord": "राशि स्वामी",
+    "nakshatra_lord": "नक्षत्र स्वामी",
+    "lagna_lord": "लग्नेश",
+    "pada_short": "प{{pada}}",
+    "pada": "पद {{pada}}",
+    "name": "नाम",
+    "date_of_birth": "जन्म तिथि",
+    "time_of_birth": "जन्म समय",
+    "place_of_birth": "जन्म स्थान",
+    "location": "स्थान",
+    "coordinates": "निर्देशांक",
+    "utc_datetime": "UTC तिथि व समय",
+    "julian_day": "जूलियन दिवस",
+    "ayanamsa": "अयनांश",
+    "sidereal_time": "नाक्षत्र समय",
+    "house_system": "भाव प्रणाली",
+    "not_available": "उपलब्ध नहीं"
+  },
+  "banner": {
+    "lagna_unavailable": "लग्न डेटा उपलब्ध नहीं है",
+    "chart_processing": "कुंडली अभी प्रोसेस हो रही हो सकती है"
+  },
+  "cusp": {
+    "label": "जन्म-समय संवेदनशीलता",
+    "proximity": "{{sign}} लग्न {{neighbour}} संधि से केवल ~{{degrees}}° दूर उदित है।",
+    "flip": "आपके दर्ज जन्म समय में कुछ मिनटों का अंतर इसे {{neighbour}} बना देगा — और इस कुंडली का हर भाव बदल जाएगा।",
+    "refine_link": "अपना जन्म समय सुधारें",
+    "resolve_link": "जीवन घटनाओं से परखें"
+  },
+  "birth_details": {
+    "heading": "जन्म विवरण",
+    "technical_heading": "तकनीकी विवरण",
+    "chart_for": "{{name}} की जन्म कुंडली"
+  },
+  "sections": {
+    "astrological_data": "ज्योतिषीय डेटा",
+    "part1": "भाग 1: ज्योतिषीय डेटा",
+    "part2": "भाग 2: ज्योतिषीय विवेचन",
+    "birth_details_numbered": "1.1 जन्म विवरण",
+    "technical_numbered": "1.1 तकनीकी (गणना) विवरण",
+    "lagna_numbered": "1.2 लग्न",
+    "dasha_full_numbered": "1.5 विंशोत्तरी दशा — पूर्ण क्रम",
+    "dasha_current_numbered": "1.5 वर्तमान दशा अवधियाँ",
+    "yogas_numbered": "1.6 प्रमुख योग"
+  },
+  "tables": {
+    "planet": "ग्रह",
+    "sign": "राशि",
+    "degree": "अंश",
+    "house": "भाव",
+    "nakshatra_pada": "नक्षत्र · पद",
+    "dignity": "अवस्था",
+    "retro": "वक्री",
+    "lords": "स्वामित्व",
+    "combust": "अस्त",
+    "mahadasha_lord": "महादशा स्वामी",
+    "start": "आरंभ",
+    "end": "समाप्ति",
+    "duration": "अवधि",
+    "level": "स्तर",
+    "lord": "स्वामी",
+    "period": "कालखंड"
+  },
+  "planetary": {
+    "title": "ग्रह स्थिति",
+    "subtitle": "राशि / D1",
+    "unavailable": "ग्रह डेटा उपलब्ध नहीं है।",
+    "retrograde_aria": "वक्री",
+    "yogakaraka_aria": "योगकारक",
+    "combust_aria": "अस्त",
+    "strength_pointer": "मात्रात्मक ग्रह बल (षड्बल · अष्टकवर्ग) गोचर व समय पटल में उपलब्ध है।",
+    "strength_pointer_link": "ग्रह बल खोलें"
+  },
+  "chart": {
+    "north_aria": "उत्तर भारतीय जन्म कुंडली",
+    "south_aria": "दक्षिण भारतीय राशि कुंडली"
+  },
+  "varga": {
+    "d9_title": "D9 · नवांश",
+    "d9_subtitle": "वर्ग कुंडली (1/9) — विवाह, धर्म और आंतरिक बल"
+  },
+  "dasha": {
+    "title": "विंशोत्तरी दशा",
+    "unavailable": "दशा डेटा उपलब्ध नहीं है",
+    "as_of": "{{date}} की स्थिति",
+    "current": "(वर्तमान)",
+    "maha": "महा",
+    "antar": "अंतर",
+    "pratyantar": "प्रत्यंतर",
+    "full_sequence_unavailable": "पूर्ण दशा क्रम उपलब्ध नहीं है",
+    "current_unavailable": "वर्तमान दशा डेटा उपलब्ध नहीं है",
+    "duration_years": "{{years}} वर्ष"
+  },
+  "yoga": {
+    "comprehensive_analysis": "विस्तृत योग विश्लेषण",
+    "calculated_yogas": "गणित योग",
+    "none_detected": "इस कुंडली में कोई प्रमुख योग चिह्नित नहीं हुआ।",
+    "no_layman": "सरल भाषा में विवरण उपलब्ध नहीं है।",
+    "no_technical": "तकनीकी विवरण उपलब्ध नहीं है।",
+    "grade": {
+      "strong": "प्रबल",
+      "moderate": "मध्यम",
+      "weak": "सामान्य"
+    },
+    "grade_aria": "योग श्रेणी: {{grade}}",
+    "category": {
+      "mahapurusha": "महापुरुष",
+      "raja": "राज",
+      "dhana": "धन",
+      "chandra": "चंद्र",
+      "surya": "सूर्य",
+      "auspicious": "शुभ",
+      "dosha": "दोष",
+      "special": "विशेष"
+    },
+    "planets_label": "ग्रह",
+    "houses_label": "भाव",
+    "formation_trace": "योग निर्माण आधार",
+    "show_trace": "दिखाएँ",
+    "hide_trace": "छुपाएँ",
+    "rules_heading": "निर्माण नियम",
+    "factors_heading": "प्रेक्षित बल कारक"
+  },
+  "interpretation": {
+    "strengths": "सबल पक्ष",
+    "challenges": "चुनौतियाँ",
+    "life_themes": "प्रमुख जीवन विषय",
+    "health": "स्वास्थ्य और जीवनशैली",
+    "relationships": "संबंध और सहभागिता",
+    "career": "करियर और कार्यक्षेत्र",
+    "education": "शिक्षा और अध्ययन",
+    "finances": "वित्त और धन प्रबंधन",
+    "remedies": "उपाय और आत्म-संतुलन",
+    "spiritual": "आध्यात्मिक विकास और अंतर्यात्रा",
+    "no_interpretation": "कोई पठन उपलब्ध नहीं है।",
+    "no_technical_interpretation": "कोई तकनीकी पठन उपलब्ध नहीं है।",
+    "generating": "अभी कोई पठन नहीं है — तैयार हो रहा है… शुरू करने या प्रगति देखने के लिए डैशबोर्ड खोलें।",
+    "connect_prompt": "अपना पठन तैयार करने के लिए कोई AI मॉडल जोड़ें। आपकी कुंडली ऑन-डिवाइस गणना से तैयार है; AI मॉडल उसे व्यक्तिगत पठन में प्रस्तुत करता है।",
+    "connect_ai_link": "AI मॉडल जोड़ें"
+  },
+  "mode": {
+    "for_you": "आपके लिए",
+    "for_astrologer": "ज्योतिषी के लिए"
+  },
+  "report": {
+    "title_for": "{{name}} की विस्तृत वैदिक रिपोर्ट",
+    "generated_on": "{{date}} को निर्मित",
+    "loading": "कुंडली डेटा लोड हो रहा है",
+    "please_wait": "कृपया प्रतीक्षा करें...",
+    "no_data_title": "कोई कुंडली डेटा उपलब्ध नहीं है",
+    "load_error": "कुंडली डेटा लोड नहीं हो सका। कृपया फिर से प्रयास करें।",
+    "no_chart_error": "कोई कुंडली नहीं मिली। कृपया पहले जन्म कुंडली बनाएँ।",
+    "generate_prompt": "पूरी रिपोर्ट देखने के लिए अपनी जन्म कुंडली बनाएँ।",
+    "back_to_dashboard": "डैशबोर्ड पर वापस जाएँ",
+    "print_chart": "कुंडली प्रिंट करें",
+    "footer_note": "*रिपोर्ट लहिरी अयनांश ({{ayanamsa}}°) और {{houseSystem}} भाव प्रणाली से गणना की गई।*"
+  },
+  "print": {
+    "tagline": "वैदिक ज्योतिष प्रज्ञा",
+    "for_astrologer": "ज्योतिषी के लिए",
+    "technical_analysis": "तकनीकी विश्लेषण",
+    "report_title": "विस्तृत वैदिक ज्योतिष रिपोर्ट",
+    "prepared_for": "जिनके लिए तैयार किया गया",
+    "report_generated": "रिपोर्ट निर्माण तिथि",
+    "disclaimer": "यह रिपोर्ट लहिरी अयनांश और पारंपरिक वैदिक ज्योतिष पद्धतियों से गणना की गई है।",
+    "footer_note": "लहिरी अयनांश ({{ayanamsa}}°) और {{houseSystem}} भाव प्रणाली से गणना की गई"
+  }
+}

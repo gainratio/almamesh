@@ -198,7 +198,8 @@
     "label": "Idioma",
     "english": "English",
     "spanish": "Español",
-    "portuguese": "Português"
+    "portuguese": "Português",
+    "hindi": "हिन्दी"
   },
   "engine_rollback": {
     "warning": "Este servidor ofreció una versión del motor más antigua que la que ya tienes. Eso puede significar que alguien la está manipulando. Bórrala solo si confías en este sitio y en tu red.",

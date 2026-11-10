@@ -5,6 +5,7 @@
 ## Product
 
 - Computes sidereal charts, nakshatras, dashas, and divisional charts on the user's device.
+- Available in 4 languages: English, Hindi (हिन्दी), Spanish (Español), and Portuguese (Português).
 - Works offline after the engine and signed data bundle have been loaded.
 - Offers optional AI narration configured by the user. Core chart calculation does not require AI.
 - Presents astrology as reflective interpretation, with visible assumptions and uncertainty.
@@ -22,6 +23,30 @@ Birth details and computed charts remain in the browser. The city search can use
 
 - Home: https://almamesh.com/
 - Product overview: https://almamesh.com/welcome
+- Free Kundli (Janam Kundali) calculator: https://almamesh.com/free-kundli
+- Free Vedic Birth Chart (Lagna, Rashi & Navamsa D9): https://almamesh.com/birth-chart
+- Free Nakshatra & Pada calculator: https://almamesh.com/nakshatra
+- Free Vimshottari Dasha (Mahadasha & Antardasha) calculator: https://almamesh.com/dasha
+- Free Kundli Matching (Ashtakoot 36 Gun Milan): https://almamesh.com/kundli-matching
+- Free Shubh Muhurta & Vedic timing calculator: https://almamesh.com/muhurta
+- Hindi Kundli calculator (मुफ़्त जन्म कुंडली): https://almamesh.com/hi/free-kundli/
+- Hindi Birth Chart (जन्म चार्ट): https://almamesh.com/hi/birth-chart/
+- Hindi Nakshatra calculator (नक्षत्र और पाद): https://almamesh.com/hi/nakshatra/
+- Hindi Vimshottari Dasha (विंशोत्तरी दशा): https://almamesh.com/hi/dasha/
+- Hindi Kundli Matching (कुंडली मिलान / गुण मिलान): https://almamesh.com/hi/kundli-matching/
+- Hindi Muhurta calculator (शुभ मुहूर्त): https://almamesh.com/hi/muhurta/
+- Spanish Kundli calculator (Kundli Védico Gratis): https://almamesh.com/es/free-kundli/
+- Spanish Birth Chart (Carta Astral Gratis y Carta Natal Védica): https://almamesh.com/es/birth-chart/
+- Spanish Nakshatra calculator (Calculadora de Nakshatra): https://almamesh.com/es/nakshatra/
+- Spanish Vimshottari Dasha (Calculadora de Dasha): https://almamesh.com/es/dasha/
+- Spanish Kundli Matching (Compatibilidad Astral y 36 Gunas): https://almamesh.com/es/kundli-matching/
+- Spanish Muhurta calculator (Muhurta y Astrología Electiva): https://almamesh.com/es/muhurta/
+- Portuguese Kundli calculator (Kundli Védico Grátis): https://almamesh.com/pt/free-kundli/
+- Portuguese Birth Chart (Mapa Astral Grátis e Mapa Natal Védico): https://almamesh.com/pt/birth-chart/
+- Portuguese Nakshatra calculator (Calculadora de Nakshatra): https://almamesh.com/pt/nakshatra/
+- Portuguese Vimshottari Dasha (Calculadora de Dasha): https://almamesh.com/pt/dasha/
+- Portuguese Kundli Matching (Sinastria Amorosa e 36 Gunas): https://almamesh.com/pt/kundli-matching/
+- Portuguese Muhurta calculator (Muhurta e Astrologia Eletiva): https://almamesh.com/pt/muhurta/
 - How we test readings: https://almamesh.com/how-we-test
 
 ## Source

@@ -18,12 +18,14 @@ import { describe, expect, it } from 'vitest';
 import enReport from '../../locales/en/report.json';
 import esReport from '../../locales/es/report.json';
 import ptReport from '../../locales/pt/report.json';
+import hiReport from '../../locales/hi/report.json';
 import { REPORT_SECTIONS, numberedSections, sectionNumeral } from '../reportSections';
 
 const LOCALES: ReadonlyArray<readonly [string, Record<string, unknown>]> = [
   ['en', enReport as unknown as Record<string, unknown>],
   ['es', esReport as unknown as Record<string, unknown>],
   ['pt', ptReport as unknown as Record<string, unknown>],
+  ['hi', hiReport as unknown as Record<string, unknown>],
 ];
 
 /** The roman numeral inside an eyebrow, whatever wording surrounds it. */

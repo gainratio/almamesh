@@ -41,18 +41,30 @@ const appShellRoutes = [
   '/settings/data',
 ] as const;
 
+const CALCULATOR_SLUGS = [
+  'free-kundli',
+  'birth-chart',
+  'nakshatra',
+  'dasha',
+  'kundli-matching',
+  'muhurta',
+] as const;
+
+const LOCALIZED_CLUSTERS = ['hi', 'es', 'pt'] as const;
+
+const LOCALIZED_CALCULATOR_URLS = LOCALIZED_CLUSTERS.flatMap((lang) =>
+  CALCULATOR_SLUGS.map((slug) => `${SITE_ORIGIN}/${lang}/${slug}/`),
+);
+
 describe('public/sitemap.xml', () => {
   const xml = readFileSync(path.join(publicDir, 'sitemap.xml'), 'utf-8');
 
-  it('is a urlset with exactly the public canonicals', () => {
+  it('is a urlset with exactly the public canonicals and localized calculator clusters', () => {
     expect(xml).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">');
     const locs = [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
-    expect(locs.sort()).toEqual([...PUBLIC_ROUTE_HEADS.map((h) => h.canonical), `${SITE_ORIGIN}/hi/free-kundli/`,
-      `${SITE_ORIGIN}/hi/birth-chart/`,
-      `${SITE_ORIGIN}/hi/nakshatra/`,
-      `${SITE_ORIGIN}/hi/dasha/`,
-      `${SITE_ORIGIN}/hi/kundli-matching/`,
-      `${SITE_ORIGIN}/hi/muhurta/`].sort());
+    expect(locs.sort()).toEqual(
+      [...PUBLIC_ROUTE_HEADS.map((h) => h.canonical), ...LOCALIZED_CALCULATOR_URLS].sort(),
+    );
   });
 
   it('is well-formed XML (tags balance, single root)', () => {
@@ -60,8 +72,69 @@ describe('public/sitemap.xml', () => {
     const opens = (xml.match(/<url>/g) ?? []).length;
     const closes = (xml.match(/<\/url>/g) ?? []).length;
     expect(opens).toBe(closes);
-    expect(opens).toBe(PUBLIC_ROUTE_HEADS.length + 6);
+    expect(opens).toBe(PUBLIC_ROUTE_HEADS.length + LOCALIZED_CALCULATOR_URLS.length);
     expect((xml.match(/<urlset/g) ?? []).length).toBe(1);
+  });
+
+  it('gives every EN, HI, ES, and PT calculator <url> the complete 6-way xhtml:link hreflang mesh', () => {
+    const blocks = [...xml.matchAll(/<url>([\s\S]*?)<\/url>/g)].map((m) => m[1]);
+    for (const slug of CALCULATOR_SLUGS) {
+      const expectedMesh = [
+        `en=${SITE_ORIGIN}/${slug}`,
+        `en-IN=${SITE_ORIGIN}/${slug}`,
+        `hi=${SITE_ORIGIN}/hi/${slug}/`,
+        `es=${SITE_ORIGIN}/es/${slug}/`,
+        `pt=${SITE_ORIGIN}/pt/${slug}/`,
+        `x-default=${SITE_ORIGIN}/${slug}`,
+      ];
+      const clusterLocs = [
+        `${SITE_ORIGIN}/${slug}`,
+        ...LOCALIZED_CLUSTERS.map((lang) => `${SITE_ORIGIN}/${lang}/${slug}/`),
+      ];
+      for (const loc of clusterLocs) {
+        const block = blocks.find((b) => b.includes(`<loc>${loc}</loc>`));
+        expect(block, `missing <url> block for ${loc}`).toBeDefined();
+        const links = [...block!.matchAll(/hreflang="([^"]+)"\s+href="([^"]+)"/g)].map(
+          (m) => `${m[1]}=${m[2]}`,
+        );
+        expect(links, `hreflang drift in sitemap block ${loc}`).toEqual(expectedMesh);
+      }
+    }
+  });
+});
+
+describe('localized static SEO pages (hi, es, pt)', () => {
+  it.each(
+    LOCALIZED_CLUSTERS.flatMap((lang) => CALCULATOR_SLUGS.map((slug) => [lang, slug] as const)),
+  )('public/%s/%s/index.html is complete, Observatory-styled, and reciprocally linked', (lang, slug) => {
+    const html = readFileSync(path.join(publicDir, lang, slug, 'index.html'), 'utf-8');
+    const canonical = `${SITE_ORIGIN}/${lang}/${slug}/`;
+    expect(html).toContain(`<html lang="${lang}">`);
+    expect(html).toContain(`<link rel="canonical" href="${canonical}">`);
+    expect(html.match(/<h1(?:\s|>)/gi)).toHaveLength(1);
+    expect(html).toContain(`href="/onboarding?lang=${lang}"`);
+    expect(html).toContain(`href="/?lang=${lang}"`);
+    // Observatory warm gold CTA (#d4af37), never legacy purple (#7c6cf0).
+    expect(html).toContain('background:#d4af37;color:#0b0e17');
+    expect(html).not.toContain('#7c6cf0');
+
+    const alternates = [
+      ...html.matchAll(/<link\s+rel="alternate"\s+hreflang="([^"]+)"\s+href="([^"]+)">/g),
+    ].map((m) => `${m[1]}=${m[2]}`);
+    expect(alternates).toEqual([
+      `en=${SITE_ORIGIN}/${slug}`,
+      `en-IN=${SITE_ORIGIN}/${slug}`,
+      `hi=${SITE_ORIGIN}/hi/${slug}/`,
+      `es=${SITE_ORIGIN}/es/${slug}/`,
+      `pt=${SITE_ORIGIN}/pt/${slug}/`,
+      `x-default=${SITE_ORIGIN}/${slug}`,
+    ]);
+
+    const jsonLdRaw = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/)?.[1];
+    expect(jsonLdRaw, `${lang}/${slug} missing FAQPage JSON-LD`).toBeDefined();
+    const jsonLd = JSON.parse(jsonLdRaw!) as { '@type': string; mainEntity: unknown[] };
+    expect(jsonLd['@type']).toBe('FAQPage');
+    expect(jsonLd.mainEntity.length).toBeGreaterThanOrEqual(2);
   });
 });
 
@@ -105,6 +178,10 @@ describe('public/llms.txt', () => {
     expect(llms).toContain('https://almamesh.com/privacy');
     expect(llms).toContain('browser');
     expect(llms).toContain('optional AI');
+    expect(llms).toContain('4 languages');
+    expect(llms).toContain('https://almamesh.com/hi/free-kundli/');
+    expect(llms).toContain('https://almamesh.com/es/free-kundli/');
+    expect(llms).toContain('https://almamesh.com/pt/free-kundli/');
     expect(llms).not.toMatch(/guaranteed|scientifically proven|medical advice/i);
   });
 });
@@ -313,6 +390,9 @@ describe('IndexNow key', () => {
     expect(`${delivery}\n${proof}`).not.toContain(key);
     for (const head of PUBLIC_ROUTE_HEADS) {
       expect(proof, head.canonical).toContain(head.canonical);
+    }
+    for (const url of LOCALIZED_CALCULATOR_URLS) {
+      expect(proof, url).toContain(url);
     }
     // Non-fatal by contract: the ping must never break a deploy.
     expect(proof).toContain('|| echo "IndexNow notification failed (non-fatal)" >&2');

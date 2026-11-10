@@ -39,7 +39,12 @@ export function computeQuarters(asOfMonth: string): readonly Quarter[] {
   }));
 }
 
-const LOCALES: Readonly<Record<PromptLanguage, string>> = { en: "en-US", es: "es-ES", pt: "pt-BR" };
+const LOCALES: Readonly<Record<PromptLanguage, string>> = {
+  en: "en-US",
+  es: "es-ES",
+  pt: "pt-BR",
+  hi: "hi-IN",
+};
 
 function monthParts(yearMonth: string, language: PromptLanguage): { month: string; year: string } {
   const [year, month] = yearMonth.split("-").map(Number);

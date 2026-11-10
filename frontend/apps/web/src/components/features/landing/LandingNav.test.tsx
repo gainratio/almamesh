@@ -59,6 +59,7 @@ describe('LandingNav', () => {
       renderNav();
       const select = screen.getByRole('combobox', { name: 'Language' }) as HTMLSelectElement;
       expect(select.value).toBe('pt');
+      expect([...select.options].map((o) => o.value)).toEqual(['en', 'es', 'pt', 'hi']);
       const code = screen.getByTestId('landing-language-code');
       expect(code.textContent).toBe('pt');
       expect(code.getAttribute('aria-hidden')).toBe('true');

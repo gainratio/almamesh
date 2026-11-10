@@ -10,32 +10,35 @@ export default function FreeKundli(): ReactElement {
     <div className="min-h-screen bg-observatory font-sans text-text-primary antialiased">
       <LandingNav />
       <main className="mx-auto max-w-3xl px-5 py-24">
-        <p className="text-sm uppercase tracking-widest text-text-muted">Vedic astrology</p>
-        <h1 className="mt-3 text-4xl font-semibold sm:text-5xl">Free Kundli Calculator</h1>
+        <p className="text-sm uppercase tracking-widest text-text-muted">Vedic astrology · Jyotish · 100% Free</p>
+        <h1 className="mt-3 text-4xl font-semibold sm:text-5xl">Free Kundli &amp; Janam Kundali Calculator</h1>
         <p className="mt-5 text-lg text-text-secondary">
-          Generate a free Vedic kundli (birth chart) from your birth date, time, and place.
-          AlmaMesh computes the sidereal chart — planets, rashis, nakshatras, and dashas — on
-          your own device. No account, no upload, no server.
+          Generate a 100% free Vedic kundli (Janam Kundali / Janma Kundli) from your birth date, time, and place.
+          AlmaMesh computes the authentic sidereal chart — Lagna, Chandra Rashi, Grahas, 27 Nakshatras, Vimshottari Dasha, and Navamsa (D9) — directly on
+          your own device. Free forever: no login, no phone number, no upload, no server.
         </p>
-        <p className="mt-4"><a href="/hi/free-kundli/" className="text-accent-gold-bright underline">हिन्दी में पढ़ें</a></p>
+        <p className="mt-4 flex flex-wrap gap-4 text-sm">
+          <a href="/hi/free-kundli/" lang="hi" className="text-accent-gold-bright underline">हिन्दी में पढ़ें (मुफ़्त जन्म कुंडली)</a>
+          <a href="/es/free-kundli/" lang="es" className="text-accent-gold-bright underline">Leer en Español (Kundli Gratis)</a>
+          <a href="/pt/free-kundli/" lang="pt" className="text-accent-gold-bright underline">Ler em Português (Kundli Grátis)</a>
+        </p>
         <section lang="hi" className="mt-10 rounded-2xl border border-ui-border/60 p-6">
-          <h2 className="text-2xl font-semibold">मुफ़्त कुंडली और जन्म कुंडली</h2>
+          <h2 className="text-2xl font-semibold">मुफ़्त कुंडली और जन्म कुंडली (100% Free Janam Kundali)</h2>
           <p className="mt-3 text-text-secondary">
-            अपनी जन्म तिथि, समय और स्थान से मुफ़्त वैदिक कुंडली बनाएं। ग्रह, राशि, नक्षत्र और
-            दशाएं आपके ही ब्राउज़र में निकाली जाती हैं — कोई अकाउंट नहीं, कोई अपलोड नहीं।
+            अपनी जन्म तिथि, समय और स्थान से मुफ़्त वैदिक जन्म कुंडली बनाएं। लग्न, चंद्र राशि, नवग्रह, 27 नक्षत्र, विंशोत्तरी महादशा और नवांश (D9) आपके ही ब्राउज़र में निकाले जाते हैं — कोई अकाउंट नहीं, कोई फ़ोन नंबर नहीं, कोई शुल्क नहीं।
           </p>
           <p className="mt-2 text-text-secondary">
-            कुंडली गणना ओपन-सोर्स इंजन से होती है और पहली बार लोड के बाद ऑफ़लाइन भी काम करती है।
+            कुंडली गणना लाहिरी (चित्रपक्ष) अयनांश और ओपन-सोर्स इंजन से होती है तथा पहली बार लोड के बाद ऑफ़लाइन भी काम करती है।
           </p>
         </section>
 
-        <h2 className="mt-10 text-2xl font-semibold">What the kundli includes</h2>
+        <h2 className="mt-10 text-2xl font-semibold">What the free Janam Kundali includes</h2>
         <ul className="mt-4 space-y-3 text-text-secondary">
-          <li><strong>Lagna and planets:</strong> sidereal positions using the Lahiri ayanamsha.</li>
-          <li><strong>Nakshatras:</strong> the 27 lunar mansions, with pada.</li>
-          <li><strong>Dashas:</strong> Vimshottari mahadasha and antardasha periods.</li>
-          <li><strong>Divisional charts:</strong> D1 and the standard varga charts supported by the engine.</li>
-          <li><strong>Plain-language reading:</strong> strengths and tensions, without fatalism or fear.</li>
+          <li><strong>Lagna (Ascendant) &amp; Chandra Rashi:</strong> exact sidereal degrees using the Chitrapaksha Lahiri ayanamsha.</li>
+          <li><strong>Janma Nakshatra &amp; Pada:</strong> your birth star among the 27 lunar mansions, with pada (1–4) and ruling Graha.</li>
+          <li><strong>Vimshottari Dasha:</strong> 120-year Mahadasha and Antardasha (Bhukti) planetary timeline.</li>
+          <li><strong>Divisional (Varga) charts:</strong> Rashi (D1), Navamsa (D9), Dashamsha (D10), and standard Parashari varga charts.</li>
+          <li><strong>Plain-language Jyotish reading:</strong> strengths, yogas, and tensions explained clearly, without fatalism or paid-remedy upsells.</li>
         </ul>
         <h2 className="mt-10 text-2xl font-semibold">Why compute it in the browser?</h2>
         <p className="mt-4 text-text-secondary">
@@ -44,7 +47,7 @@ export default function FreeKundli(): ReactElement {
           so the calculation can be inspected rather than trusted on faith.
         </p>
         <Link
-          className="mt-10 inline-flex rounded-full bg-accent px-6 py-3 font-medium text-white"
+          className="mt-10 inline-flex rounded-full bg-accent-gold px-6 py-3 font-semibold text-background-primary transition-colors hover:bg-accent-gold-bright"
           to="/onboarding"
         >
           Generate my free kundli
