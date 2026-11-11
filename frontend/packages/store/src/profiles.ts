@@ -32,6 +32,12 @@ import {
 import { assignOrphanChatThreads, whenChatHydrated } from './chat';
 import { deletionAwareIdbStorage, whenPersistenceCommitted } from './deletionTombstones';
 import { normalizeCurrentPlace, type CurrentPlace } from './currentPlace';
+import {
+  getProfileMemoryFacts,
+  upsertProfileMemoryFact,
+  type ProfileMemoryFact,
+  type ProfileMemoryFactInput,
+} from './profileMemory';
 import { clearDroppedWrites, reportDroppedWrite } from './droppedWrites';
 import { reportHydrationFailure, whenHydrated, type HydrationOutcome } from './hydrationBarrier';
 
@@ -57,6 +63,11 @@ export interface Profile {
    * through `getCurrentPlace`, which ignores a malformed stored value.
    */
   readonly currentPlace?: CurrentPlace;
+  /**
+   * Durable per-profile context notes shared by the user across chat threads.
+   * Optional and additive (sanitized and read via `getProfileMemoryFacts`).
+   */
+  readonly memoryFacts?: readonly ProfileMemoryFact[];
 }
 
 /** One canonical SQLite row holding all profiles, persisted by Zustand. */
@@ -150,6 +161,16 @@ export type SetCurrentPlaceResult =
   | { readonly ok: true }
   | { readonly ok: false; readonly reason: 'not-found' | 'invalid-place' };
 
+/** Typed outcome of `addProfileMemoryFact`. */
+export type AddProfileMemoryFactResult =
+  | { readonly ok: true; readonly fact: ProfileMemoryFact }
+  | { readonly ok: false; readonly reason: 'not-found' | 'invalid-fact' };
+
+/** Typed outcome of `removeProfileMemoryFact` / `clearProfileMemoryFacts`. */
+export type MutateProfileMemoryResult =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly reason: 'not-found' };
+
 /** Typed outcome of `setRelationship`. */
 export type SetRelationshipResult =
   | { readonly ok: true }
@@ -207,6 +228,12 @@ export interface ProfilesStore {
    * rejected and the old value kept.
    */
   setCurrentPlace: (id: string, place: CurrentPlace | undefined) => SetCurrentPlaceResult;
+  /** Save or update a durable context note for the profile (capped at 15, PII-sanitized). */
+  addProfileMemoryFact: (id: string, input: ProfileMemoryFactInput) => AddProfileMemoryFactResult;
+  /** Remove one context note from the profile. */
+  removeProfileMemoryFact: (id: string, factId: string) => MutateProfileMemoryResult;
+  /** Remove all context notes from the profile. */
+  clearProfileMemoryFacts: (id: string) => MutateProfileMemoryResult;
 
   getActiveProfile: () => Profile | undefined;
   /** All profiles ordered by `createdAt` (stable creation order). */
@@ -272,6 +299,13 @@ function normalizeRelatedTo(profiles: Record<string, Profile>): Record<string, P
 function withCurrentPlace(profile: Profile, place: CurrentPlace | undefined): Profile {
   if (place !== undefined) return { ...profile, currentPlace: place };
   const { currentPlace: _dropped, ...rest } = profile;
+  return rest;
+}
+
+/** The profile with `facts` as its context notes; an empty array drops the field. */
+function withMemoryFacts(profile: Profile, facts: readonly ProfileMemoryFact[]): Profile {
+  if (facts.length > 0) return { ...profile, memoryFacts: facts };
+  const { memoryFacts: _dropped, ...rest } = profile;
   return rest;
 }
 
@@ -494,6 +528,37 @@ export const profilesStoreCreator: StateCreator<ProfilesStore> = (set, get) => (
     return { ok: true };
   },
 
+  addProfileMemoryFact: (id, input) => {
+    const target = get().profiles[id];
+    if (!target) return { ok: false, reason: 'not-found' };
+    const updated = upsertProfileMemoryFact(getProfileMemoryFacts(target), input);
+    if (!updated) return { ok: false, reason: 'invalid-fact' };
+    set((state) => {
+      const current = state.profiles[id] ?? target;
+      const merged = upsertProfileMemoryFact(getProfileMemoryFacts(current), { ...input, id: updated.fact.id, createdAt: updated.fact.createdAt });
+      return merged ? { profiles: { ...state.profiles, [id]: withMemoryFacts(current, merged.facts) } } : state;
+    });
+    return { ok: true, fact: updated.fact };
+  },
+
+  removeProfileMemoryFact: (id, factId) => {
+    const target = get().profiles[id];
+    if (!target) return { ok: false, reason: 'not-found' };
+    set((state) => {
+      const current = state.profiles[id] ?? target;
+      const kept = getProfileMemoryFacts(current).filter((fact) => fact.id !== factId);
+      return { profiles: { ...state.profiles, [id]: withMemoryFacts(current, kept) } };
+    });
+    return { ok: true };
+  },
+
+  clearProfileMemoryFacts: (id) => {
+    const target = get().profiles[id];
+    if (!target) return { ok: false, reason: 'not-found' };
+    set((state) => ({ profiles: { ...state.profiles, [id]: withMemoryFacts(state.profiles[id] ?? target, []) } }));
+    return { ok: true };
+  },
+
   getActiveProfile: () => {
     const { activeProfileId, profiles } = get();
     return activeProfileId ? profiles[activeProfileId] : undefined;
@@ -555,6 +620,13 @@ export function useMembers(): Profile[] {
 /** True once the mesh can form: an anchor plus at least one member. */
 export function useMeshReady(): boolean {
   return useProfilesStore((s) => meshReadyOf(s.profiles));
+}
+
+/** Render-stable React hook for a profile's saved context notes. */
+export function useProfileMemoryFacts(profileId: string | null | undefined): ProfileMemoryFact[] {
+  return useProfilesStore(
+    useShallow((s) => (profileId ? getProfileMemoryFacts(s.profiles[profileId]) : [])),
+  );
 }
 
 /**

@@ -2,8 +2,8 @@
  * The one place box: a text input that owns a short list of places. Each row
  * reads "Springfield" plainly and ", Illinois, United States" muted, so the
  * whole row is the label the model and the trip header use. Keyboard first:
- * arrows move, Enter picks, Escape closes the list (and only the list).
- * Used by the time-travel "Where?" box and the chat's "Which place?" popup.
+ * arrows move, Enter picks (IME-safe), Escape closes the list (and only the list).
+ * Used by the time-travel "Where?" box, Settings, and the chat location chip.
  */
 import { useEffect, useState, type KeyboardEvent } from 'react';
 
@@ -23,6 +23,8 @@ interface PlaceComboboxProps {
   readonly onChoose: (place: ResolvedPlace) => void;
   /** Escape while the list is open. */
   readonly onDismiss: () => void;
+  /** Optional immediate Enter fallback when the user submits before debounced options arrive. */
+  readonly onSubmitQuery?: (query: string) => void;
   readonly describedBy?: string;
   readonly autoFocus?: boolean;
   readonly required?: boolean;
@@ -42,7 +44,7 @@ function nextIndex(key: string, active: number, count: number): number | undefin
 }
 
 export function PlaceCombobox(props: PlaceComboboxProps) {
-  const { id, testIdPrefix, options, onChoose, onDismiss } = props;
+  const { id, testIdPrefix, options, onChoose, onDismiss, onSubmitQuery } = props;
   const shown = options?.slice(0, PLACE_SUGGESTION_LIMIT) ?? [];
   const open = shown.length > 0;
   const [active, setActive] = useState(0);
@@ -53,14 +55,23 @@ export function PlaceCombobox(props: PlaceComboboxProps) {
   useEffect(() => setActive(0), [options]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (!open) return;
+    // IME composition guard (Safari out-of-order Enter uses keyCode 229).
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+    if (!open) {
+      if (event.key === 'Enter' && onSubmitQuery && props.query.trim().length >= 2) {
+        event.preventDefault();
+        onSubmitQuery(props.query.trim());
+      }
+      return;
+    }
     const moved = nextIndex(event.key, active, shown.length);
     if (moved !== undefined) {
       event.preventDefault();
       setActive(moved);
     } else if (event.key === 'Enter') {
       event.preventDefault();
-      onChoose(shown[active] ?? shown[0]);
+      const target = shown[active] ?? shown[0];
+      if (target) onChoose(target);
     } else if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();

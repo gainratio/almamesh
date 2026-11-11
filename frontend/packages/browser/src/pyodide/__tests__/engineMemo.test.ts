@@ -63,6 +63,10 @@ class CountingEngine implements ChartEngine {
     throw new Error("not used");
   }
 
+  public async computeVargaDetail(): Promise<never> {
+    throw new Error("not used");
+  }
+
   public meta(): null {
     return null;
   }
@@ -172,6 +176,7 @@ describe("memoizeChartEngine — identical input is computed once", () => {
     expect(cached.meta()).toBeNull();
     await expect(cached.computeMeshEdge({} as never)).rejects.toThrow("not used");
     await expect(cached.computeMoonWindow({} as never)).rejects.toThrow("not used");
+    await expect(cached.computeVargaDetail({} as never)).rejects.toThrow("not used");
   });
 });
 

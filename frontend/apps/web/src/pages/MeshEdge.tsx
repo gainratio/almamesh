@@ -13,7 +13,7 @@
  */
 
 import { Suspense, useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -287,7 +287,11 @@ function MeshEdgeContent({
 
   // "Discuss in chat": the same persisted, edge-grounded chat panel pattern as
   // the dashboard — remounted open on request via the key flip.
-  const [discussRequested, setDiscussRequested] = useState(false);
+  const [searchParams] = useSearchParams();
+  const chatAskDraft = searchParams.get('ask') ?? undefined;
+  const [discussRequested, setDiscussRequested] = useState(
+    () => searchParams.get('chat') === 'open' || Boolean(chatAskDraft),
+  );
   const anchorChart = profileChartOf(charts, anchor.id);
   const siderealChart = anchorChart?.sidereal_chart;
   const handleAsk = async (ask: ChatAskInput): Promise<string> => {
@@ -447,6 +451,7 @@ function MeshEdgeContent({
             onAskQuestionStream={handleAsk}
             birthYear={birthYearOf(anchorChart?.birth_data as ProcessedBirthData | undefined)}
             initialOpen={discussRequested}
+            {...(chatAskDraft ? { initialDraft: chatAskDraft } : {})}
           />
         </Suspense>
       )}

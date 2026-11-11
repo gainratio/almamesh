@@ -131,6 +131,7 @@ export function memoizeChartEngine(
     computeMoonWindow: (input) => engine.computeMoonWindow(input),
     computeMeshEdge: (input) => engine.computeMeshEdge(input),
     computeRectification: (input) => engine.computeRectification(input),
+    computeVargaDetail: (input) => engine.computeVargaDetail(input),
     meta: () => engine.meta(),
   };
 }

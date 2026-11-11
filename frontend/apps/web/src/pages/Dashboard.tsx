@@ -81,6 +81,7 @@ import { natalOnlyNoted, waitForPredictiveFacts } from "../lib/predictiveWait";
 import { asOfKey } from "../lib/pinnedPeriod";
 import { DashboardMoment } from "../components/features/dashboard/DashboardMomentCard";
 import { TimeTravelBanner } from "../components/features/chat/TimeTravelBanner";
+import { ChatQuickLaunchStrip } from "../components/features/chat/ChatQuickLaunchStrip";
 import { DashboardTimeTravelSheet } from "../components/features/dashboard/DashboardTimeTravelSheet";
 import {
   type DashboardTravelSheet,
@@ -133,10 +134,19 @@ export default function DashboardPage() {
   // switches voice instantly — no LLM call (the store subscription re-renders).
   const audience = resolveReportAudience(contentMode);
 
-  // Arriving via a "discuss in chat" link (e.g. from /life/:domain) opens the
-  // chat panel immediately instead of leaving the user hunting for the bubble.
-  const [searchParams] = useSearchParams();
-  const chatInitiallyOpen = searchParams.get('chat') === 'open';
+  // Arriving via a "discuss in chat" link (e.g. from /life/:domain or /predictive?chat=open&ask=...)
+  // opens the chat panel immediately instead of leaving the user hunting for the bubble.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const chatAskDraft = searchParams.get('ask') ?? undefined;
+  const chatInitiallyOpen = searchParams.get('chat') === 'open' || Boolean(chatAskDraft);
+  const handleQuickLaunchAsk = useCallback((prompt: string) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('chat', 'open');
+      next.set('ask', prompt);
+      return next;
+    });
+  }, [setSearchParams]);
 
   // Local-first read: the primary chart comes from canonical on-device SQLite,
   // not the backend. We wrap the persisted ChartData in the
@@ -771,6 +781,7 @@ export default function DashboardPage() {
             </>
           }
         />
+        <ChatQuickLaunchStrip onLaunchPrompt={handleQuickLaunchAsk} />
         {/* The trip, as one unit: after Go it is scrolled into view together,
             so the banner's Change / Back to today stays on screen. */}
         {timeTravel.moment && (
@@ -1196,6 +1207,7 @@ export default function DashboardPage() {
           onAskQuestionStream={handleAsk}
           birthYear={birthYearOf(chartId ? (useChartLibraryStore.getState().getChart(chartId)?.birth_data as ProcessedBirthData | undefined) : undefined)}
           initialOpen={chatInitiallyOpen}
+          {...(chatAskDraft ? { initialDraft: chatAskDraft } : {})}
         />
       </Suspense>
     </>

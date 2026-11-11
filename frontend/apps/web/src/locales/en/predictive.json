@@ -208,6 +208,24 @@
       "D40": "Maternal legacy",
       "D45": "Paternal character",
       "D60": "Past karma — the finest division"
+    },
+    "inspector": {
+      "ask_guide": "Ask Guide about {{chart}}",
+      "ask_guide_prompt": "Interpret my {{chart}} ({{name}}) divisional chart — key placements, dignities, and what it means for {{theme}}.",
+      "sensitivity_label": "Birth-time cusp window: ~{{minutes}} min before {{chart}} Lagna shifts sign",
+      "sensitivity_high": "High birth-time sensitivity",
+      "rectify_cta": "Verify birth time",
+      "d60_heading": "Ṣaṣṭyāṁśa (D60) — Classical 60-Aṁśa Breakdown",
+      "d60_subtitle": "Brihat Parāśara Horā Śāstra Ch. 6 subtle karmic divisions (half-degree arcs) and auspicious vs. testing nature.",
+      "col_point": "Point",
+      "col_sign_house": "Sign · House",
+      "col_amsa": "Aṁśa (#1–60)",
+      "col_nature": "Nature",
+      "nature_saumya": "Saumya (Auspicious)",
+      "nature_krura": "Krūra (Testing)",
+      "house_short": "H{{house}}",
+      "dashboard_switcher_label": "Divisional chart preview",
+      "full_gallery_link": "All 16 divisional charts"
     }
   },
   "strength": {

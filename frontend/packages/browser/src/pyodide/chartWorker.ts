@@ -37,6 +37,8 @@ import type {
   MoonWindow,
   MoonWindowInput,
   PredictiveInput,
+  VargaDetailInput,
+  VargaDetailResult,
 } from "./protocol";
 import type { RectificationInput, RectificationResultRaw } from "./rectification";
 import { observeOrphanedLoadFailures } from "./teardown";
@@ -102,13 +104,14 @@ def _almamesh_compute_predictive(input_json):
 
 def _almamesh_compute_moon_window(input_json):
     # The Moon at the ends of a place's local window, plus (optionally) one
-    # event's Moon and lagna sign. Only the explicit instants and coordinates
-    # in the payload are read; no wall clock. Imported lazily so booting an
-    # OLDER bundled wheel (without the module) still serves natal charts.
+    # event's Moon and lagna sign and optional daily Panchang/Tarabala marks.
+    # Only explicit instants and coordinates in the payload are read; no wall
+    # clock. "days" and "natal_moon" are forwarded ONLY when provided so older
+    # bundled wheels and span-only callers remain byte-identical.
     from almamesh.transits.moon_window import moon_window_from_wire
     data = json.loads(input_json)
     event = data.get("event")
-    return json.dumps(moon_window_from_wire({
+    wire = {
         "place_start_utc": data.get("placeStartUtc"),
         "place_end_utc": data.get("placeEndUtc"),
         "event": None if event is None else {
@@ -116,6 +119,40 @@ def _almamesh_compute_moon_window(input_json):
             "latitude": event.get("latitude"),
             "longitude": event.get("longitude"),
         },
+    }
+    if "days" in data and data["days"] is not None:
+        raw_days = data["days"]
+        wire["days"] = [
+            {
+                "date": d.get("date"),
+                "datetime_utc": d.get("datetimeUtc"),
+                **({"vara": d["vara"]} if "vara" in d and d["vara"] is not None else {}),
+            }
+            if isinstance(d, dict) else d
+            for d in raw_days
+        ] if isinstance(raw_days, list) else raw_days
+    if "natalMoon" in data and data["natalMoon"] is not None:
+        wire["natal_moon"] = data["natalMoon"]
+    return json.dumps(moon_window_from_wire(wire).model_dump(mode="json"))
+
+def _almamesh_compute_varga_detail(input_json):
+    # Divisional varga detail (D1..D60): lagna cusp sensitivity, whole-sign
+    # houses, dignities, vargottama, and BPHS Ch. 6 D60 Shashtiamsa amsas.
+    from almamesh.vargas.detail import varga_detail_from_wire
+    data = json.loads(input_json)
+    raw_planets = data.get("planets")
+    planets = {
+        k: {
+            "longitude": v.get("longitude"),
+            **({"is_combust": v["isCombust"]} if "isCombust" in v and v["isCombust"] is not None else {}),
+        }
+        if isinstance(v, dict) else v
+        for k, v in raw_planets.items()
+    } if isinstance(raw_planets, dict) else raw_planets
+    return json.dumps(varga_detail_from_wire({
+        "chart": data.get("chart"),
+        "lagna_longitude": data.get("lagnaLongitude"),
+        "planets": planets,
     }).model_dump(mode="json"))
 
 def _almamesh_compute_mesh(input_json):
@@ -221,6 +258,10 @@ interface PyMeshFn {
   destroy(): void;
 }
 interface PyRectificationFn {
+  (inputJson: string): string;
+  destroy(): void;
+}
+interface PyVargaDetailFn {
   (inputJson: string): string;
   destroy(): void;
 }
@@ -515,6 +556,18 @@ function computeRectification(input: RectificationInput): RectificationResultRaw
   }
 }
 
+function computeVargaDetail(input: VargaDetailInput): VargaDetailResult {
+  if (enginePyodide === undefined) {
+    throw new Error("chart worker not booted");
+  }
+  const fn = enginePyodide.globals.get("_almamesh_compute_varga_detail") as unknown as PyVargaDetailFn;
+  try {
+    return JSON.parse(fn(JSON.stringify(input))) as VargaDetailResult;
+  } finally {
+    fn.destroy();
+  }
+}
+
 async function handle(request: ChartWorkerRequest): Promise<ChartWorkerResponse> {
   try {
     if (request.kind === "prewarm") {
@@ -565,6 +618,14 @@ async function handle(request: ChartWorkerRequest): Promise<ChartWorkerResponse>
         kind: "computeRectification",
         id: request.id,
         rectification: computeRectification(request.input),
+      };
+    }
+    if (request.kind === "computeVargaDetail") {
+      return {
+        ok: true,
+        kind: "computeVargaDetail",
+        id: request.id,
+        vargaDetail: computeVargaDetail(request.input),
       };
     }
     return { ok: true, kind: "generateChart", id: request.id, chart: generateChart(request.birth) };

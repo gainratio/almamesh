@@ -144,8 +144,20 @@ export {
   serializeInterpretationForChat,
   INTERP_TOKEN_BUDGET,
   CLOUD_CHAT_BUDGET,
+  TOOLS_LINE,
 } from "./prompt";
 export type { ViewMode, ChatRectificationContext, ChatPromptBudget, ThreadFacts, ThreadHome, ThreadTrip } from "./prompt";
+
+export {
+  ALL_SPECIALISTS,
+  ChatAgent,
+  MeshSynastryAgent,
+  NatalChartAgent,
+  RectificationAdvisorAgent,
+  TimingPanchangAgent,
+  selectSpecialistsForTurn,
+} from "./agents";
+export type { AgentId, AgentSpecialist, AgentTurnContext, SpecialistAgentId, TurnAgentPlan } from "./agents";
 
 export { languageInstruction, withLanguage } from "./language";
 export type { PromptLanguage } from "./language";

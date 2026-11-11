@@ -187,8 +187,16 @@ export const ANSWER_TOOL_DESCRIPTION =
   "If the arguments are rejected, fix the named fields and call it again.";
 
 export const TOOL_LOOP_LIMITS = Object.freeze({
-  maxRounds: 6,
-  maxCallsPerTool: Object.freeze<Record<string, number>>({ read_period: 3, travel: 1 }),
+  maxRounds: 8,
+  maxCallsPerTool: Object.freeze<Record<string, number>>({
+    read_period: 5,
+    travel: 2,
+    set_current_location: 2,
+    read_varga: 4,
+    find_best_windows: 2,
+    read_mesh_member: 3,
+    remember_fact: 3,
+  }),
 });
 
 export const TOOL_TIMEOUT_MS = Object.freeze({ default: 2_000, max: 150_000 });

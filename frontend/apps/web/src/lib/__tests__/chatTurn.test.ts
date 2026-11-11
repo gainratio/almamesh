@@ -4,7 +4,7 @@
  * the answer streams as rendered snapshots; a retried call is telemetry, never a transcript row.
  */
 import type { SiderealChart } from '@almamesh/browser/types';
-import { estimateRequestTokens, type ProviderConfig } from '@almamesh/llm';
+import { estimateRequestTokens, readLlmSettings, writeLlmSettings, type ProviderConfig } from '@almamesh/llm';
 import { BUDGET_INSTRUCTION } from '@almamesh/llm/toolLoop';
 import type { ChatMessage, ChatMessagePart, ProcessedBirthData } from '@almamesh/shared-types';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -341,12 +341,81 @@ describe('runChatTurn: an answer may not claim a move that did not happen', () =
 });
 
 describe('runChatTurn: a today turn', () => {
-  it('round 1 is required with read_period, travel and answer; a general answer streams as snapshots', async () => {
+  it('round 1 is required with read_period, travel and answer; specialist tools mount on demand without bloating 8k prompts', async () => {
     const { fetchImpl, bodies } = endpoint([{ name: 'answer', args: generalAnswer('Your Mars is strong.') }]);
     const snapshots = await drain(runChatTurn(input(fetchImpl)));
     expect(bodies[0]).toMatchObject({ tool_choice: 'required' });
     expect(toolNames(bodies[0])).toEqual(['read_period', 'travel', 'answer']);
     expect(snapshots.at(-1)).toBe('Your Mars is strong.');
+
+    const prevSettings = readLlmSettings();
+    writeLlmSettings({ ...prevSettings, chatContextTokens: 65_536 });
+    try {
+      const specialistTurn = endpoint([{ name: 'answer', args: generalAnswer('Checked.') }]);
+      await drain(runChatTurn(input(specialistTurn.fetchImpl, {
+        question: 'I am in Novato, CA — check my D9 & D60, spouse compatibility, best career windows next 6 months, and remember that I am building a startup',
+      })));
+      expect(toolNames(specialistTurn.bodies[0])).toEqual([
+        'read_period',
+        'travel',
+        'set_current_location',
+        'read_varga',
+        'find_best_windows',
+        'read_mesh_member',
+        'remember_fact',
+        'answer',
+      ]);
+    } finally {
+      writeLlmSettings({ chatContextTokens: undefined });
+    }
+  });
+
+  it('set_current_location in round 1 immediately updates read_period in round 2 of the same turn', async () => {
+    const NOVATO_RESOLVED = {
+      summary: { place_ref: 'city:novato', label: 'Novato, California, United States', timezone: 'America/Los_Angeles' },
+      latitude: 38.1074,
+      longitude: -122.5697,
+    };
+    const JAN_2027 = { ...CHART, period_reading: periodReadingFixture('delhi-2027-01') } as unknown as SiderealChart;
+    const prevSettings = readLlmSettings();
+    writeLlmSettings({ ...prevSettings, chatContextTokens: 65_536 });
+    try {
+      const rows: ChatToolCall[] = [];
+      const { fetchImpl } = endpoint([
+        { name: 'set_current_location', args: { place: 'Novato, CA' } },
+        { name: 'read_period', args: readPeriodArgs('this_week') },
+        (body) => stubCallFor(body, {}),
+      ]);
+      const base = input(fetchImpl, {
+        now: new Date('2027-01-14T18:00:00.000Z'),
+        question: 'I am in Novato, CA — status for this week?',
+        onToolCall: (row) => rows.push(row),
+      });
+      const snapshots = await drain(runChatTurn({
+        ...base,
+        seams: {
+          ...base.seams,
+          loadPeriodChart: async () => JAN_2027,
+          loadCurrentChart: async () => JAN_2027,
+          lookup: async () => ({ status: 'found', place: NOVATO_RESOLVED }),
+        },
+      }));
+      expect(rows.map((r) => [r.toolName, r.status])).toEqual([
+        ['set_current_location', 'complete'],
+        ['read_period', 'complete'],
+      ]);
+      expect(rows[0]?.result).toEqual({
+        status: 'saved',
+        place: { label: 'Novato, California, United States', timezone: 'America/Los_Angeles' },
+      });
+      expect(rows[1]?.result).toMatchObject({
+        period: { start: '2027-01-14', end: '2027-01-20' },
+        place: { label: 'Novato, California, United States', timezone: 'America/Los_Angeles' },
+      });
+      expect(snapshots.at(-1)).toContain('Novato');
+    } finally {
+      writeLlmSettings({ chatContextTokens: undefined });
+    }
   });
 });
 
@@ -454,7 +523,7 @@ describe('runChatTurn: a cancelled turn', () => {
 
 describe('runChatTurn: the context budget follows the model window', () => {
   const CATALOG = { data: [
-    { id: 'mock/ctx-8k', context_length: 8_192 }, { id: 'mock/ctx-9k', context_length: 10_240 }, { id: 'mock/ctx-1m', context_length: 1_000_000 },
+    { id: 'mock/ctx-8k', context_length: 8_192 }, { id: 'mock/ctx-9k', context_length: 11_264 }, { id: 'mock/ctx-1m', context_length: 1_000_000 },
   ] };
   const routerConfig = (model: string): ProviderConfig =>
     ({ engine: 'openai-http', model, privacyMode: 'cloud_premium', baseUrl: 'https://openrouter.ai/api/v1', apiKey: 'k' });
@@ -499,9 +568,9 @@ describe('runChatTurn: the context budget follows the model window', () => {
     expect(compacted.length).toBeGreaterThan(0);
     expect(JSON.parse(compacted[0]!)).toMatchObject({ compacted: true, period: { start: expect.any(String) }, maha: expect.any(Array), antar: expect.any(Array), tags: expect.any(Array) });
     expect(bodies.every((body) => body.tool_choice === 'required')).toBe(true);
-    for (const body of bodies) expect(tokens(body)).toBeLessThanOrEqual(5_120);
+    for (const body of bodies) expect(tokens(body)).toBeLessThanOrEqual(5_632);
     expect(snapshots.at(-1)).toContain('May 2019');
-    expect(agentRoundRows().some((row) => row.compacted > 0 && row.budget === 5_120)).toBe(true);
+    expect(agentRoundRows().some((row) => row.compacted > 0 && row.budget === 5_632)).toBe(true);
   });
 
   it('a 1M model keeps every reading whole and reads all three', async () => {

@@ -24,16 +24,25 @@ export type {
 export type {
   BirthInput,
   BootConfig,
+  DayPanchangMark,
   MeshBirthInput,
   MeshEdgeInput,
   MoonEnds,
   MoonMark,
   MoonWindow,
+  MoonWindowDayInput,
   MoonWindowEvent,
   MoonWindowInput,
+  MoonWindowNatalMoonInput,
   PredictiveCallOptions,
   PredictiveInput,
   PyodideAsset,
+  ShashtiamsaAmsa,
+  VargaDetailInput,
+  VargaDetailPlacement,
+  VargaDetailPlanetInput,
+  VargaDetailResult,
+  VargaLagnaSensitivity,
 } from "./pyodide/protocol";
 // Additive predictive contexts (transits, full vargas, strength, life domains)
 // — the exact serialized shapes of the optional `*_context` keys above.
@@ -154,6 +163,8 @@ import type {
   MoonWindowInput,
   PredictiveCallOptions,
   PredictiveInput,
+  VargaDetailInput,
+  VargaDetailResult,
 } from "./pyodide/protocol";
 import type { SiderealChart } from "./pyodide/chart";
 import type { MeshEdgeContext } from "./pyodide/mesh";
@@ -178,4 +189,6 @@ export interface ChartEngine {
   computeMeshEdge(input: MeshEdgeInput): Promise<MeshEdgeContext>;
   /** Birth-time rectification: score life events against candidate times. */
   computeRectification(input: RectificationInput): Promise<RectificationResultRaw>;
+  /** Divisional varga chart detail: houses, dignities, cusp sensitivity, and D60 Shashtiamsa. */
+  computeVargaDetail(input: VargaDetailInput): Promise<VargaDetailResult>;
 }

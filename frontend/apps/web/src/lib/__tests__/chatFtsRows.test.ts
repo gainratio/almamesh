@@ -71,6 +71,16 @@ describe('chat keyword index (SQLite FTS5)', () => {
     expect(career.map((hit) => hit.message_id)).toEqual(['m2', 'm1']);
   });
 
+  it('strips conversational stopwords and ranks full AND matches ahead of partial OR matches', async () => {
+    const { rows } = await fixture();
+    await rows.index(row('partial', 'Career pressure is high, career decisions await, career focus matters.'));
+    await rows.index(row('exact', 'Jupiter blesses your career transition.'));
+    // Even though `partial` repeats "career" 3 times, `exact` matches BOTH "jupiter" AND "career"!
+    const ranked = await rows.search('what about my jupiter career', 'p1', 8);
+    expect(ranked.map((hit) => hit.message_id)).toEqual(['exact', 'partial']);
+    expect(ranked[0]!.score).toBeGreaterThan(ranked[1]!.score);
+  });
+
   it('matches a typed prefix and ignores case and accents', async () => {
     const { rows } = await fixture();
     await rows.index(row('m1', 'Tu carrera mejora en Júpiter.'));

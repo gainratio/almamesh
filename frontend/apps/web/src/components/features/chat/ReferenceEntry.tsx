@@ -9,6 +9,7 @@
 import { useTranslation } from 'react-i18next';
 import { formatDisplayTime } from '../../../lib/dates';
 import { MarkdownContent } from '../../ui/MarkdownContent';
+import { CopyMessageButton } from './CopyMessageButton';
 
 interface ReferenceEntryProps {
   role: 'user' | 'assistant';
@@ -74,14 +75,17 @@ export function ReferenceEntry({
             <span className="text-xs font-medium text-accent-purple uppercase tracking-wide">
               {t('reference.analysis')}
             </span>
-            {timestamp && (
-              <span className="text-xs text-text-muted ml-auto">
-                {formatDisplayTime(new Date(timestamp), {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </span>
-            )}
+            <div className="ml-auto flex items-center gap-2">
+              {timestamp && (
+                <span className="text-xs text-text-muted">
+                  {formatDisplayTime(new Date(timestamp), {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+              )}
+              <CopyMessageButton text={content} />
+            </div>
           </div>
 
           {/* Main content - markdown with technical styling */}

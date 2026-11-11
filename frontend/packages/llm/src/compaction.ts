@@ -2,8 +2,7 @@
 // rules 2 and 3). Within a turn, a result the budget cannot carry in full goes
 // out in its compact form (`compactToolResult`). A past turn's tool results reach
 // the next turn only as deterministic one-line summaries plus their key cited
-// factors (`toolFactsNote`), never as full payloads. Results are deterministic,
-// so the model can read again.
+// factors (`toolFactsNote`), never as full payloads.
 
 /** A tool result reduced to one line plus the factors it cites. */
 export interface ToolSummary {
@@ -40,6 +39,55 @@ function scalarText(value: unknown): string | undefined {
   return undefined;
 }
 
+function summarizeDailyPanchang(daily: unknown): readonly string[] {
+  if (!Array.isArray(daily) || daily.length === 0) return [];
+  return daily
+    .slice(0, MAX_FACTORS)
+    .flatMap((entry) => {
+      const row = record(entry);
+      const date = typeof row?.date === "string" ? row.date : undefined;
+      const tithi = typeof row?.tithi_name === "string" ? row.tithi_name : undefined;
+      const nakshatra = typeof row?.nakshatra === "string" ? row.nakshatra : undefined;
+      const quality = typeof row?.day_quality === "string" ? ` (${row.day_quality})` : "";
+      return date && (tithi || nakshatra) ? [`${date}: ${[tithi, nakshatra].filter(Boolean).join(" ")}${quality}`] : [];
+    });
+}
+
+function structuredSummary(row: Readonly<Record<string, unknown>>): ToolSummary | undefined {
+  if (typeof row.chart === "string" && typeof row.lagna_sign === "string") {
+    const sens = record(row.sensitivity);
+    const cusp = typeof sens?.approx_minutes_to_cusp === "number" ? `cusp ~${Math.round(sens.approx_minutes_to_cusp)}m` : undefined;
+    return {
+      line: [row.chart, `Lagna ${row.lagna_sign}`, cusp].filter(Boolean).join(" · "),
+      ...(Array.isArray(row.highlights) ? { factors: row.highlights.filter((x): x is string => typeof x === "string") } : {}),
+    };
+  }
+  if (typeof row.domain === "string" && Array.isArray(row.upcoming_windows)) {
+    const summary = typeof row.strength_summary === "string" ? row.strength_summary : undefined;
+    const factors = row.upcoming_windows.flatMap((w) => {
+      const wr = record(w);
+      return typeof wr?.label === "string" ? [wr.label] : typeof wr?.start === "string" ? [`${wr.start}..${String(wr.end ?? "")}`] : [];
+    });
+    return { line: [`domain: ${row.domain}`, summary].filter(Boolean).join(" · "), ...(factors.length > 0 ? { factors } : {}) };
+  }
+  if (row.status === "saved" && record(row.place)) {
+    const place = record(row.place)!;
+    return { line: `saved location: ${String(place.label ?? "")} (${String(place.timezone ?? "")})` };
+  }
+  if (row.status === "remembered" && typeof row.fact === "string") {
+    return { line: `remembered [${String(row.category ?? "note")}]: ${row.fact}` };
+  }
+  if ("ashtakoota" in row || row.status === "empty_mesh" || Array.isArray(row.available_members)) {
+    if (row.status === "empty_mesh") return { line: "empty_mesh (/mesh)" };
+    const role = typeof row.relationship === "string" ? row.relationship : "mesh";
+    const ak = record(row.ashtakoota);
+    const pts = typeof ak?.total_points === "number" ? `${ak.total_points}/36` : undefined;
+    const band = typeof ak?.band === "string" ? ak.band : undefined;
+    return { line: [role, pts, band].filter(Boolean).join(" · ") };
+  }
+  return undefined;
+}
+
 /** "error: x", the period and place labels, then short scalar fields in key order. */
 function objectLine(row: Readonly<Record<string, unknown>>): string {
   if ("error" in row) return `error: ${scalarText(row.error) ?? "the tool reported an error"}`;
@@ -59,8 +107,14 @@ export function defaultToolSummary(result: unknown): ToolSummary {
   if (result === null || result === undefined) return { line: "no result" };
   if (Array.isArray(result)) return { line: `${result.length} items` };
   const row = record(result);
-  const line = row ? objectLine(row) : String(result);
-  return { line: oneLine(line, MAX_LINE_CHARS) };
+  if (!row) return { line: oneLine(String(result), MAX_LINE_CHARS) };
+  const known = structuredSummary(row);
+  if (known) return bounded(known);
+  const dailyFactors = summarizeDailyPanchang(row.daily);
+  return bounded({
+    line: objectLine(row),
+    ...(dailyFactors.length > 0 ? { factors: dailyFactors } : {}),
+  });
 }
 
 function bounded(summary: ToolSummary): ToolSummary {

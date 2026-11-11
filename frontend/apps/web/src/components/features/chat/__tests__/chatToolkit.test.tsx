@@ -6,18 +6,31 @@ import { CHAT_TOOL_CATALOG, CHAT_TOOLKIT, ToolCallRow, toolListOf } from '../cha
 
 const READING = { period: { label: 'May 2019', start: '2019-05-01', end: '2019-05-31' }, place: { label: 'Singapore', timezone: 'Asia/Singapore' }, dashas: { maha: [{ lord: 'jupiter' }] } };
 
-describe('the chat toolkit registers the two tools the model has', () => {
-  it('read_period and travel, each render-only with a row renderer (the tool loop runs them)', () => {
-    expect(Object.keys(CHAT_TOOLKIT)).toEqual(['read_period', 'travel']);
-    for (const name of ['read_period', 'travel']) {
+const ALL_TOOL_NAMES = [
+  'read_period',
+  'travel',
+  'set_current_location',
+  'read_varga',
+  'find_best_windows',
+  'read_mesh_member',
+  'remember_fact',
+];
+
+describe('the chat toolkit registers all agentic tools', () => {
+  it('registers all 7 tools as render-only backend entries (the tool loop runs them)', () => {
+    expect(Object.keys(CHAT_TOOLKIT)).toEqual(ALL_TOOL_NAMES);
+    for (const name of ALL_TOOL_NAMES) {
       expect(CHAT_TOOLKIT[name]).toMatchObject({ type: 'backend' });
       expect(CHAT_TOOLKIT[name]?.render).toBeTypeOf('function');
       expect(CHAT_TOOLKIT[name]).not.toHaveProperty('execute');
     }
   });
 
-  it('the visible Tools list names each tool in plain words, in every language', () => {
-    expect(toolListOf(CHAT_TOOLKIT, (key) => key)).toEqual([
+  it('the visible Tools list names each tool in plain words, and filters pinned trips to read_period + travel', () => {
+    expect(toolListOf(CHAT_TOOLKIT, (key) => key)).toEqual(
+      ALL_TOOL_NAMES.map((name) => ({ name, label: CHAT_TOOL_CATALOG[name]!.labelKey })),
+    );
+    expect(toolListOf(CHAT_TOOLKIT, (key) => key, { pinnedTrip: true })).toEqual([
       { name: 'read_period', label: CHAT_TOOL_CATALOG.read_period!.labelKey },
       { name: 'travel', label: CHAT_TOOL_CATALOG.travel!.labelKey },
     ]);
@@ -149,5 +162,75 @@ describe('rows persisted before the tool redesign still read in plain words', ()
 
   it('a new read_period ask that carries a code stays complete', () => {
     expect(row('read_period', { code: 'place_not_chosen', available: true }).status).toBe('complete');
+  });
+});
+
+describe('generative tool cards render alongside receipt rows', () => {
+  it('renders WeeklyOutlookCard when read_period returns multi-day Panchang marks', () => {
+    render(
+      <ToolCallRow
+        toolName="read_period"
+        toolCallId="w1"
+        args={{ preset: 'this_week' }}
+        argsText=""
+        status={{ type: 'complete' }}
+        result={{
+          period: { label: 'Nov 11–17, 2026' },
+          place_note: 'No city saved',
+          daily: [
+            { date: '2026-11-11', vara: 'wednesday', sign: 'scorpio', nakshatra: 'anuradha', pada: 2, nakshatra_lord: 'saturn', tithi: 2, tithi_name: 'dvitiya', paksha: 'shukla', yoga: 'sobha', karana: 'balava', house_from_moon: 1, tara_number: 2, tara_name: 'sampat', day_quality: 'supportive' },
+            { date: '2026-11-12', vara: 'thursday', sign: 'sagittarius', nakshatra: 'mula', pada: 1, nakshatra_lord: 'ketu', tithi: 3, tithi_name: 'tritiya', paksha: 'shukla', yoga: 'atiganda', karana: 'taitila', house_from_moon: 2, tara_number: 3, tara_name: 'vipat', day_quality: 'caution' },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByTestId('tool-card-weekly-outlook')).toBeTruthy();
+    expect(screen.getByTestId('weekly-day-2026-11-11').textContent).toContain('Supportive');
+    expect(screen.getByTestId('weekly-day-2026-11-12').textContent).toContain('Mindful');
+    expect(screen.getByTestId('weekly-place-note')).toBeTruthy();
+  });
+
+  it('renders VargaChartCard with authentic Kundli SVG, D60 Shashtiamsa amsa, and cusp sensitivity CTA', () => {
+    render(
+      <ToolCallRow
+        toolName="read_varga"
+        toolCallId="v1"
+        args={{ division: 'D60' }}
+        argsText=""
+        status={{ type: 'complete' }}
+        result={{
+          chart: 'D60',
+          lagna_sign: 'aries',
+          lagna_sign_lord: 'mars',
+          lagna_vargottama: true,
+          lagna_shashtiamsa: { number: 4, name: 'Indu Rekha', nature: 'saumya' },
+          sensitivity: { nominal_window_minutes: 2, margin_prev_deg: 0.1, margin_next_deg: 0.2, approx_minutes_to_cusp: 0.8, high_time_sensitivity: true },
+          rectify_available: true,
+          placements: {
+            jupiter: { graha: 'jupiter', sign: 'cancer', sign_lord: 'moon', house: 4, dignity: 'exalted', vargottama: true, shashtiamsa: { number: 12, name: 'Deva', nature: 'saumya' } },
+          },
+        }}
+      />,
+    );
+    expect(screen.getByTestId('tool-card-varga-chart')).toBeTruthy();
+    expect(screen.getByTestId('varga-card-kundli').querySelector('svg')).not.toBeNull();
+    expect(screen.getByTestId('varga-lagna-amsa').textContent).toContain('Indu Rekha');
+    expect(screen.getByTestId('varga-rectify-link').getAttribute('href')).toContain('/rectify');
+  });
+
+  it('renders BestWindowsCard, MeshSynastryCard, and LocationSavedCard', () => {
+    render(
+      <>
+        <ToolCallRow toolName="find_best_windows" toolCallId="bw1" args={{}} argsText="" status={{ type: 'complete' }}
+          result={{ domain: 'career', horizon_months: 6, domain_forecast: { score: 82, supportive_windows: [{ start: '2026-12', end: '2027-02', summary: 'Jupiter 10th' }] } }} />
+        <ToolCallRow toolName="read_mesh_member" toolCallId="m1" args={{}} argsText="" status={{ type: 'complete' }}
+          result={{ status: 'ready', member_role: 'spouse', edge: { ashtakoota: { total_points: 28.5, max_points: 36, band: 'strong' } } }} />
+        <ToolCallRow toolName="set_current_location" toolCallId="l1" args={{}} argsText="" status={{ type: 'complete' }}
+          result={{ status: 'saved', place: { label: 'Novato, California, United States', timezone: 'America/Los_Angeles' } }} />
+      </>,
+    );
+    expect(screen.getByTestId('tool-card-best-windows').textContent).toContain('Career');
+    expect(screen.getByTestId('mesh-card-ashtakoota').textContent).toContain('28.5/36');
+    expect(screen.getByTestId('tool-card-location-saved').textContent).toContain('Novato, California, United States');
   });
 });

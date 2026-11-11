@@ -370,10 +370,8 @@ describe("rule 5: tool choice per round", () => {
     });
     const travelCall: FakeTurn = { calls: [call("t1", "travel", '{"start":"2019-05"}')] };
     const { fetchImpl, requests } = fakeEndpoint([travelCall, read("r1"), answer("a1")]);
-    await collect(runToolTurn(options(fetchImpl, { readFirst: true, tools: asTools(readPeriod(), travel) })));
+    await collect(runToolTurn(options(fetchImpl, { readFirst: true, tools: asTools(readPeriod(), travel), limits: { maxCallsPerTool: { read_period: 5, travel: 1 } } })));
     expect(toolsOf(requests[0]).map((t) => t.function.name)).toEqual(["read_period", "travel"]);
-    // Contract reversed 2026-10-14 (travel at most once per turn): a travel that used its one call
-    // this turn is no longer offered; the model called it twice in a real run (4 calls > 3).
     expect(toolsOf(requests[1]).map((t) => t.function.name)).toEqual(["read_period"]);
     expect(toolsOf(requests[2]).map((t) => t.function.name)).toEqual(["read_period", "answer"]);
   });
@@ -389,11 +387,11 @@ describe("rule 5: tool choice per round", () => {
       },
     });
     const home = fakeEndpoint([{ calls: [call("t1", "travel", '{"to":"today"}')] }, answer("a1")]);
-    await collect(runToolTurn(options(home.fetchImpl, { readFirst: true, tools: asTools(readPeriod(), back) })));
+    await collect(runToolTurn(options(home.fetchImpl, { readFirst: true, tools: asTools(readPeriod(), back), limits: { maxCallsPerTool: { read_period: 5, travel: 1 } } })));
     expect(toolsOf(home.requests[1]).map((t) => t.function.name)).toEqual(["read_period", "answer"]);
 
     const away = fakeEndpoint([{ calls: [call("t1", "travel", '{"to":"2019-05"}')] }, read("r1"), answer("a1")]);
-    await collect(runToolTurn(options(away.fetchImpl, { readFirst: true, tools: asTools(readPeriod(), back) })));
+    await collect(runToolTurn(options(away.fetchImpl, { readFirst: true, tools: asTools(readPeriod(), back), limits: { maxCallsPerTool: { read_period: 5, travel: 1 } } })));
     expect(toolsOf(away.requests[1]).map((t) => t.function.name)).toEqual(["read_period"]);
   });
 
@@ -410,50 +408,59 @@ describe("rule 5: tool choice per round", () => {
     expect(requests[1].body.tool_choice).toEqual({ type: "function", function: { name: "answer" } });
   });
 
-  it("defaults to 6 rounds", () => {
-    expect(TOOL_LOOP_LIMITS.maxRounds).toBe(6);
+  it("defaults to 8 rounds", () => {
+    expect(TOOL_LOOP_LIMITS.maxRounds).toBe(8);
   });
 });
 
 describe("rule 6: per-tool call budget", () => {
-  it("skips the 4th read_period call this turn and tells the model why", async () => {
+  it("skips the 6th read_period call this turn and tells the model why", async () => {
     const seen: PeriodInput[] = [];
-    const four: FakeTurn = { calls: ["c1", "c2", "c3", "c4"].map((id, i) => call(id, "read_period", `{"start":"201${i}","end":null}`)) };
-    const { fetchImpl, requests } = fakeEndpoint([four, answer("a1")]);
+    const six: FakeTurn = { calls: ["c1", "c2", "c3", "c4", "c5", "c6"].map((id, i) => call(id, "read_period", `{"start":"201${i}","end":null}`)) };
+    const { fetchImpl, requests } = fakeEndpoint([six, answer("a1")]);
     const o = options(fetchImpl, { tools: asTools(readPeriod(seen)) });
     await collect(runToolTurn(o));
-    expect(seen).toHaveLength(3);
-    // Parallel calls settle in any order; the 4th in call order is the one skipped.
+    expect(seen).toHaveLength(5);
+    // Parallel calls settle in any order; the 6th in call order is the one skipped.
     const statusById = Object.fromEntries(o.toolCalls.map((e) => [e.toolCallId, e.status]));
-    expect(statusById).toEqual({ c1: "complete", c2: "complete", c3: "complete", c4: "skipped", a1: "complete" });
-    expect(toolMessage(requests[1], "c4")).toContain("This turn already read enough; answer from the readings above.");
+    expect(statusById).toEqual({ c1: "complete", c2: "complete", c3: "complete", c4: "complete", c5: "complete", c6: "skipped", a1: "complete" });
+    expect(toolMessage(requests[1], "c6")).toContain("This turn already read enough; answer from the readings above.");
   });
 
-  it("pins the default budgets: read_period 3, travel 1", () => {
-    expect(TOOL_LOOP_LIMITS.maxCallsPerTool).toEqual({ read_period: 3, travel: 1 });
+  it("pins the default budgets across all 7 Vedic & chat tools", () => {
+    expect(TOOL_LOOP_LIMITS.maxCallsPerTool).toEqual({
+      read_period: 5,
+      travel: 2,
+      set_current_location: 2,
+      read_varga: 4,
+      find_best_windows: 2,
+      read_mesh_member: 3,
+      remember_fact: 3,
+    });
   });
 
   it("a tool at its per-turn limit leaves the tools offered in later rounds", async () => {
     const moved: TravelInput[] = [];
-    const { fetchImpl, requests } = fakeEndpoint([travelTurn("t1"), read("c1"), answer("a1")]);
+    const { fetchImpl, requests } = fakeEndpoint([travelTurn("t1"), travelTurn("t2"), read("c1"), answer("a1")]);
     await collect(runToolTurn(options(fetchImpl, { tools: asTools(readPeriod(), travelTool(moved)) })));
     expect(toolsOf(requests[0]).map((t) => t.function.name)).toEqual(["read_period", "travel", "answer"]);
-    expect(toolsOf(requests[1]).map((t) => t.function.name)).toEqual(["read_period", "answer"]);
+    expect(toolsOf(requests[1]).map((t) => t.function.name)).toEqual(["read_period", "travel", "answer"]);
     expect(toolsOf(requests[2]).map((t) => t.function.name)).toEqual(["read_period", "answer"]);
-    expect(moved).toHaveLength(1);
+    expect(toolsOf(requests[3]).map((t) => t.function.name)).toEqual(["read_period", "answer"]);
+    expect(moved).toHaveLength(2);
   });
 
-  it("a second travel in one round gets the tool's own neutral note: skipped, never an error", async () => {
+  it("a third travel in one round gets the tool's own neutral note: skipped, never an error", async () => {
     const moved: TravelInput[] = [];
-    const twice: FakeTurn = { calls: [call("t1", "travel", '{"to":"2017-09"}'), call("t2", "travel", '{"to":"2017-10"}')] };
-    const { fetchImpl, requests } = fakeEndpoint([twice, answer("a1")]);
+    const thrice: FakeTurn = { calls: [call("t1", "travel", '{"to":"2017-09"}'), call("t2", "travel", '{"to":"2017-10"}'), call("t3", "travel", '{"to":"2017-11"}')] };
+    const { fetchImpl, requests } = fakeEndpoint([thrice, answer("a1")]);
     const o = options(fetchImpl, { tools: asTools(readPeriod(), travelTool(moved)) });
     await collect(runToolTurn(o));
-    expect(moved).toHaveLength(1);
+    expect(moved).toHaveLength(2);
     const statusById = Object.fromEntries(o.toolCalls.map((e) => [e.toolCallId, e.status]));
-    expect(statusById).toEqual({ t1: "complete", t2: "skipped", a1: "complete" });
-    expect(toolMessage(requests[1], "t2")).toContain("Already travelled this turn");
-    expect(toolMessage(requests[1], "t2")).not.toContain("read enough");
+    expect(statusById).toEqual({ t1: "complete", t2: "complete", t3: "skipped", a1: "complete" });
+    expect(toolMessage(requests[1], "t3")).toContain("Already travelled this turn");
+    expect(toolMessage(requests[1], "t3")).not.toContain("read enough");
   });
 
   it("honours a caller budget", async () => {

@@ -728,4 +728,33 @@ describe("ChartEngineClient", () => {
 		client.terminate();
 		await expect(pending).rejects.toThrow(/terminated/);
 	});
+
+	it("correlates computeVargaDetail requests and returns the worker payload", async () => {
+		const stubDetail = {
+			chart: "D60",
+			lagna_sign: "Aries",
+			lagna_sign_lord: "mars",
+			lagna_vargottama: true,
+			lagna_shashtiamsa: { number: 1, name: "Ghora", nature: "krura" as const },
+			sensitivity: {
+				nominal_window_minutes: 2,
+				margin_prev_deg: 0.1,
+				margin_next_deg: 0.4,
+				approx_minutes_to_cusp: 0.4,
+				high_time_sensitivity: true,
+			},
+			placements: {},
+		};
+		const client = withReply((req) =>
+			req.kind === "computeVargaDetail"
+				? { ok: true, kind: "computeVargaDetail", id: req.id, vargaDetail: stubDetail }
+				: null,
+		);
+		const res = await client.computeVargaDetail({
+			chart: "D60",
+			lagnaLongitude: 0.1,
+			planets: { sun: { longitude: 10.5 } },
+		});
+		expect(res).toEqual(stubDetail);
+	});
 });

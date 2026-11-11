@@ -75,6 +75,13 @@ describe('CurrentPlaceRow ("Where do you live now?")', () => {
     expect(stored()).toEqual(NOVATO_PIN);
   });
 
+  it('keyboard: pressing Enter immediately before debounce finishes resolves and saves', async () => {
+    render(<CurrentPlaceRow lookup={stubLookup()} />);
+    fireEvent.change(input(), { target: { value: 'novato, ca' } });
+    fireEvent.keyDown(input(), { key: 'Enter' });
+    await waitFor(() => expect(stored()).toEqual(NOVATO_PIN));
+  });
+
   it('typing alone saves nothing', async () => {
     const lookup = stubLookup();
     render(<CurrentPlaceRow lookup={lookup} />);

@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatDisplayTime } from '../../../lib/dates';
 import { MarkdownContent } from '../../ui/MarkdownContent';
+import { CopyMessageButton } from './CopyMessageButton';
 
 interface MessageBubbleProps {
   role: 'user' | 'assistant';
@@ -106,18 +107,25 @@ export function MessageBubble({
           </div>
         )}
 
-        {/* Timestamp */}
-        {timestamp && (
-          <p
-            className={`text-xs mt-2 ${
-              isUser ? 'text-background-primary/60' : 'text-text-muted'
-            }`}
-          >
-            {formatDisplayTime(new Date(timestamp), {
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-          </p>
+        {/* Timestamp + Copy action */}
+        {(timestamp || !isUser) && (
+          <div className="mt-2 flex items-center justify-between gap-2">
+            {timestamp ? (
+              <p
+                className={`text-xs ${
+                  isUser ? 'text-background-primary/60' : 'text-text-muted'
+                }`}
+              >
+                {formatDisplayTime(new Date(timestamp), {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </p>
+            ) : (
+              <span />
+            )}
+            {!isUser && <CopyMessageButton text={displayContent} />}
+          </div>
         )}
       </div>
     </div>

@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createMemory,
   createVectorStore,
+  DEFAULT_MIN_SCORE,
   type Embedder,
   type SqliteVectorIndexLike,
   type VectorStore,
@@ -410,5 +411,25 @@ describe("createMemory", () => {
     releaseQuery.resolve();
 
     await expect(pending).resolves.toEqual([]);
+  });
+
+  it("filters out low-similarity chunks below DEFAULT_MIN_SCORE (0.35) and honors per-call overrides", async () => {
+    expect(DEFAULT_MIN_SCORE).toBe(0.35);
+    const memory = createMemory({ embedder: stubEmbedder, store: testVectorStore() });
+    await memory.indexMessage({
+      id: "unrelated",
+      thread_id: "t1",
+      profile_id: "p1",
+      content: "abc def ghi",
+    });
+
+    // Disjoint character sets ("xyz" vs "abc def ghi") have cosine similarity 0 < 0.35.
+    const filtered = await memory.retrieve("xyz", "p1", 8);
+    expect(filtered).toEqual([]);
+
+    // Explicit minScore: 0 override returns even orthogonal candidates when requested.
+    const unfiltered = await memory.retrieve("xyz", "p1", 8, { minScore: 0 });
+    expect(unfiltered).toHaveLength(1);
+    expect(unfiltered[0]?.message_id).toBe("unrelated");
   });
 });

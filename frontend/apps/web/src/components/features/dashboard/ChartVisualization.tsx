@@ -1,10 +1,9 @@
 /**
- * ChartVisualization — the technical D1 (Rāśi) chart panel.
+ * ChartVisualization — the Dashboard observatory panel.
  *
- * Consumes the engine's raw `SiderealChart` directly, reshapes it once via
- * `buildChartGeometry`, and renders the selected chart style (North / South)
- * plus the planetary positions table. The engine emits no D9 / varga, so there
- * is no Navamsa panel here.
+ * Consumes the engine's raw `SiderealChart` directly, renders the lazy 3D
+ * planetary force field, the interactive 2D Kundli plate (with instant D1 / D9 /
+ * D10 / D60 switching), and the natal D1 planetary positions table.
  */
 
 import { lazy, Suspense, useMemo, type ReactElement } from 'react';
@@ -12,11 +11,9 @@ import { useTranslation } from 'react-i18next';
 import type { SiderealChart } from '@almamesh/browser/types';
 import { buildChartGeometry, useChartStore } from '@almamesh/store';
 import { Card } from '../../ui';
-import { ChartStyleToggle } from '../../chart/ChartStyleToggle';
-import { NorthIndianChartSVG } from '../../chart/NorthIndianChartSVG';
-import { SouthIndianChartSVG } from '../../chart/SouthIndianChartSVG';
 import { PlanetaryTable } from '../astrologer-view';
 import { supportsWebGl, WebGlGate } from '../../WebGlGate';
+import { DashboardKundliCard } from './DashboardKundliCard';
 
 // Lazy so three.js + the force-field chunk stay out of first paint.
 const ForceFieldExperience = lazy(() =>
@@ -41,6 +38,8 @@ interface ChartVisualizationProps {
   readonly error?: string | null;
   /** Rendered chart size in px (default 350). */
   readonly size?: number;
+  /** Optional callback to open Birth-Time Rectification for sensitive vargas. */
+  readonly onRectify?: () => void;
 }
 
 /** Loading skeleton with the chart's shimmer treatment. */
@@ -120,9 +119,9 @@ export function ChartVisualization({
   isLoading = false,
   error = null,
   size = 350,
+  onRectify,
 }: ChartVisualizationProps): ReactElement {
   const { t } = useTranslation('dashboard');
-  const displayStyle = useChartStore((state) => state.displayStyle);
   // Shared cross-highlight: the 3D force field and the 2D kundli select together.
   const selectedPlanet = useChartStore((state) => state.selectedPlanet);
   const setSelectedPlanet = useChartStore((state) => state.setSelectedPlanet);
@@ -160,29 +159,14 @@ export function ChartVisualization({
         </WebGlGate>
       </Card>
 
-      <Card
-        title={t('dashboard:chart_visualization.kundli_title')}
-        actions={<ChartStyleToggle />}
-        className="print-container print-no-break"
-      >
-        <div className="flex justify-center print-chart-box">
-          {displayStyle === 'north' ? (
-            <NorthIndianChartSVG
-              geometry={geometry}
-              selectedPlanet={selectedPlanet}
-              onSelectPlanet={setSelectedPlanet}
-              size={size}
-            />
-          ) : (
-            <SouthIndianChartSVG
-              geometry={geometry}
-              selectedPlanet={selectedPlanet}
-              onSelectPlanet={setSelectedPlanet}
-              size={size}
-            />
-          )}
-        </div>
-      </Card>
+      <DashboardKundliCard
+        siderealChart={siderealChart}
+        d1Geometry={geometry}
+        size={size}
+        selectedPlanet={selectedPlanet}
+        onSelectPlanet={setSelectedPlanet}
+        onRectify={onRectify}
+      />
 
       <PlanetaryTable
         geometry={geometry}

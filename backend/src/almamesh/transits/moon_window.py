@@ -1,19 +1,17 @@
 """The Moon at a place's local start and end of a short period, and at one event.
 
-Spec 2026-10-08 Part 2: a day-precision reading needs a place; this reports the
-Moon's sign, nakshatra and tithi at that place's local start of the first day and
-local end of the last day, plus the lagna sign and the Moon at an optional event
-instant. The caller turns local midnights into UTC instants (no tz database here).
-Lahiri sidereal, mean node, like the rest of the timeline.
+Spec 2026-10-08 Part 2: reports the Moon's sign, nakshatra and tithi at that place's
+local start of the first day and local end of the last day, plus optional event sky
+and optional daily Panchang/Tarabala/Chandrabala marks across 1..15 days (Lahiri).
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, SerializerFunctionWrapHandler, model_serializer
 
 from almamesh.calculations import (
     AyanamsaType,
@@ -24,10 +22,19 @@ from almamesh.calculations import (
     validate_coordinates,
 )
 from almamesh.constants.astrology import PlanetName, ZodiacSign
+from almamesh.transits.daily_panchang import (
+    DayInstantInput,
+    DayPanchangMark,
+    NatalMoonRef,
+    compute_day_mark,
+    parse_wire_days,
+    parse_wire_natal_moon,
+)
 from almamesh.transits.positions import transit_longitude
 
 _MIN_SPAN = timedelta(hours=22)
-_MAX_SPAN = timedelta(days=6, hours=2)
+_MAX_SPAN = timedelta(days=15, hours=2)
+_MAX_DAYS = 15
 _FIRST_INSTANT = datetime(1900, 1, 1, tzinfo=UTC)
 _LAST_INSTANT = datetime(2053, 1, 1, tzinfo=UTC)
 _SIGNS = list(ZodiacSign)
@@ -64,6 +71,14 @@ class MoonWindow(BaseModel):
     model_config = ConfigDict(frozen=True)
     at_place: MoonEnds
     event: EventSky | None = None
+    days: list[DayPanchangMark] | None = None
+
+    @model_serializer(mode="wrap")
+    def _serialize(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data: dict[str, Any] = handler(self)
+        if self.days is None:
+            data.pop("days", None)
+        return data
 
 
 def tithi_number(moon_lon: float, sun_lon: float) -> int:
@@ -89,7 +104,7 @@ def _moon_mark(astro: SkyfieldAstronomy, when: datetime) -> MoonMark:
 
 def _checked_bounds(start: datetime, end: datetime) -> None:
     if not _MIN_SPAN <= end - start <= _MAX_SPAN:
-        raise ValueError("invalid place bounds: must span 1 to 6 local days, start before end")
+        raise ValueError("invalid place bounds: must span 1 to 15 local days, start before end")
 
 
 def _event_sky(
@@ -106,19 +121,38 @@ def _event_sky(
     return EventSky(lagna_sign=_sign_of(lagna), moon=_moon_mark(astro, event.when))
 
 
+def _compute_days(
+    astro: SkyfieldAstronomy,
+    start: datetime,
+    end: datetime,
+    days: list[DayInstantInput] | None,
+    natal_moon: NatalMoonRef | None,
+) -> list[DayPanchangMark] | None:
+    if days is None:
+        return None
+    if not 1 <= len(days) <= _MAX_DAYS:
+        raise ValueError(f"invalid days: must contain 1..{_MAX_DAYS} entries")
+    return [compute_day_mark(astro, start, end, day, natal_moon) for day in days]
+
+
 def compute_moon_window(
     start: datetime,
     end: datetime,
     *,
     event: EventPoint | None = None,
+    days: list[DayInstantInput] | None = None,
+    natal_moon: NatalMoonRef | None = None,
     astronomy: SkyfieldAstronomy | None = None,
 ) -> MoonWindow:
-    """The Moon at ``start`` and ``end`` (a place's local bounds), and optionally at one event."""
+    """The Moon at ``start`` and ``end``, optional event sky, and optional daily Panchang."""
     _checked_bounds(start, end)
     with astronomy_scope(astronomy) as astro:
         ends = MoonEnds(at_start=_moon_mark(astro, start), at_end=_moon_mark(astro, end))
+        event_sky = None if event is None else _event_sky(astro, start, end, event)
         return MoonWindow(
-            at_place=ends, event=None if event is None else _event_sky(astro, start, end, event)
+            at_place=ends,
+            event=event_sky,
+            days=_compute_days(astro, start, end, days, natal_moon),
         )
 
 
@@ -160,4 +194,6 @@ def moon_window_from_wire(payload: Mapping[str, object]) -> MoonWindow:
         _wire_instant(payload.get("place_start_utc"), "place_start_utc"),
         _wire_instant(payload.get("place_end_utc"), "place_end_utc"),
         event=_wire_event(payload.get("event")),
+        days=parse_wire_days(payload.get("days"), _wire_instant),
+        natal_moon=parse_wire_natal_moon(payload.get("natal_moon")),
     )

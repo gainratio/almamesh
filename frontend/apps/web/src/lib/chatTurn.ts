@@ -16,6 +16,7 @@ import {
   periodAnalysisInstant,
   pinRelative,
   sanitizeChartForLlm,
+  selectSpecialistsForTurn,
   type AnalysisInstant,
   type ChatRectificationContext,
   type ChatTurn,
@@ -24,26 +25,39 @@ import {
   type ProviderConfig,
   type SanitizedMeshEdge,
   type ThreadFacts,
+  type TurnAgentPlan,
 } from '@almamesh/llm';
 import { chatAnswerSpec, type GroundingReading } from '@almamesh/llm/answer';
-import { ANSWER_TOOL_NAME, runToolTurn, type AgentStatusEvent, type AnswerSpec, type ToolCallEvent, type ToolContext, type ToolDef } from '@almamesh/llm/toolLoop';
+import { ANSWER_TOOL_NAME, runToolTurn, TOOL_LOOP_LIMITS, type AgentStatusEvent, type AnswerSpec, type ToolCallEvent, type ToolContext, type ToolDef } from '@almamesh/llm/toolLoop';
 import type { ChatThreadAsOf, ProcessedBirthData } from '@almamesh/shared-types';
-import type { CurrentPlace } from '@almamesh/store';
+import {
+  getProfileMemoryFacts,
+  listMembersOf,
+  useProfilesStore,
+  useRectificationRecordsStore,
+  type CurrentPlace,
+  type Profile,
+} from '@almamesh/store';
 
 import type { ChartEngineContextValue } from '../providers/chartEngineContext';
 import { reportAgentToolFailure } from './agentToolDiagnostics';
 import { viewerTimeZone } from './analysisInstant';
+import { createFindBestWindowsTool, FIND_BEST_WINDOWS_TOOL_NAME } from './bestWindowsTool';
 import { chatContextFor } from './chatContextBudget';
 import { ensureCurrentPlanetaryContext } from './currentPlanetaryContext';
+import { createSetCurrentLocationTool } from './locationTool';
+import { createRememberFactTool } from './memoryTool';
+import { createReadMeshMemberTool, READ_MESH_MEMBER_TOOL_NAME } from './meshChatTool';
 import { createMoonWindowLoader } from './moonWindow';
 import { birthYearOf, createPeriodChartLoader, readyEngine } from './periodChart';
-import { createReadPeriodTool, isReadPeriodReading, readPeriodGrounding, readPeriodSpanLabel, readPeriodStatusLabel, type ReadPeriodArgs, type ReadPeriodInput } from './readPeriod';
+import { createReadPeriodTool, isReadPeriodReading, readPeriodGrounding, readPeriodSpanLabel, readPeriodStatusLabel, type DevicePlace, type ReadPeriodArgs, type ReadPeriodInput } from './readPeriod';
 import { READ_PERIOD_TOOL_NAME } from './periodReading';
 import { formatPinLabel } from './timeTravelSheet';
 import { claimsMove, travelGrant, type PendingTravel } from './travelIntent';
 import { createTravelTool, TRAVEL_TOOL_NAME, travelPeriodLabel, travelStatusLabel, type TravelArgs } from './travelTool';
 import type { TravelRecorder } from './travelSlot';
 import { tripPin } from './tripContext';
+import { createReadVargaTool, READ_VARGA_TOOL_NAME } from './vargaTool';
 import { viewerTodayDay } from './viewerToday';
 
 export interface ChatStatusLabels {
@@ -185,23 +199,95 @@ function reported<I>(tool: ToolDef<I>, before?: (args: I) => void): ToolDef<I> {
   };
 }
 
-function turnTools(input: ChatTurnInput, pin: ChatThreadAsOf | undefined, starts: StatusStarts): ToolDef<unknown>[] {
+function resolveProfileTarget(profileKey: string): { profileId: string | undefined; profile: Profile | undefined } {
+  const store = useProfilesStore.getState();
+  const profileId = store.profiles[profileKey] ? profileKey : (store.activeProfileId ?? undefined);
+  return { profileId, profile: profileId ? store.profiles[profileId] : undefined };
+}
+
+function persistResolvedPlace(profileId: string | undefined, place: DevicePlace): void {
+  if (!profileId || place.latitude === undefined || place.longitude === undefined) return;
+  const store = useProfilesStore.getState();
+  if (!store.profiles[profileId]) return;
+  store.setCurrentPlace(profileId, {
+    label: place.label,
+    timezone: place.timezone,
+    latitude: place.latitude,
+    longitude: place.longitude,
+  });
+}
+
+function natalMoonOf(chart: SiderealChart) {
+  const moon = chart.planets?.moon;
+  return moon?.sign && moon?.nakshatra ? { sign: moon.sign, nakshatra: moon.nakshatra } : undefined;
+}
+
+interface TurnLocationRef {
+  readonly profileId: string | undefined;
+  readonly getHomePlace: () => DevicePlace | undefined;
+  readonly setHomePlace: (place: DevicePlace) => void;
+}
+
+function extraTurnTools(
+  input: ChatTurnInput,
+  recommended: ReadonlySet<string>,
+  loc: TurnLocationRef,
+  engine: ChartEngineContextValue | null,
+  zone: () => string,
+  periodLoader: NonNullable<ReadPeriodInput['loadPeriodChart']>,
+): ToolDef<unknown>[] {
+  const seams = input.seams ?? {};
+  const out: ToolDef<unknown>[] = [];
+  if (recommended.has('set_current_location')) {
+    out.push(reported(createSetCurrentLocationTool({
+      profileId: loc.profileId,
+      getHomePlace: loc.getHomePlace,
+      setTurnHomePlace: loc.setHomePlace,
+      ...(seams.lookup ? { lookup: seams.lookup } : {}),
+      ...(seams.pick ? { pick: seams.pick } : {}),
+    })) as ToolDef<unknown>);
+  }
+  if (recommended.has('read_varga')) {
+    out.push(reported(createReadVargaTool({ chart: input.chart, engine, profileId: loc.profileId })) as ToolDef<unknown>);
+  }
+  if (recommended.has('find_best_windows')) {
+    out.push(reported(createFindBestWindowsTool({ chart: input.chart, viewerZone: zone, loadPeriodChart: periodLoader })) as ToolDef<unknown>);
+  }
+  if (recommended.has('read_mesh_member') && !input.meshEdge) {
+    out.push(reported(createReadMeshMemberTool({ engine, viewerZone: zone })) as ToolDef<unknown>);
+  }
+  if (recommended.has('remember_fact')) {
+    out.push(reported(createRememberFactTool({ profileId: loc.profileId })) as ToolDef<unknown>);
+  }
+  return out;
+}
+
+function turnTools(
+  input: ChatTurnInput,
+  pin: ChatThreadAsOf | undefined,
+  starts: StatusStarts,
+  loc: TurnLocationRef,
+  recommended: ReadonlySet<string>,
+): ToolDef<unknown>[] {
   const seams = input.seams ?? {};
   const zone = seams.viewerZone ?? viewerTimeZone;
   const engine = recoveringEngine(input.engine);
   const skyAllowed = seams.periodSkyAllowed ?? devicePolicy().periodSkyComputeAllowed;
+  const periodLoader = seams.loadPeriodChart ?? createPeriodChartLoader({ chart: input.chart, profileKey: input.profileKey, birth: input.birth, engine });
   const places = {
-    homePlace: input.currentPlace,
+    homePlace: loc.getHomePlace(),
+    getHomePlace: loc.getHomePlace,
     ...(seams.lookup ? { lookup: seams.lookup } : {}),
     ...(seams.pick ? { pick: seams.pick } : {}),
   };
   const read = createReadPeriodTool({
     ...places,
     threadPlace: pin?.place,
+    onResolvedHomePlace: loc.setHomePlace,
     birth: input.birth, chart: input.chart, language: input.language, viewerZone: zone, periodSkyAllowed: skyAllowed,
-    loadPeriodChart: seams.loadPeriodChart ?? createPeriodChartLoader({ chart: input.chart, profileKey: input.profileKey, birth: input.birth, engine }),
+    loadPeriodChart: periodLoader,
     loadCurrentChart: seams.loadCurrentChart ?? currentChartLoader(input, engine, zone),
-    ...(skyAllowed ? { loadMoonWindow: seams.loadMoonWindow ?? createMoonWindowLoader(engine) } : {}),
+    ...(skyAllowed ? { loadMoonWindow: seams.loadMoonWindow ?? createMoonWindowLoader(engine, natalMoonOf(input.chart)) } : {}),
   });
   // travel's null place keeps the trip's own place, never an old trip's birth-place fallback.
   const travel = input.onTravel
@@ -213,7 +299,11 @@ function turnTools(input: ChatTurnInput, pin: ChatThreadAsOf | undefined, starts
     : [];
   // Under budget pressure a reading goes out as its grounding facts: what the answer is checked against.
   const compactRead = { ...reported(read, starts.read), compact: (result: unknown) => (isReadPeriodReading(result) ? readPeriodGrounding(result, input.language) : result) };
-  return [compactRead, ...travel.map((tool) => reported(tool, starts.travel))] as ToolDef<unknown>[];
+  return [
+    compactRead,
+    ...travel.map((tool) => reported(tool, starts.travel)),
+    ...extraTurnTools(input, recommended, loc, engine, zone, periodLoader),
+  ] as ToolDef<unknown>[];
 }
 
 interface Framed {
@@ -221,16 +311,58 @@ interface Framed {
   readonly asOf: AnalysisInstant;
   readonly pinned?: PinnedPrompt;
   readonly thread: ThreadFacts;
+  readonly plan: TurnAgentPlan;
+}
+
+const PLACE_PROMPT_RE =
+  /\b(?:where\s+(?:do\s+you\s+live|are\s+you)|current\s+(?:city|location)|what\s+city\s+are\s+you\s+in|nearest\s+larger\s+city|dónde\s+vives|onde\s+você\s+mora)\b/iu;
+
+function planTurnFor(
+  input: ChatTurnInput,
+  pin: ChatThreadAsOf | undefined,
+  profile: Profile | undefined,
+  profileId: string | undefined,
+): { readonly plan: TurnAgentPlan; readonly extras: Partial<ThreadFacts> } {
+  const store = useProfilesStore.getState();
+  const memoryNotes = getProfileMemoryFacts(profile).map((f) => `[${f.category}] ${f.text}`);
+  const isRectified = Boolean(
+    input.rectification || (profileId && useRectificationRecordsStore.getState().getRecord(profileId)),
+  );
+  const lastAssistant = [...input.history].reverse().find((t) => t.role === 'assistant')?.content ?? '';
+  const lastAssistantAskedPlace = !input.pendingTravel && PLACE_PROMPT_RE.test(lastAssistant);
+  const plan = selectSpecialistsForTurn(input.question, {
+    hasHomePlace: Boolean(input.currentPlace),
+    hasTrip: Boolean(pin),
+    hasMeshEdge: Boolean(input.meshEdge),
+    hasMeshMembers: listMembersOf(store.profiles).length > 0,
+    isRectified,
+    lastAssistantAskedPlace,
+  });
+  return {
+    plan,
+    extras: {
+      ...(memoryNotes.length > 0 ? { memoryNotes } : {}),
+      ...(plan.specialistBlock ? { specialistBlock: plan.specialistBlock } : {}),
+      ...(plan.enforceRelationshipFence ? { enforceRelationshipFence: true } : {}),
+    },
+  };
 }
 
 /** The prompt's frame: a trip reads its natal chart at its own period; a today thread as of the chart. */
-function frameOf(input: ChatTurnInput, pin: ChatThreadAsOf | undefined, now: Date): Framed {
+function frameOf(
+  input: ChatTurnInput,
+  pin: ChatThreadAsOf | undefined,
+  now: Date,
+  profile: Profile | undefined,
+  profileId: string | undefined,
+): Framed {
   const zone = (input.seams?.viewerZone ?? viewerTimeZone)();
   const facts = input.promptChart ?? input.chart;
   const today = formatNow(now, zone);
+  const { plan, extras } = planTurnFor(input, pin, profile, profileId);
   if (!pin) {
     const home = input.currentPlace ? { home: { place: input.currentPlace.label, timezone: input.currentPlace.timezone } } : {};
-    return { chart: facts, asOf: input.chartAsOf, thread: { now: today, ...home } };
+    return { chart: facts, asOf: input.chartAsOf, thread: { now: today, ...home, ...extras }, plan };
   }
   const period = { start: pin.start, end: pin.end };
   const trip = pin.place ? { trip: { label: formatPinLabel(pin, input.language), place: pin.place.label, timezone: pin.place.timezone } } : {};
@@ -238,12 +370,18 @@ function frameOf(input: ChatTurnInput, pin: ChatThreadAsOf | undefined, now: Dat
     chart: natalOnly(facts),
     asOf: periodAnalysisInstant(pin.start, pin.end),
     pinned: { ...period, relative: pinRelative(period, viewerTodayDay(now, zone)), granularity: pin.granularity },
-    thread: { now: today, ...trip },
+    thread: { now: today, ...trip, ...extras },
+    plan,
   };
 }
 
 /** Tools whose status line names their span ("Reading Jun – Dec 2019…", "Moving to May 2019…"). */
 const SPAN_TOOLS: ReadonlySet<string> = new Set([READ_PERIOD_TOOL_NAME, TRAVEL_TOOL_NAME]);
+const COMPOUND_READ_TOOLS: ReadonlySet<string> = new Set([
+  READ_VARGA_TOOL_NAME,
+  FIND_BEST_WINDOWS_TOOL_NAME,
+  READ_MESH_MEMBER_TOOL_NAME,
+]);
 
 /**
  * The status line: the running tool stays up while the model reads its result. A read or a
@@ -311,14 +449,25 @@ function withoutFalseMoveClaim<A>(spec: AnswerSpec<A>, moved: () => boolean): An
 export async function* runChatTurn(input: ChatTurnInput): AsyncGenerator<string> {
   const now = input.now ?? new Date();
   const { contextTokens, promptBudget, telemetry } = await chatContextFor(input.config, input.signal, input.seams?.fetchImpl);
+  const { profileId, profile } = resolveProfileTarget(input.profileKey);
+  let turnHomePlace: DevicePlace | undefined = input.currentPlace;
+  const loc: TurnLocationRef = {
+    profileId,
+    getHomePlace: () => turnHomePlace,
+    setHomePlace: (place) => {
+      turnHomePlace = place;
+      persistResolvedPlace(profileId, place);
+    },
+  };
   // An old trip with no place reads the birth place (tripContext.ts).
   const pin = input.asOf ? tripPin(input.asOf, input.birth) : undefined;
-  const frame = frameOf(input, pin, now);
+  const frame = frameOf(input, pin, now, profile, profileId);
   const messages = buildChatMessages(
     sanitizeChartForLlm(frame.chart, frame.asOf), input.question, input.mode, input.history, input.retrievedContext,
     input.interpretationText, input.language, input.meshEdge, input.rectification, promptBudget, frame.pinned, frame.thread,
   );
   const readings: GroundingReading[] = [];
+  let hasCompoundReads = false;
   const status = statusSink(input);
   let moved = false;
   const onTravel: TravelRecorder | undefined = input.onTravel && ((action) => {
@@ -328,16 +477,24 @@ export async function* runChatTurn(input: ChatTurnInput): AsyncGenerator<string>
   const onToolCall = (event: ToolCallEvent) => {
     telemetry.onToolCall(event);
     if (event.toolName === READ_PERIOD_TOOL_NAME && event.status === 'complete' && isReadPeriodReading(event.result)) readings.push(readPeriodGrounding(event.result, input.language));
+    if (event.status === 'complete' && COMPOUND_READ_TOOLS.has(event.toolName)) hasCompoundReads = true;
     if (event.status === 'retried' || event.toolName === ANSWER_TOOL_NAME) return;
     const args = (event.args ?? {}) as Readonly<Record<string, unknown>>;
     input.onToolCall?.({ toolCallId: event.toolCallId, toolName: event.toolName, args, result: event.result, status: event.status });
+  };
+  const answerGrounding = () => ({ readings, ...(hasCompoundReads ? { hasCompoundReads: true } : {}) });
+  const recommended = new Set(frame.plan.recommendedTools);
+  const turnLimits = {
+    maxRounds: TOOL_LOOP_LIMITS.maxRounds,
+    maxCallsPerTool: { ...TOOL_LOOP_LIMITS.maxCallsPerTool, travel: 1 },
   };
   yield* runToolTurn({
     config: input.config,
     ...(contextTokens !== undefined ? { contextTokens } : {}),
     messages,
-    tools: turnTools({ ...input, ...(onTravel ? { onTravel } : {}) }, pin, status.starts),
-    answer: withoutFalseMoveClaim(chatAnswerSpec(() => ({ readings }), { voice: input.mode, language: input.language }), () => moved),
+    tools: turnTools({ ...input, ...(onTravel ? { onTravel } : {}) }, pin, status.starts, loc, recommended),
+    answer: withoutFalseMoveClaim(chatAnswerSpec(answerGrounding, { voice: input.mode, language: input.language }), () => moved),
+    limits: turnLimits,
     readFirst: pin !== undefined,
     now,
     signal: input.signal,

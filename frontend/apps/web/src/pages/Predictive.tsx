@@ -15,8 +15,9 @@
  */
 
 import { useState, type ReactElement } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useChartLibraryStore, useProfilesStore } from '@almamesh/store';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui';
 import {
   DomainsPanel,
@@ -27,7 +28,7 @@ import {
   TransitsPanel,
 } from '../components/features/predictive';
 import { usePredictiveLayer } from '../hooks/usePredictiveLayer';
-import { formatReferenceDay } from '../lib/predictive';
+import { formatReferenceDay, selectPrimaryStoredChart } from '../lib/predictive';
 
 type PredictiveTab = 'timing' | 'periods' | 'vargas' | 'strength' | 'domains';
 
@@ -40,9 +41,13 @@ function resolveTab(raw: string | null): PredictiveTab {
 
 export default function PredictivePage(): ReactElement {
   const { t } = useTranslation('predictive');
+  const navigate = useNavigate();
   const layer = usePredictiveLayer({ auto: true });
   const [searchParams] = useSearchParams();
   const [tab, setTab] = useState<PredictiveTab>(() => resolveTab(searchParams.get('tab')));
+  const activeProfileId = useProfilesStore((s) => s.activeProfileId);
+  const charts = useChartLibraryStore((s) => s.charts);
+  const siderealChart = selectPrimaryStoredChart(charts, activeProfileId)?.sidereal_chart ?? null;
 
   const ready =
     layer.status === 'ready' &&
@@ -104,7 +109,16 @@ export default function PredictivePage(): ReactElement {
 
           <TabsContent value="vargas">
             {ready && layer.vargaCtxFull ? (
-              <ShodasavargaPanel vargaCtxFull={layer.vargaCtxFull} />
+              <ShodasavargaPanel
+                vargaCtxFull={layer.vargaCtxFull}
+                siderealChart={siderealChart}
+                onAskGuide={(_chart, prompt) =>
+                  navigate(`/dashboard?chat=open&ask=${encodeURIComponent(prompt)}`)
+                }
+                {...(activeProfileId
+                  ? { onRectify: () => navigate(`/rectify/${activeProfileId}`) }
+                  : {})}
+              />
             ) : (
               <PredictiveStatusCard layer={layer} auto />
             )}

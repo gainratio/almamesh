@@ -42,6 +42,7 @@ import { CHAT_TOOLKIT, ToolCallRow, toolListOf } from './chatToolkit';
 import { tripContext } from '../../../lib/tripContext';
 import { TripContextCard } from './TripContextCard';
 import { TravelOffer } from './TravelOffer';
+import { ChatContextBar } from './ChatContextBar';
 import { AiSetupDialog } from '../ai/AiSetupDialog';
 
 /** What a page's ask handler gets: the hook's stream input, the reader's voice and the status line. */
@@ -67,6 +68,8 @@ interface ChatPanelProps {
   onAskQuestionStream: ChatAsk;
   /** Hide header when used inside FloatingChatPanel which has its own header */
   hideHeader?: boolean;
+  /** Optional prompt seeded into the composer when arriving via `?chat=open&ask=...` */
+  initialDraft?: string;
 }
 
 export function ChatPanel({
@@ -77,6 +80,7 @@ export function ChatPanel({
   birthYear,
   onAskQuestionStream,
   hideHeader = false,
+  initialDraft,
 }: ChatPanelProps) {
   const { t } = useTranslation('chat');
   const { messages, threadId, isStreaming, streamingDraft, submit, openThread, asOf, pin, repin, backToToday, travelOffer, confirmTravelOffer } = useChatThread(
@@ -228,6 +232,7 @@ export function ChatPanel({
     >
       {/* Header - adapts based on mode, hidden when used in FloatingChatPanel */}
       {staleDraft && <RestoreComposerText text={staleDraft.text} />}
+      {!staleDraft && initialDraft && <SeedComposerText text={initialDraft} />}
       {!hideHeader && (
         <div className="px-4 py-3 border-b border-ui-border bg-background-tertiary">
           <h3 className="text-text-primary font-semibold flex items-center gap-2">
@@ -295,10 +300,19 @@ export function ChatPanel({
         <div className="shrink-0 border-b border-ui-border bg-background-tertiary px-4 py-2 text-xs text-text-secondary">
           <p className="mb-1 font-medium text-text-primary">{t('tools.heading')}</p>
           <ul data-testid="chat-tools-list" className="list-disc space-y-0.5 pl-4">
-            {toolListOf(toolkit, (key) => t(key)).map((row) => <li key={row.name} data-tool-name={row.name}>{row.label}</li>)}
+            {toolListOf(toolkit, (key) => t(key), { pinnedTrip: Boolean(asOf) }).map((row) => <li key={row.name} data-tool-name={row.name}>{row.label}</li>)}
           </ul>
         </div>
       )}
+
+      {/* Always-visible Context Bar (even when hideHeader is true in FloatingChatPanel):
+          active location chip + specialist agent pill + durable memory notes popover. */}
+      <ChatContextBar
+        profileId={profileId}
+        threadId={threadId}
+        messages={messages}
+        {...(initialDraft ? { initialDraft } : {})}
+      />
 
       {/* Semantic search over this profile's past conversations (discoverable). */}
       {/* Its own bordered row, so the thread below scrolls up to a clear edge, not under the box. */}
@@ -442,6 +456,19 @@ function RestoreComposerText({ text }: { readonly text: string }) {
   const aui = useAui();
   useEffect(() => {
     aui.thread().composer().setText(text);
+  }, [aui, text]);
+  return null;
+}
+
+/** Seeds deep-linked `?ask=` prompt text once per distinct value without overwriting edits. */
+function SeedComposerText({ text }: { readonly text: string }) {
+  const aui = useAui();
+  const appliedRef = useRef<string | null>(null);
+  useEffect(() => {
+    const trimmed = text.trim();
+    if (!trimmed || appliedRef.current === trimmed) return;
+    appliedRef.current = trimmed;
+    aui.thread().composer().setText(trimmed);
   }, [aui, text]);
   return null;
 }

@@ -154,6 +154,24 @@ class FakeChartEngine implements ChartEnginePort {
     } as RectificationResultRaw;
   }
 
+  public async computeVargaDetail(input: { readonly chart: string }) {
+    return {
+      chart: input.chart,
+      lagna_sign: "Aries",
+      lagna_sign_lord: "mars",
+      lagna_vargottama: true,
+      lagna_shashtiamsa: null,
+      sensitivity: {
+        nominal_window_minutes: 13.33,
+        margin_prev_deg: 1.5,
+        margin_next_deg: 1.8333,
+        approx_minutes_to_cusp: 6,
+        high_time_sensitivity: false,
+      },
+      placements: {},
+    };
+  }
+
   public terminate(): void {
     this.terminated = true;
   }

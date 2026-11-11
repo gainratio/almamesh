@@ -53,6 +53,9 @@
   "suggested": {
     "label": "Perguntas sugeridas:",
     "questions": {
+      "this_week": "Qual é o meu panorama para esta semana?",
+      "vargas": "Analise em profundidade minha D9 Navamsa e D60 Shashtiamsa",
+      "best_windows": "Quais são minhas melhores janelas de carreira nos próximos 6 meses?",
       "career": "Quais são meus pontos fortes na carreira?",
       "relationship": "Como está minha perspectiva nos relacionamentos?",
       "year": "No que devo me concentrar este ano?",
@@ -162,9 +165,19 @@
     "result": "Recebeu",
     "read_period": "Leitura do período: dashas, regentes, céu, temas, datas",
     "travel": "Viajar para outro momento",
+    "set_current_location": "Salvar sua cidade atual neste dispositivo para o Panchang local",
+    "read_varga": "Inspecionar um mapa divisional (D1–D60, incluindo D9 Navamsa, D10 Dasamsa e D60 Shashtiamsa)",
+    "find_best_windows": "Encontrar suas janelas mais favoráveis e de atenção nos próximos 1–24 meses",
+    "read_mesh_member": "Ler sinastria e sincronia de Dasha com uma pessoa no Mesh",
+    "remember_fact": "Salvar uma nota curta de contexto ou meta pessoal neste dispositivo",
     "rows": {
       "read_period": "a leitura do período",
       "travel": "uma viagem no tempo",
+      "set_current_location": "a localização atual",
+      "read_varga": "o mapa divisional",
+      "find_best_windows": "as melhores janelas de tempo",
+      "read_mesh_member": "a sinastria de relacionamento",
+      "remember_fact": "uma nota de contexto",
       "place": "um lugar",
       "context": "os dados do mapa"
     }
@@ -188,5 +201,73 @@
   "moved": {
     "to": "Movido para {{title}}",
     "today": "Movido para hoje"
+  },
+  "copy": {
+    "button": "Copiar",
+    "copied": "Copiado",
+    "failed": "Não foi possível copiar"
+  },
+  "context": {
+    "set_location": "Definir cidade",
+    "location_unset_hint": "Defina sua cidade atual para o Panchang do nascer do sol local",
+    "location_popover_title": "Onde você mora agora?",
+    "location_privacy_hint": "Busca offline neste dispositivo; as coordenadas permanecem privadas.",
+    "clear_location": "Limpar cidade",
+    "close": "Fechar",
+    "memory_label": "Contexto",
+    "memory_button_aria": "Contexto salvo do perfil ({{count}})",
+    "memory_popover_title": "Contexto e memória no dispositivo",
+    "location_device_zone": "Usando fuso horário do dispositivo (sem cidade salva)",
+    "thread_summary_active": "Resumo da conversa ativo",
+    "memory_empty": "Nenhuma nota de contexto salva ainda. Peça ao Guia para lembrar uma meta ou marco quando quiser.",
+    "delete_fact": "Remover nota",
+    "clear_all_facts": "Limpar todas as notas",
+    "specialists": {
+      "timing_panchang": "Tempos e Panchang",
+      "natal_varga": "Vargas e Mapa Natal",
+      "mesh_synastry": "Sinastria Mesh",
+      "rectification_advisor": "Sensibilidade do Horário Natal"
+    }
+  },
+  "cards": {
+    "weekly": {
+      "title": "Panchang e Lua de 7 dias",
+      "supportive": "Favorável",
+      "mixed": "Misto",
+      "mindful": "Atento",
+      "set_city_hint": "Defina sua cidade atual acima para calcular o Tithi e Vara do nascer do sol local."
+    },
+    "varga": {
+      "lagna": "Lagna {{sign}}",
+      "vargottama": "Vargottama",
+      "cusp_minutes": "~{{minutes}} min até a cúspide do signo",
+      "rectify_cta": "Verificar horário natal →"
+    },
+    "windows": {
+      "title": "Janelas de {{domain}}",
+      "horizon": "{{months}} m",
+      "strength": "Força {{score}}",
+      "supportive": "Janelas favoráveis",
+      "mindful": "Janelas de atenção"
+    },
+    "mesh": {
+      "title": "Sinastria Mesh",
+      "open_mesh": "Abrir Mesh →",
+      "no_members": "Adicione parceiro(a), familiar ou colaborador no Mesh para explorar a sinastria.",
+      "setup_needed": "Abra o Mesh para concluir o mapa e a sinastria de {{role}}."
+    },
+    "saved": {
+      "location_saved": "Cidade atual salva: {{place}}",
+      "location_undone": "Cidade atual removida.",
+      "memory_saved": "Salvo no contexto do perfil: {{text}}",
+      "memory_undone": "Removido do contexto do perfil.",
+      "undo": "Desfazer"
+    }
+  },
+  "quick_launch": {
+    "heading": "Perguntar ao Guia:",
+    "this_week_label": "Panchang desta semana",
+    "vargas_label": "Análise D9 e D60",
+    "windows_label": "Melhores janelas de carreira"
   }
 }

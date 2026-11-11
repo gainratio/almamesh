@@ -28,6 +28,18 @@ export { chatAsOfProblem, isChatThreadAsOf } from './chatAsOf';
 export { chatMessagePartsProblem } from './chatParts';
 export * from './profiles';
 export { getCurrentPlace, type CurrentPlace } from './currentPlace';
+export {
+  getProfileMemoryFacts,
+  isProfileMemoryCategory,
+  MAX_MEMORY_FACT_CHARS,
+  MAX_PROFILE_MEMORY_FACTS,
+  PROFILE_MEMORY_CATEGORIES,
+  sanitizeMemoryFactText,
+  upsertProfileMemoryFact,
+  type ProfileMemoryCategory,
+  type ProfileMemoryFact,
+  type ProfileMemoryFactInput,
+} from './profileMemory';
 export * from './adapters/chart';
 export * from './adapters/localBirthTime';
 export * from './adapters/chartGeometry';
