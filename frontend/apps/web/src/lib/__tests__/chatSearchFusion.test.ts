@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   fuseByReciprocalRank,
+  informativeSearchTerms,
   matchThreadTitles,
   RRF_K,
   SNIPPET_CHARS,
@@ -33,11 +34,21 @@ describe('reciprocal-rank fusion', () => {
     expect(fused.map((hit) => hit.message_id)).toEqual(['m2', 'm1']);
   });
 
-  it('normalizes the fused score so rank 1 in every list is 100%', () => {
+  it('normalizes fused scores honestly: 95% for #1 in one list, 100% for #1 agreement across retrievers', () => {
     const fused = fuseByReciprocalRank([[message('m1')], [message('m1')]], 10);
     expect(fused[0]?.score).toBeCloseTo(1);
-    const single = fuseByReciprocalRank([[message('m1')], []], 10);
-    expect(single[0]?.score).toBeCloseTo(0.5);
+    const singleOfTwo = fuseByReciprocalRank([[message('m1')], []], 10);
+    expect(singleOfTwo[0]?.score).toBeCloseTo(0.95);
+    const singleOfThree = fuseByReciprocalRank([[], [message('m1')], []], 10);
+    expect(singleOfThree[0]?.score).toBeCloseTo(0.95);
+    const twoOfThree = fuseByReciprocalRank([[message('m1')], [message('m1')], []], 10);
+    expect(twoOfThree[0]?.score).toBeCloseTo(1);
+  });
+
+  it('strips conversational stopwords when content tokens exist, keeping all tokens otherwise', () => {
+    expect(informativeSearchTerms('what about my saturn transit')).toEqual(['saturn', 'transit']);
+    expect(informativeSearchTerms('may career')).toEqual(['may', 'career']);
+    expect(informativeSearchTerms('what is this')).toEqual(['what', 'is', 'this']);
   });
 
   it('drops a thread-title hit when a message from that thread is already listed', () => {

@@ -10,7 +10,7 @@
  * the place itself. Coordinates stay on this side: every result carries a
  * label and an IANA zone, never a latitude, a longitude or a birth field.
  */
-import type { MoonEnds, MoonMark, MoonWindow } from '@almamesh/browser';
+import type { DayPanchangMark, MoonEnds, MoonMark, MoonWindow } from '@almamesh/browser';
 import type { PeriodReadingContext, SiderealChart, StrengthContext } from '@almamesh/browser/types';
 import {
   BIRTH_YEAR_SKY_NOTE,
@@ -54,8 +54,10 @@ export const MAX_RANGE_RESULT_BYTES = 6144;
 /** How long the place picker waits for the person; then the model asks in words. */
 export const PICK_TIMEOUT_MS = 60_000;
 const MAX_SPAN_MONTHS = 24;
-/** Under a week, a reading needs to know where the user was. */
-const NEEDS_PLACE_DAYS = 7;
+const MAX_PANCHANG_DAYS = 14;
+/** Multi-day spans (>= 2 inclusive days) fall back to viewerZone() with place_note instead of blocking. */
+const NEEDS_PLACE_DAYS = 2;
+export const DEVICE_TIMEZONE_PLACE_NOTE = 'Using device timezone; set your current city for local rising-sign timing';
 /** All of one call's Moon read; the period load before it has the rest of the tool's time. */
 const MOON_DEADLINE_MS = 8_000;
 const LAST_SKY_DAY = `${EPHEMERIS_LAST_YEAR}-12-31`;
@@ -64,6 +66,26 @@ const GRAHA_FOCI = ['sun', 'moon', 'mars', 'mercury', 'jupiter', 'venus', 'satur
 const FOCI = [...GRAHA_FOCI, 'dashas', 'panchang'] as const;
 type Graha = (typeof GRAHA_FOCI)[number];
 export type ReadPeriodFocus = (typeof FOCI)[number];
+
+export const RELATIVE_PERIOD_PRESETS = [
+  'today',
+  'tomorrow',
+  'this_week',
+  'next_7_days',
+  'next_14_days',
+  'this_month',
+] as const;
+export type RelativePeriodPreset = (typeof RELATIVE_PERIOD_PRESETS)[number];
+
+const PRESET_SET: ReadonlySet<string> = new Set(RELATIVE_PERIOD_PRESETS);
+
+export function isRelativePeriodPreset(value: string): value is RelativePeriodPreset {
+  return PRESET_SET.has(value);
+}
+
+export function addCalendarDays(day: string, deltaDays: number): string {
+  return new Date(Date.parse(`${day}T00:00:00Z`) + deltaDays * 86_400_000).toISOString().slice(0, 10);
+}
 
 // ---------------------------------------------------------------------------
 // Arguments
@@ -78,6 +100,7 @@ export interface ReadPeriodArgs {
 }
 
 const DATE = /^\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?$/;
+const START_DATE_OR_PRESET = /^(?:today|tomorrow|this_week|next_7_days|next_14_days|this_month|\d{4}(-(0[1-9]|1[0-2])(-(0[1-9]|[12]\d|3[01]))?)?)$/;
 const DATE_MESSAGE = 'must be YYYY, YYYY-MM or YYYY-MM-DD';
 
 interface Span {
@@ -101,12 +124,33 @@ function lastDay(value: string): string {
   return value.length === 7 ? lastDayOfMonth(value) : value;
 }
 
-function spanOf(args: Pick<ReadPeriodArgs, 'start' | 'end'>): Span {
+export function expandRelativePreset(preset: RelativePeriodPreset, today: string, explicitEnd: string | null): Span {
+  switch (preset) {
+    case 'today':
+      return { start: today, end: explicitEnd ? lastDay(explicitEnd) : today };
+    case 'tomorrow': {
+      const tomorrow = addCalendarDays(today, 1);
+      return { start: tomorrow, end: explicitEnd ? lastDay(explicitEnd) : tomorrow };
+    }
+    case 'this_week':
+    case 'next_7_days':
+      return { start: today, end: explicitEnd ? lastDay(explicitEnd) : addCalendarDays(today, 6) };
+    case 'next_14_days':
+      return { start: today, end: explicitEnd ? lastDay(explicitEnd) : addCalendarDays(today, 13) };
+    case 'this_month': {
+      const ym = today.slice(0, 7);
+      return { start: `${ym}-01`, end: explicitEnd ? lastDay(explicitEnd) : lastDayOfMonth(ym) };
+    }
+  }
+}
+
+function spanOf(args: Pick<ReadPeriodArgs, 'start' | 'end'>, today = '2026-01-01'): Span {
+  if (isRelativePeriodPreset(args.start)) return expandRelativePreset(args.start, today, args.end);
   return { start: firstDay(args.start), end: lastDay(args.end ?? args.start) };
 }
 
 function isCalendarDate(value: string): boolean {
-  if (value.length !== 10) return true;
+  if (isRelativePeriodPreset(value) || value.length !== 10) return true;
   const parsed = new Date(`${value}T00:00:00Z`);
   return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
 }
@@ -118,6 +162,8 @@ function monthCount(span: Span): number {
 }
 
 const isSingleDay = (span: Span): boolean => span.start === span.end;
+const spanDaysCount = (span: Span): number =>
+  (Date.parse(`${span.end}T00:00:00Z`) - Date.parse(`${span.start}T00:00:00Z`)) / 86_400_000 + 1;
 
 interface Problem {
   readonly path: keyof ReadPeriodArgs;
@@ -140,36 +186,55 @@ function rangeProblem(args: ReadPeriodArgs, span: Span): Problem | undefined {
   return undefined;
 }
 
-function dayOnlyProblem(args: ReadPeriodArgs, span: Span): Problem | undefined {
-  if (isSingleDay(span)) return undefined;
-  if (args.focus === 'panchang') return { path: 'focus', message: 'focus panchang needs a single day: send start as YYYY-MM-DD with end null, or another focus.' };
-  return undefined;
+function panchangSpanProblem(args: ReadPeriodArgs, span: Span): Problem | undefined {
+  if (args.focus !== 'panchang') return undefined;
+  if (spanDaysCount(span) <= MAX_PANCHANG_DAYS) return undefined;
+  return {
+    path: 'focus',
+    message: `focus panchang supports at most ${MAX_PANCHANG_DAYS} days: send a 1–14 day span (e.g. start="this_week"), or another focus.`,
+  };
 }
 
 /** The span rules, each worded as the fix the model should make (it sees this text on a retry). */
 function spanProblem(args: ReadPeriodArgs): Problem | undefined {
   const date = dateProblem(args);
   if (date) return date;
+  if (isRelativePeriodPreset(args.start) && args.end === null) {
+    if (args.focus === 'panchang' && args.start === 'this_month') {
+      return {
+        path: 'focus',
+        message: `focus panchang supports at most ${MAX_PANCHANG_DAYS} days: send a 1–14 day span (e.g. start="this_week"), or another focus.`,
+      };
+    }
+    return undefined;
+  }
   const span = spanOf(args);
-  return rangeProblem(args, span) ?? dayOnlyProblem(args, span);
+  return rangeProblem(args, span) ?? panchangSpanProblem(args, span);
 }
 
 /** A bare year sent as a JSON number (`"end": 2017`, real runs 2026-10-15) is that year; any other number stays a number and is refused. */
 const yearNumberAsText = (value: unknown): unknown =>
   typeof value === 'number' && Number.isInteger(value) && value >= 1000 && value <= 9999 ? String(value) : value;
 
+function normalizeStartInput(value: unknown): unknown {
+  const asYear = yearNumberAsText(value);
+  if (typeof asYear !== 'string') return asYear;
+  const slug = asYear.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return isRelativePeriodPreset(slug) ? slug : asYear;
+}
+
 const ARGS_SCHEMA: z.ZodType<ReadPeriodArgs> = z
   .object({
-    start: z.preprocess(yearNumberAsText, z.string().regex(DATE, `start ${DATE_MESSAGE}`))
-      .describe('First year, month or day: YYYY, YYYY-MM or YYYY-MM-DD.'),
+    start: z.preprocess(normalizeStartInput, z.string().regex(START_DATE_OR_PRESET, `start ${DATE_MESSAGE} (or "today", "tomorrow", "this_week")`))
+      .describe('First year, month or day (YYYY, YYYY-MM, YYYY-MM-DD), or a relative preset: "today", "tomorrow", "this_week" (7 days inclusive), "next_7_days", "next_14_days", "this_month".'),
     end: z.preprocess(yearNumberAsText, z.string().regex(DATE, `end ${DATE_MESSAGE}`).nullable())
-      .describe('Last year, month or day, inclusive. null for a single year, month or day.'),
+      .describe('Last year, month or day, inclusive. null for a single year, month, day or relative preset.'),
     place: z.string().min(2).max(80).nullable()
-      .describe('A city as the user said it ("Pune", "Springfield"), or "trip" / "home". null = this thread\'s place.'),
+      .describe('A city as the user said it ("Pune", "Novato, CA"), or "trip" / "home". null = this thread\'s place.'),
     time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'time must be HH:MM (24-hour)').nullable()
       .describe('Local time HH:MM, only when start is a single day; else null.'),
     focus: z.enum(FOCI).nullable()
-      .describe('null, or a close-up: a graha (its lordships, placements and ashtakavarga row), "dashas" (every dasha span in the period), or "panchang" (a single day only).'),
+      .describe('null, or a close-up: a graha (its lordships, placements and ashtakavarga row), "dashas" (every dasha span in the period), or "panchang" (1 to 14 days).'),
   })
   .strict()
   .superRefine((args, ctx) => {
@@ -181,11 +246,13 @@ const DESCRIPTION = [
   'Read the Vedic reading for a span of time at one place, computed on this device (no network).',
   'Call it before you answer any question about a time: past, present or future.',
   'One call covers the whole span the user asked about (up to 24 months); never split a span into months.',
+  'For "this week" / "status for this week", send start="this_week" with end=null (reads the 7-day rolling window [today, today + 6 days] inclusive with daily Panchang, Tithi, Nakshatra, Chandrabala and Tarabala).',
   'Returns the period and place (name both in your answer), the running dashas (maha, antar, pratyantar) and what each lord rules,',
   'the slow-planet sky with Moon-based tags (e.g. sade_sati_phase_1), life-area themes with direction, strength, confidence and dated windows,',
-  'and for a range one row per month.',
+  'daily Panchang marks (1–14 day spans), and for a multi-month range one row per month.',
   'The result\'s "cite" lists the facts your answer must state; copy them.',
   'Examples:',
+  '"status for this week" -> {"start":"this_week","end":null,"place":null,"time":null,"focus":null}.',
   '"September 2019" -> {"start":"2019-09","end":null,"place":null,"time":null,"focus":null}.',
   '"the rest of 2019", asked in a May 2019 trip -> {"start":"2019-06","end":"2019-12","place":null,"time":null,"focus":null}.',
   '"the next 3 months", today 2026-10-14 -> {"start":"2026-10","end":"2027-01","place":null,"time":null,"focus":null}.',
@@ -225,8 +292,21 @@ function tenseOf(span: Span, today: string): ReadingPeriod['tense'] {
   return span.start > today ? 'future' : 'present';
 }
 
+const PRESET_STATUS_LABELS: Readonly<Record<RelativePeriodPreset, string>> = {
+  today: 'today',
+  tomorrow: 'tomorrow',
+  this_week: 'this week',
+  next_7_days: 'the next 7 days',
+  next_14_days: 'the next 14 days',
+  this_month: 'this month',
+};
+
 /** "Jun – Dec 2019": the span one call reads, in the page's language. */
 export function readPeriodSpanLabel(args: Pick<ReadPeriodArgs, 'start' | 'end'>, language: string): string {
+  const normalized = normalizeStartInput(args.start);
+  if (typeof normalized === 'string' && isRelativePeriodPreset(normalized) && args.end === null) {
+    return PRESET_STATUS_LABELS[normalized];
+  }
   return labelOf(spanOf(args), language);
 }
 
@@ -257,6 +337,8 @@ export interface PlaceResolverInput {
   readonly threadPlace: DevicePlace | undefined;
   /** Where the person lives now (Settings); undefined when none is set. Coordinates go to the Moon loader only. */
   readonly homePlace: DevicePlace | undefined;
+  /** Optional live getter so set_current_location in the same turn immediately updates read_period. */
+  readonly getHomePlace?: () => DevicePlace | undefined;
   readonly lookup?: (text: string) => Promise<PlaceLookup>;
   readonly pick?: PickPlace;
 }
@@ -315,8 +397,9 @@ async function settlePick(text: string, candidates: readonly ResolvedPlace[], pi
 export async function resolveChatPlace(text: string | null, input: PlaceResolverInput, signal: AbortSignal): Promise<PlaceOutcome> {
   const query = text?.trim() ?? '';
   const keyword = query.toLowerCase();
-  if (text === null || keyword === 'trip') return known(input.threadPlace ?? input.homePlace);
-  if (keyword === 'home') return known(input.homePlace);
+  const homePlace = input.getHomePlace ? input.getHomePlace() : input.homePlace;
+  if (text === null || keyword === 'trip') return known(input.threadPlace ?? homePlace);
+  if (keyword === 'home') return known(homePlace);
   const found = await (input.lookup ?? lazyLookup)(query);
   signal.throwIfAborted();
   if (found.status === 'found') return placed(found.place);
@@ -402,7 +485,11 @@ export interface ReadPeriodReading extends PeriodReading {
   readonly close_up?: CloseUp;
   /** A single day at a place: the Moon at that place's local midnights. */
   readonly place_moon?: MoonEnds;
+  /** Daily Panchang / Moon / Tarabala / Chandrabala marks for 1..14 day spans. */
+  readonly daily?: readonly DayPanchangMark[];
   readonly event?: PlaceEvent;
+  /** Shown when a multi-day or preset read falls back to viewerZone() because no city is set yet. */
+  readonly place_note?: string;
   readonly notes?: readonly string[];
 }
 
@@ -463,10 +550,12 @@ export interface ReadPeriodInput extends PlaceResolverInput {
   readonly loadPeriodChart: PeriodChartLoader;
   /** Today's chart, for a single day that is today. */
   readonly loadCurrentChart: (context: ToolContext) => Promise<SiderealChart>;
-  /** A single day's Moon at a place (moonWindow.ts); absent: no Moon rows. */
+  /** A single day's or 1..14 day span's Moon/Panchang (moonWindow.ts); absent: no Moon rows. */
   readonly loadMoonWindow?: MoonWindowLoader;
   /** devicePolicy().periodSkyComputeAllowed (default true): false reads only today's single day. */
   readonly periodSkyAllowed?: boolean;
+  /** Persist a newly resolved city as the profile's homePlace when reading today/upcoming with no saved homePlace. */
+  readonly onResolvedHomePlace?: (place: DevicePlace) => void;
 }
 
 interface Loaded {
@@ -584,27 +673,46 @@ async function withMoonDeadline<T>(context: ToolContext, work: (bounded: ToolCon
 
 interface MoonPart {
   readonly place_moon?: MoonEnds;
+  readonly daily?: readonly DayPanchangMark[];
   readonly event?: PlaceEvent;
   readonly notes?: readonly string[];
 }
 
 const moonMark = (mark: MoonMark): MoonMark => ({ sign: mark.sign, nakshatra: mark.nakshatra, tithi: mark.tithi, paksha: mark.paksha });
 
-function moonPart(window: MoonWindow, time: string | null): MoonPart {
-  const place_moon = { at_start: moonMark(window.at_place.at_start), at_end: moonMark(window.at_place.at_end) };
-  if (!time || !window.event) return { place_moon };
-  return { place_moon, event: { local_time: time, lagna_sign: window.event.lagna_sign, moon: moonMark(window.event.moon) } };
+function moonPart(window: MoonWindow, time: string | null, includePlaceMoon: boolean): MoonPart {
+  const place_moon =
+    includePlaceMoon && window.at_place
+      ? { at_start: moonMark(window.at_place.at_start), at_end: moonMark(window.at_place.at_end) }
+      : undefined;
+  const daily = window.days && window.days.length > 0 ? window.days : undefined;
+  const base: MoonPart = {
+    ...(place_moon ? { place_moon } : {}),
+    ...(daily ? { daily } : {}),
+  };
+  if (!time || !window.event) return base;
+  return { ...base, event: { local_time: time, lagna_sign: window.event.lagna_sign, moon: moonMark(window.event.moon) } };
 }
 
-/** A single day at a place with coordinates: the Moon there, and at the time if one was sent. */
+/** 1..14 day Moon & Panchang: single day at a city also reads place_moon & event Lagna; multi-day or viewerZone reads daily marks. */
 async function readMoon(input: ReadPeriodInput, where: PlaceOutcome, span: Span, time: string | null, context: ToolContext): Promise<MoonPart> {
+  if (spanDaysCount(span) > MAX_PANCHANG_DAYS || !input.loadMoonWindow) return {};
   const place = where.kind === 'place' ? where.place : undefined;
   const { latitude, longitude } = place ?? {};
-  if (!isSingleDay(span) || !place || latitude === undefined || longitude === undefined || !input.loadMoonWindow) return {};
+  const hasCoords = place !== undefined && latitude !== undefined && longitude !== undefined;
+  const singleDayAtPlace = isSingleDay(span) && hasCoords;
+  if (isSingleDay(span) && !hasCoords && where.kind === 'place') return {};
   const load = input.loadMoonWindow;
-  const request = { start: span.start, end: span.end, zone: place.timezone, place: { latitude, longitude }, ...(time ? { time } : {}) };
+  const zone = place?.timezone ?? input.viewerZone();
+  const request = {
+    start: span.start,
+    end: span.end,
+    zone,
+    ...(hasCoords ? { place: { latitude, longitude } } : {}),
+    ...(singleDayAtPlace && time ? { time } : {}),
+  };
   try {
-    return moonPart(await withMoonDeadline(context, (bounded) => load(request, bounded)), time);
+    return moonPart(await withMoonDeadline(context, (bounded) => load(request, bounded)), singleDayAtPlace ? time : null, singleDayAtPlace);
   } catch (error) {
     if (context.signal.aborted) throw error;
     return { notes: [error instanceof LocalTimeError ? error.message : MOON_UNAVAILABLE_NOTE] };
@@ -618,6 +726,7 @@ async function readMoon(input: ReadPeriodInput, where: PlaceOutcome, span: Span,
 interface Extras extends MoonPart {
   readonly months?: readonly MonthRow[];
   readonly close_up?: CloseUp;
+  readonly place_note?: string;
 }
 
 const jsonBytes = (value: unknown): number => new TextEncoder().encode(JSON.stringify(value)).length;
@@ -680,7 +789,7 @@ function fitLevel(loaded: Loaded, frame: ReadingFrame, level: ExtrasLevel, limit
  * every level cuts it that far, the fullest level that fits; when none fits, the leanest (no close-up).
  */
 function compose(loaded: Loaded, frame: ReadingFrame, extras: Extras, language: string): ReadPeriodReading {
-  const range = extras.months !== undefined;
+  const range = extras.months !== undefined || (extras.daily !== undefined && extras.daily.length > 1);
   const limit = range ? MAX_RANGE_RESULT_BYTES : MAX_PERIOD_RESULT_BYTES;
   const levels = extrasLevels(extras);
   let fallback: ReadPeriodReading | undefined;
@@ -705,17 +814,47 @@ function frameOf(input: ReadPeriodInput, span: Span, where: PlaceOutcome, today:
   };
 }
 
-const daysIn = (span: Span): number => (Date.parse(`${span.end}T00:00:00Z`) - Date.parse(`${span.start}T00:00:00Z`)) / 86_400_000 + 1;
+const daysIn = spanDaysCount;
+
+function maybePersistResolvedHome(
+  input: ReadPeriodInput,
+  args: ReadPeriodArgs,
+  where: PlaceOutcome,
+  hadHomeBefore: boolean,
+  tense: ReadingPeriod['tense'],
+): void {
+  if (!input.onResolvedHomePlace || input.threadPlace !== undefined || hadHomeBefore || tense === 'past') return;
+  const keyword = args.place?.trim().toLowerCase();
+  if (!keyword || keyword === 'trip' || keyword === 'home') return;
+  if (where.kind === 'place' && where.place.latitude !== undefined && where.place.longitude !== undefined) {
+    input.onResolvedHomePlace(where.place);
+  }
+}
 
 async function readPeriod(input: ReadPeriodInput, args: ReadPeriodArgs, context: ToolContext): Promise<ReadPeriodResult> {
-  const span = spanOf(args);
-  const outside = outsideRange(input.birth, span);
-  if (outside) return outside;
+  const preset = isRelativePeriodPreset(args.start);
+  if (!preset) {
+    const concreteSpan = spanOf(args);
+    const outside = outsideRange(input.birth, concreteSpan);
+    if (outside) return outside;
+  }
+  const hadHomeBefore = (input.getHomePlace ? input.getHomePlace() : input.homePlace) !== undefined;
   const where = await resolveChatPlace(args.place, input, context.signal);
   if (where.kind === 'ask') return where.result;
-  if (where.kind === 'none' && daysIn(span) < NEEDS_PLACE_DAYS) return NEEDS_PLACE;
+  const activeZone =
+    where.kind === 'place'
+      ? where.place.timezone
+      : (input.threadPlace?.timezone ?? (input.getHomePlace ? input.getHomePlace() : input.homePlace)?.timezone ?? input.viewerZone());
+  const activeToday = predictiveReferenceInstant(context.now, activeZone).slice(0, 10);
+  const span = spanOf(args, activeToday);
+  if (preset) {
+    const outside = outsideRange(input.birth, span);
+    if (outside) return outside;
+  }
+  if (where.kind === 'none' && daysIn(span) < NEEDS_PLACE_DAYS && (!preset || args.time !== null)) return NEEDS_PLACE;
   const todayDay = predictiveReferenceInstant(context.now, input.viewerZone()).slice(0, 10);
   const frame = frameOf(input, span, where, todayDay);
+  maybePersistResolvedHome(input, args, where, hadHomeBefore, frame.period.tense);
   const loaded = await load(input, frame, isSingleDay(span) && span.start === todayDay, context);
   if ('available' in loaded) return loaded;
   const moon = await readMoon(input, where, span, args.time, context);
@@ -723,7 +862,14 @@ async function readPeriod(input: ReadPeriodInput, args: ReadPeriodArgs, context:
   const notes = [...(moon.notes ?? []), ...ignoredTime];
   const closeUp = args.focus ? closeUpOf(loaded, frame, args.focus) : undefined;
   const months = monthCount(span) > 1 ? monthRows(loaded.source, span) : undefined;
-  const extras = { ...moon, ...(notes.length > 0 ? { notes } : {}), ...(months ? { months } : {}), ...(closeUp ? { close_up: closeUp } : {}) };
+  const placeNote = where.kind === 'none' ? DEVICE_TIMEZONE_PLACE_NOTE : undefined;
+  const extras: Extras = {
+    ...moon,
+    ...(placeNote ? { place_note: placeNote } : {}),
+    ...(notes.length > 0 ? { notes } : {}),
+    ...(months ? { months } : {}),
+    ...(closeUp ? { close_up: closeUp } : {}),
+  };
   return compose(loaded, frame, extras, input.language);
 }
 
@@ -796,6 +942,12 @@ function datedFacts(result: ReadPeriodReading, language: string): DatedFact[] {
   const byDay = new Map<string, DatedFact>();
   for (const { date, event } of events) {
     if (date >= start && date <= end && !byDay.has(date)) byDay.set(date, { date, what: datedEventLabel(event, spoken) });
+  }
+  for (const mark of result.daily ?? []) {
+    if (mark.date >= start && mark.date <= end && !byDay.has(mark.date)) {
+      const quality = mark.day_quality ? ` — ${mark.day_quality}` : '';
+      byDay.set(mark.date, { date: mark.date, what: `${mark.tithi_name} (${mark.paksha}), ${mark.nakshatra} Moon${quality}` });
+    }
   }
   return [...byDay.values()].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 }

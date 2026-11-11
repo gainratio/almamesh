@@ -55,9 +55,9 @@ def test_a_few_days_span_is_accepted() -> None:
 
 @pytest.mark.parametrize(
     "span",
-    [timedelta(hours=21), timedelta(days=6, hours=3), timedelta(hours=-24)],
+    [timedelta(hours=21), timedelta(days=15, hours=3), timedelta(hours=-24)],
 )
-def test_spans_that_are_not_one_to_six_local_days_are_refused(span: timedelta) -> None:
+def test_spans_that_are_not_one_to_fifteen_local_days_are_refused(span: timedelta) -> None:
     start = datetime(2026, 6, 15, 5, tzinfo=UTC)
     with pytest.raises(ValueError, match="place bounds"):
         compute_moon_window(start, start + span)
@@ -217,7 +217,9 @@ def test_tithi_and_paksha_flip_at_the_documented_new_and_full_moons(
     assert (window.at_place.at_start.tithi, window.at_place.at_start.paksha) == (tithi, paksha)
 
 
-@pytest.mark.parametrize("span", [timedelta(hours=22), timedelta(days=6, hours=2)])
+@pytest.mark.parametrize(
+    "span", [timedelta(hours=22), timedelta(days=7), timedelta(days=15, hours=2)]
+)
 def test_the_exact_span_limits_are_accepted(span: timedelta) -> None:
     start = datetime(2026, 6, 15, 5, tzinfo=UTC)
     assert compute_moon_window(start, start + span).event is None

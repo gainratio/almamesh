@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, within, fireEvent } from '@testing-library/react';
 import { useChartStore, useLanguageStore } from '@almamesh/store';
+import type { VargaDetailResult } from '@almamesh/browser/types';
 
 import '../../../../i18n/config';
 import { ShodasavargaPanel, VARGA_ORDER } from '../ShodasavargaPanel';
@@ -81,5 +82,82 @@ describe('ShodasavargaPanel', () => {
     const jupiter = card.querySelector('[data-planet="jupiter"]');
     expect(saturn?.getAttribute('class')).toContain('opacity-50');
     expect(jupiter?.getAttribute('class')).not.toContain('opacity-50');
+  });
+
+  it('wires Ask Guide deep-link and surfaces D60 60-Amsa + high birth-time sensitivity without degree symbols', () => {
+    const onAskGuide = vi.fn();
+    const onRectify = vi.fn();
+    const d60Ctx = {
+      ...VARGA_CTX_FULL,
+      charts: {
+        ...VARGA_CTX_FULL.charts,
+        D60: {
+          ...VARGA_CTX_FULL.charts.D9!,
+          chart: 'D60' as const,
+        },
+      },
+    };
+    const d60Detail: VargaDetailResult = {
+      chart: 'D60',
+      lagna_sign: 'scorpio',
+      lagna_sign_lord: 'mars',
+      lagna_vargottama: false,
+      lagna_shashtiamsa: { number: 15, name: 'Indurekha', nature: 'saumya' },
+      sensitivity: {
+        nominal_window_minutes: 2,
+        margin_prev_deg: 0.2,
+        margin_next_deg: 0.3,
+        approx_minutes_to_cusp: 0.8,
+        high_time_sensitivity: true,
+      },
+      placements: {
+        jupiter: {
+          graha: 'jupiter',
+          sign: 'pisces',
+          sign_lord: 'jupiter',
+          house: 5,
+          dignity: 'own',
+          is_combust: false,
+          same_sign_as_d1: true,
+          vargottama: true,
+          shashtiamsa: { number: 27, name: 'Kalinasa', nature: 'saumya' },
+        },
+        saturn: {
+          graha: 'saturn',
+          sign: 'aries',
+          sign_lord: 'mars',
+          house: 6,
+          dignity: 'debilitated',
+          is_combust: true,
+          same_sign_as_d1: false,
+          vargottama: false,
+          shashtiamsa: { number: 1, name: 'Ghora', nature: 'krura' },
+        },
+      },
+    };
+
+    render(
+      <ShodasavargaPanel
+        vargaCtxFull={d60Ctx}
+        vargaDetailOverride={d60Detail}
+        onAskGuide={onAskGuide}
+        onRectify={onRectify}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId('varga-select-D60'));
+    fireEvent.click(screen.getByTestId('varga-ask-guide'));
+    expect(onAskGuide).toHaveBeenCalledWith('D60', expect.stringContaining('D60'));
+
+    expect(screen.getByTestId('varga-sensitivity-high')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('varga-rectify-cta'));
+    expect(onRectify).toHaveBeenCalledTimes(1);
+
+    const amsaTable = screen.getByTestId('d60-shashtiamsa-table');
+    expect(amsaTable.textContent).toContain('#15 · Indurekha');
+    expect(amsaTable.textContent).toContain('#1 · Ghora');
+    expect(amsaTable.textContent).toContain('Saumya (Auspicious)');
+    expect(amsaTable.textContent).toContain('Krūra (Testing)');
+    expect(screen.getByTestId('shodasavarga-panel').textContent).not.toContain('°');
   });
 });

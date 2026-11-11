@@ -10,13 +10,16 @@
 import { useMemo, useState, type ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DivisionalChartId, VargaCtxFull } from '@almamesh/shared-types';
+import type { SiderealChart, VargaDetailResult } from '@almamesh/browser/types';
 import { buildVargaGeometry, useChartStore } from '@almamesh/store';
 import { Card } from '../../ui';
 import { ChartStyleToggle } from '../../chart/ChartStyleToggle';
 import { NorthIndianChartSVG } from '../../chart/NorthIndianChartSVG';
 import { SouthIndianChartSVG } from '../../chart/SouthIndianChartSVG';
+import { useVargaDetail } from '../../../hooks/useVargaDetail';
 import { toVargaChart } from '../../../lib/predictive';
 import { grahaName, signName } from '../../../lib/predictiveEventCopy';
+import { D60ShashtiamsaCard, VargaSensitivityBar } from './VargaInspectorStrip';
 
 /** BPHS Shodasavarga order. */
 export const VARGA_ORDER: readonly DivisionalChartId[] = [
@@ -71,13 +74,26 @@ function VargaSelector({
 
 export interface ShodasavargaPanelProps {
   readonly vargaCtxFull: VargaCtxFull;
+  readonly siderealChart?: SiderealChart | null;
+  readonly vargaDetailOverride?: VargaDetailResult | null;
+  readonly onAskGuide?: (chart: DivisionalChartId, prompt: string) => void;
+  readonly onRectify?: () => void;
 }
 
 /** The Shodasavarga gallery + classical strength tallies. */
-export function ShodasavargaPanel({ vargaCtxFull }: ShodasavargaPanelProps): ReactElement {
+export function ShodasavargaPanel({
+  vargaCtxFull,
+  siderealChart = null,
+  vargaDetailOverride,
+  onAskGuide,
+  onRectify,
+}: ShodasavargaPanelProps): ReactElement {
   const { t } = useTranslation('predictive');
   const displayStyle = useChartStore((state) => state.displayStyle);
   const [selected, setSelected] = useState<DivisionalChartId>('D9');
+  const computedDetail = useVargaDetail(siderealChart, selected);
+  const activeDetail =
+    vargaDetailOverride !== undefined ? vargaDetailOverride : computedDetail;
 
   const available = useMemo(
     () => new Set(Object.keys(vargaCtxFull.charts) as DivisionalChartId[]),
@@ -100,13 +116,38 @@ export function ShodasavargaPanel({ vargaCtxFull }: ShodasavargaPanelProps): Rea
   }, [vargaCtxFull]);
 
   const anyApproximated = vargaCtxFull.vimshopaka.some((row) => row.approximated);
+  const selectedName = t(`vargas.names.${selected}`);
+  const selectedTheme = t(`vargas.themes.${selected}`);
 
   return (
     <div className="space-y-6" data-testid="shodasavarga-panel">
       <Card
-        title={`${selected} · ${t(`vargas.names.${selected}`)}`}
-        subtitle={t(`vargas.themes.${selected}`)}
-        actions={<ChartStyleToggle />}
+        title={`${selected} · ${selectedName}`}
+        subtitle={selectedTheme}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            {onAskGuide && (
+              <button
+                type="button"
+                onClick={() =>
+                  onAskGuide(
+                    selected,
+                    t('vargas.inspector.ask_guide_prompt', {
+                      chart: selected,
+                      name: selectedName,
+                      theme: selectedTheme,
+                    }),
+                  )
+                }
+                className="rounded-lg border border-accent-gold/40 bg-accent-gold/10 px-3 py-1.5 text-xs font-medium text-accent-gold transition-colors hover:border-accent-gold hover:bg-accent-gold/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60"
+                data-testid="varga-ask-guide"
+              >
+                {t('vargas.inspector.ask_guide', { chart: selected })}
+              </button>
+            )}
+            <ChartStyleToggle />
+          </div>
+        }
         data-testid="varga-chart-card"
       >
         <div className="mb-5">
@@ -120,7 +161,7 @@ export function ShodasavargaPanel({ vargaCtxFull }: ShodasavargaPanelProps): Rea
               <SouthIndianChartSVG
                 geometry={geometry}
                 size={320}
-                centerTitle={t(`vargas.names.${selected}`)}
+                centerTitle={selectedName}
                 centerCode={selected}
               />
             )}
@@ -137,6 +178,14 @@ export function ShodasavargaPanel({ vargaCtxFull }: ShodasavargaPanelProps): Rea
           </p>
         )}
       </Card>
+
+      {activeDetail && activeDetail.chart === selected && selected !== 'D1' && (
+        <VargaSensitivityBar chart={selected} detail={activeDetail} onRectify={onRectify} />
+      )}
+
+      {activeDetail && activeDetail.chart === 'D60' && selected === 'D60' && (
+        <D60ShashtiamsaCard detail={activeDetail} />
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card

@@ -37,6 +37,8 @@ import type {
   PredictiveCallOptions,
   PredictiveInput,
   PyodideAsset,
+  VargaDetailInput,
+  VargaDetailResult,
 } from "./protocol";
 import type { RectificationInput, RectificationResultRaw } from "./rectification";
 import { EngineBootCancelledError, trackPageTeardown } from "./teardown";
@@ -97,6 +99,7 @@ export interface ChartEnginePort {
   computeMoonWindow(input: MoonWindowInput): Promise<MoonWindow>;
   computeMeshEdge(input: MeshEdgeInput): Promise<MeshEdgeContext>;
   computeRectification(input: RectificationInput): Promise<RectificationResultRaw>;
+  computeVargaDetail?(input: VargaDetailInput): Promise<VargaDetailResult>;
   /** Exact terminal client error; optional for ports without a client lifecycle. */
   closedError?(): Error | null;
   /** Stop the chart Worker and release Pyodide resources. */
@@ -144,6 +147,8 @@ export interface ChartEngine {
    * candidates and rank them with an honest confidence band.
    */
   computeRectification(input: RectificationInput): Promise<RectificationResultRaw>;
+  /** Divisional varga chart detail (D1..D60): houses, dignities, cusp sensitivity, and D60 amsas. */
+  computeVargaDetail(input: VargaDetailInput): Promise<VargaDetailResult>;
   /** Bundle provenance read from the synced `almamesh_meta.json`, if present. */
   meta(): BundleMeta | null;
 }
@@ -392,6 +397,12 @@ export class AlmaMeshRuntime {
           computeMoonWindow: (input) => booted.computeMoonWindow(input),
           computeMeshEdge: (input) => booted.computeMeshEdge(input),
           computeRectification: (input) => booted.computeRectification(input),
+          computeVargaDetail: (input) => {
+            if (booted.computeVargaDetail === undefined) {
+              return Promise.reject(new Error("computeVargaDetail not supported by engine port"));
+            }
+            return booted.computeVargaDetail(input);
+          },
           meta: () => meta,
         },
         result.manifestHash,
@@ -407,6 +418,7 @@ export class AlmaMeshRuntime {
         computeMoonWindow: (input) => this.#compute(generation, booted, () => memoized.computeMoonWindow(input)),
         computeMeshEdge: (input) => this.#compute(generation, booted, () => memoized.computeMeshEdge(input)),
         computeRectification: (input) => this.#compute(generation, booted, () => memoized.computeRectification(input)),
+        computeVargaDetail: (input) => this.#compute(generation, booted, () => memoized.computeVargaDetail(input)),
         meta: () => meta,
       };
       this.#ready = engine;

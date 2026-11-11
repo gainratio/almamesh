@@ -50,6 +50,9 @@
   "suggested": {
     "label": "Suggested questions:",
     "questions": {
+      "this_week": "What is my status for this week?",
+      "vargas": "Deep dive my D9 Navamsa and D60 Shashtiamsa",
+      "best_windows": "What are my best career windows in the next 6 months?",
       "career": "What are my career strengths?",
       "relationship": "How is my relationship outlook?",
       "year": "What should I focus on this year?",
@@ -159,9 +162,19 @@
     "result": "Got back",
     "read_period": "Read a period: dashas, lords, sky, themes, dated windows",
     "travel": "Travel to another time",
+    "set_current_location": "Save your current city on this device for local Panchang and sky timing",
+    "read_varga": "Inspect a divisional chart (D1–D60, including D9 Navamsa, D10 Dasamsa, D60 Shashtiamsa)",
+    "find_best_windows": "Find your strongest and mindful timing windows over the next 1–24 months",
+    "read_mesh_member": "Read relationship synastry and Dasha synchrony with a Mesh member",
+    "remember_fact": "Save a concise personal goal or life context note on this device",
     "rows": {
       "read_period": "the period reading",
       "travel": "a move in time",
+      "set_current_location": "current location",
+      "read_varga": "divisional chart",
+      "find_best_windows": "best timing windows",
+      "read_mesh_member": "relationship synastry",
+      "remember_fact": "profile context note",
       "place": "a place",
       "context": "chart facts"
     }
@@ -185,5 +198,73 @@
   "moved": {
     "to": "Moved to {{title}}",
     "today": "Moved to today"
+  },
+  "copy": {
+    "button": "Copy",
+    "copied": "Copied",
+    "failed": "Could not copy"
+  },
+  "context": {
+    "set_location": "Set location",
+    "location_unset_hint": "Set your current city for local sunrise Panchang",
+    "location_popover_title": "Where do you live now?",
+    "location_privacy_hint": "Searched offline on this device; coordinates stay private.",
+    "clear_location": "Clear location",
+    "close": "Close",
+    "memory_label": "Context",
+    "memory_button_aria": "Saved profile context ({{count}})",
+    "memory_popover_title": "On-device context & memory",
+    "location_device_zone": "Using device timezone (no city saved)",
+    "thread_summary_active": "Conversation summary active",
+    "memory_empty": "No personal context notes saved yet. Ask Guide to remember a goal or milestone anytime.",
+    "delete_fact": "Remove note",
+    "clear_all_facts": "Clear all notes",
+    "specialists": {
+      "timing_panchang": "Timing & Panchang",
+      "natal_varga": "Varga & Natal",
+      "mesh_synastry": "Mesh Synastry",
+      "rectification_advisor": "Birth-Time Sensitivity"
+    }
+  },
+  "cards": {
+    "weekly": {
+      "title": "7-Day Panchang & Moon Outlook",
+      "supportive": "Supportive",
+      "mixed": "Mixed",
+      "mindful": "Mindful",
+      "set_city_hint": "Set your current city above for exact local sunrise Tithi and Vara."
+    },
+    "varga": {
+      "lagna": "Lagna {{sign}}",
+      "vargottama": "Vargottama",
+      "cusp_minutes": "~{{minutes}} min to sign cusp",
+      "rectify_cta": "Verify birth time →"
+    },
+    "windows": {
+      "title": "{{domain}} Timing Windows",
+      "horizon": "{{months}} mo",
+      "strength": "Strength {{score}}",
+      "supportive": "Supportive windows",
+      "mindful": "Mindful windows"
+    },
+    "mesh": {
+      "title": "Mesh Synastry",
+      "open_mesh": "Open Mesh →",
+      "no_members": "Add a partner, family member, or collaborator in Mesh to explore synastry.",
+      "setup_needed": "Open Mesh to finish chart & synastry setup for {{role}}."
+    },
+    "saved": {
+      "location_saved": "Current location saved: {{place}}",
+      "location_undone": "Current location cleared.",
+      "memory_saved": "Saved to profile context: {{text}}",
+      "memory_undone": "Removed from profile context.",
+      "undo": "Undo"
+    }
+  },
+  "quick_launch": {
+    "heading": "Ask Guide:",
+    "this_week_label": "This week’s Panchang",
+    "vargas_label": "D9 & D60 Varga check",
+    "windows_label": "Best career windows"
   }
 }

@@ -1,25 +1,22 @@
 /**
- * ChatSearch — discoverable hybrid search over this profile's chat history.
+ * ChatSearch — discoverable two-phase hybrid search over this profile's chat history.
  *
- * Reachable directly from the dashboard chat surface (a search input pinned
- * above the conversation), NOT buried in settings. Typing a query runs an
- * on-device search (zero egress): semantic matches, SQLite FTS5 keyword
- * matches and thread-title matches (a trip's period and place, e.g. "2019" or
- * "Singapore"), merged by reciprocal rank in `searchChatHistory`. Each hit
- * shows the matched snippet, the owning thread's title, and a relevance score.
- * Clicking a hit hands its `message_id` (empty for a whole-thread match) and
- * `thread_id` back to the parent so the conversation can open that thread.
- *
- * Best-effort: a missing/failed retriever degrades to fewer results (never throws).
+ * Phase 1 (~2ms, zero ONNX Worker boot) renders SQLite FTS5, in-memory lexical,
+ * and thread-title matches immediately. Phase 2 refines in the background with
+ * on-device semantic recall (`@almamesh/memory`) fused via reciprocal rank.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useChatStore, useLanguageStore } from '@almamesh/store';
 import type { ChatThread } from '@almamesh/shared-types';
 
-import { searchChatHistory } from '../../../lib/chatMemory';
-import type { ChatSearchHit, ThreadTitle } from '../../../lib/chatSearchFusion';
+import { searchChatHistoryProgressive } from '../../../lib/chatMemory';
+import {
+  informativeSearchTerms,
+  type ChatSearchHit,
+  type ThreadTitle,
+} from '../../../lib/chatSearchFusion';
 import { useEmbedderStatus } from '../../../hooks/useEmbedderStatus';
 import { formatPinLabel } from '../../../lib/timeTravelSheet';
 
@@ -27,27 +24,76 @@ interface ChatSearchProps {
   /** The active profile whose chat history is searched. */
   readonly profileId: string;
   /** Open the conversation at a specific message (scroll-to / highlight). */
-  readonly onOpenResult: (messageId: string, threadId: string) => void;
+  readonly onOpenResult: (messageId: string, threadId: string) => void | Promise<void>;
 }
 
-const DEBOUNCE_MS = 200;
+const DEBOUNCE_MS = 160;
 const SEARCH_K = 8;
+const MAX_SCROLL_RETRY_FRAMES = 20;
+const HIGHLIGHT_FLASH_MS = 1_600;
+const HIGHLIGHT_CLASSES = ['ring-2', 'ring-accent-gold', 'rounded-lg'] as const;
+
+function foldToken(token: string): string {
+  return token.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+}
+
+/**
+ * Highlight matched query prefixes inside `snippet` as pure React `<mark>` nodes
+ * (never `dangerouslySetInnerHTML`). `bg-amber-200` + `text-neutral-950` gives
+ * ~15.8:1 contrast, exceeding WCAG 2.2 AA (>= 4.5:1) in light and dark themes.
+ */
+export function renderHighlightedSnippet(snippet: string, query: string): ReactNode {
+  const terms = informativeSearchTerms(query);
+  if (terms.length === 0 || snippet.length === 0) return snippet;
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  for (const match of snippet.matchAll(/[\p{L}\p{N}]+/gu)) {
+    const start = match.index ?? 0;
+    const word = match[0];
+    const folded = foldToken(word);
+    if (!terms.some((term) => folded.startsWith(term))) continue;
+    if (start > cursor) nodes.push(snippet.slice(cursor, start));
+    nodes.push(
+      <mark
+        key={`m-${start}`}
+        className="rounded-sm bg-amber-200 px-0.5 font-medium text-neutral-950"
+      >
+        {word}
+      </mark>,
+    );
+    cursor = start + word.length;
+  }
+  if (nodes.length === 0) return snippet;
+  if (cursor < snippet.length) nodes.push(snippet.slice(cursor));
+  return nodes;
+}
+
+function findMessageElement(messageId: string): HTMLElement | undefined {
+  if (typeof document === 'undefined' || messageId.length === 0) return undefined;
+  const candidates = document.querySelectorAll<HTMLElement>('[data-message-id]');
+  for (const el of candidates) {
+    if (el.dataset.messageId === messageId) return el;
+  }
+  return undefined;
+}
 
 export function ChatSearch({ profileId, onOpenResult }: ChatSearchProps) {
   const { t } = useTranslation('chat');
   const threadsById = useChatStore((s) => s.threads);
-
   const language = useLanguageStore((s) => s.language);
-  /** A pinned thread is "⏳ Time travel · <period>"; others their title, else a fallback. */
+
   const threadLabel = useCallback((thread: ChatThread | undefined): string =>
     thread?.as_of
       ? `⏳ ${t('time_travel.title', { period: formatPinLabel(thread.as_of, language) })}`
       : thread?.title?.trim() || t('search.thread_fallback'), [t, language]);
+
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<readonly ChatSearchHit[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isSemanticRefining, setIsSemanticRefining] = useState(false);
+  const navCleanupRef = useRef<(() => void) | null>(null);
   const modelLoading = useEmbedderStatus() === 'loading';
-  /** What a title search sees: the stored title, the shown label and the trip's place. */
+
   const titles = useMemo<readonly ThreadTitle[]>(() => Object.values(threadsById)
     .filter((thread) => thread.profile_id === profileId)
     .map((thread) => ({
@@ -56,20 +102,37 @@ export function ChatSearch({ profileId, onOpenResult }: ChatSearchProps) {
       text: [thread.title, threadLabel(thread), thread.as_of?.place?.label].filter(Boolean).join(' · '),
     })), [threadsById, profileId, threadLabel]);
 
+  useEffect(() => () => {
+    navCleanupRef.current?.();
+  }, []);
+
   useEffect(() => {
     const q = query.trim();
     if (q.length === 0) {
       setResults([]);
       setIsSearching(false);
+      setIsSemanticRefining(false);
       return;
     }
     let cancelled = false;
     setIsSearching(true);
+    setIsSemanticRefining(false);
     const handle = setTimeout(() => {
-      void searchChatHistory(q, profileId, { k: SEARCH_K, titles }).then((hits) => {
+      void searchChatHistoryProgressive(q, profileId, {
+        k: SEARCH_K,
+        titles,
+        onFastResults: (fastHits) => {
+          if (cancelled) return;
+          if (fastHits.length > 0) {
+            setResults(fastHits);
+            setIsSemanticRefining(true);
+          }
+        },
+      }).then((hits) => {
         if (!cancelled) {
           setResults(hits);
           setIsSearching(false);
+          setIsSemanticRefining(false);
         }
       });
     }, DEBOUNCE_MS);
@@ -79,8 +142,57 @@ export function ChatSearch({ profileId, onOpenResult }: ChatSearchProps) {
     };
   }, [query, profileId, titles]);
 
+  const handleSelectHit = useCallback(async (hit: ChatSearchHit) => {
+    navCleanupRef.current?.();
+    const pendingOpen = onOpenResult(hit.message_id, hit.thread_id);
+    setQuery('');
+    await Promise.resolve(pendingOpen);
+    if (hit.message_id.length === 0 || typeof window === 'undefined') return;
+
+    let cancelled = false;
+    let rafId = 0;
+    let flashTimer: ReturnType<typeof setTimeout> | undefined;
+    let attempts = 0;
+
+    const scheduleFrame = (cb: () => void) => {
+      if (typeof window.requestAnimationFrame === 'function') {
+        rafId = window.requestAnimationFrame(cb);
+      } else {
+        flashTimer = setTimeout(cb, 16);
+      }
+    };
+
+    const tryFocusMessage = () => {
+      if (cancelled) return;
+      const target = findMessageElement(hit.message_id);
+      if (target) {
+        target.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+        if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+        target.focus?.({ preventScroll: true });
+        target.setAttribute('data-search-highlighted', 'true');
+        target.classList.add(...HIGHLIGHT_CLASSES);
+        flashTimer = setTimeout(() => {
+          target.removeAttribute('data-search-highlighted');
+          target.classList.remove(...HIGHLIGHT_CLASSES);
+        }, HIGHLIGHT_FLASH_MS);
+        return;
+      }
+      attempts += 1;
+      if (attempts < MAX_SCROLL_RETRY_FRAMES) scheduleFrame(tryFocusMessage);
+    };
+
+    scheduleFrame(tryFocusMessage);
+    navCleanupRef.current = () => {
+      cancelled = true;
+      if (rafId && typeof window.cancelAnimationFrame === 'function') {
+        window.cancelAnimationFrame(rafId);
+      }
+      if (flashTimer !== undefined) clearTimeout(flashTimer);
+    };
+  }, [onOpenResult]);
+
   return (
-    <div className="px-4 pt-3" data-testid="chat-search">
+    <search aria-label={t('search.aria_label')} className="px-4 pt-3" data-testid="chat-search">
       <div className="relative">
         <svg
           className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted"
@@ -98,8 +210,23 @@ export function ChatSearch({ profileId, onOpenResult }: ChatSearchProps) {
         </svg>
         <input
           type="search"
+          autoCorrect="off"
+          autoCapitalize="none"
+          spellCheck={false}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+            if (e.key === 'Escape' && query.length > 0) {
+              e.preventDefault();
+              setQuery('');
+              return;
+            }
+            if (e.key === 'Enter' && results.length > 0) {
+              e.preventDefault();
+              void handleSelectHit(results[0]!);
+            }
+          }}
           placeholder={t('search.placeholder')}
           aria-label={t('search.aria_label')}
           data-testid="chat-search-input"
@@ -122,37 +249,49 @@ export function ChatSearch({ profileId, onOpenResult }: ChatSearchProps) {
               {isSearching ? t('search.searching') : t('search.no_results')}
             </p>
           ) : (
-            <ul className="flex flex-col gap-1.5">
-              {results.map((hit) => (
-                <li key={`${hit.source}:${hit.thread_id}:${hit.message_id}`}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onOpenResult(hit.message_id, hit.thread_id);
-                      setQuery('');
-                    }}
-                    data-testid={hit.source === 'thread' ? `chat-search-thread-${hit.thread_id}` : `chat-search-result-${hit.message_id}`}
-                    className="block w-full rounded-lg border border-ui-border bg-background-tertiary px-3 py-2 text-left transition-colors hover:border-accent-gold hover:bg-background-secondary"
-                  >
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="truncate text-xs font-medium text-text-secondary">
-                        {threadLabel(threadsById[hit.thread_id])}
-                      </span>
-                      <span className="flex-shrink-0 text-[10px] tabular-nums text-text-muted">
-                        {t('search.match', { percent: Math.round(hit.score * 100) })}
-                      </span>
-                    </div>
-                    <p className="line-clamp-2 text-xs text-text-primary">
-                      {hit.source === 'thread' ? t('search.thread_match') : hit.text}
-                    </p>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <>
+              {isSemanticRefining && (
+                <p
+                  className="mb-1 px-1 text-[11px] text-text-muted"
+                  role="status"
+                  data-testid="chat-search-semantic-refining"
+                >
+                  {modelLoading ? t('search.loading_model') : t('search.searching')}
+                </p>
+              )}
+              <ul role="list" className="flex flex-col gap-1.5">
+                {results.map((hit) => (
+                  <li key={`${hit.source}:${hit.thread_id}:${hit.message_id}`}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleSelectHit(hit);
+                      }}
+                      data-testid={hit.source === 'thread' ? `chat-search-thread-${hit.thread_id}` : `chat-search-result-${hit.message_id}`}
+                      className="block w-full rounded-lg border border-ui-border bg-background-tertiary px-3 py-2 text-left transition-colors hover:border-accent-gold hover:bg-background-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/70"
+                    >
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <span className="truncate text-xs font-medium text-text-secondary">
+                          {threadLabel(threadsById[hit.thread_id])}
+                        </span>
+                        <span className="flex-shrink-0 text-[10px] tabular-nums text-text-muted">
+                          {t('search.match', { percent: Math.round(hit.score * 100) })}
+                        </span>
+                      </div>
+                      <p className="line-clamp-2 text-xs text-text-primary">
+                        {hit.source === 'thread'
+                          ? t('search.thread_match')
+                          : renderHighlightedSnippet(hit.text, query)}
+                      </p>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </div>
       )}
-    </div>
+    </search>
   );
 }
 

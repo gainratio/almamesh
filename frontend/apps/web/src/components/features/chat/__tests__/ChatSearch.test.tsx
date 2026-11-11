@@ -104,11 +104,13 @@ describe('ChatSearch', () => {
       target: { value: 'career' },
     });
 
-    await waitFor(() => {
-      expect(screen.getByText(/You have strong career yogas/)).toBeTruthy();
-    });
-    // The thread title (derived from the first user message) is shown.
-    expect(screen.getByText(/What about my career\?/)).toBeTruthy();
+    const resultButton = await screen.findByTestId('chat-search-result-m1');
+    expect(resultButton.textContent).toContain('You have strong career yogas');
+    expect(resultButton.textContent).toContain('95% match');
+    const mark = resultButton.querySelector('mark');
+    expect(mark?.textContent).toBe('career');
+    // The thread title (derived from the first user message) is shown on result headers.
+    expect(screen.getAllByText(/What about my career\?/).length).toBeGreaterThanOrEqual(1);
   });
 
   it('clicking a result calls onOpenResult with the message + thread id', async () => {
@@ -152,7 +154,7 @@ describe('ChatSearch', () => {
     render(<ChatSearch profileId={PROFILE} onOpenResult={vi.fn()} />);
     fireEvent.change(screen.getByTestId('chat-search-input'), { target: { value: 'work' } });
 
-    expect(await screen.findByText('⏳ Time travel · 2050')).toBeTruthy();
+    expect((await screen.findAllByText('⏳ Time travel · 2050')).length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText('Will work get easier?')).toBeNull();
   });
 
@@ -184,5 +186,58 @@ describe('ChatSearch', () => {
     fireEvent.change(input, { target: { value: '2019' } });
     fireEvent.click(await screen.findByTestId(`chat-search-thread-${tid}`));
     expect(onOpen).toHaveBeenCalledWith('', tid);
+  });
+
+  it('renders native <search> landmark, guards IME Enter composition, and scrolls/highlights target message after open', async () => {
+    const tid = seedThread();
+    __setMemoryForTest(memoryReturning(tid));
+    const scrollIntoView = vi.fn();
+    const targetNode = document.createElement('div');
+    targetNode.setAttribute('data-message-id', 'm1');
+    targetNode.scrollIntoView = scrollIntoView;
+
+    const onOpen = vi.fn(async () => {
+      document.body.appendChild(targetNode);
+    });
+
+    const { container } = render(<ChatSearch profileId={PROFILE} onOpenResult={onOpen} />);
+    expect(container.querySelector('search[data-testid="chat-search"]')).toBeTruthy();
+
+    const input = screen.getByTestId('chat-search-input');
+    fireEvent.change(input, { target: { value: 'career' } });
+    await screen.findByTestId('chat-search-result-m1');
+
+    // IME composition Enter (isComposing / keyCode 229) must NOT submit or clear query.
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+    fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 });
+    expect(onOpen).not.toHaveBeenCalled();
+
+    // Non-composing Enter opens the top hit, awaits thread render, and scrolls + highlights `[data-message-id="m1"]`.
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await waitFor(() => {
+      expect(onOpen).toHaveBeenCalledWith('m1', tid);
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'center' });
+      expect(targetNode.getAttribute('data-search-highlighted')).toBe('true');
+    });
+    targetNode.remove();
+  });
+
+  it('renders Phase 1 lexical hits immediately even while semantic memory is still booting', async () => {
+    const tid = useChatStore.getState().startThread(PROFILE);
+    const mid = useChatStore.getState().appendMessage(tid, 'assistant', 'Shashtiamsa D60 reveals subtle karma.').id;
+    __setMemoryForTest({
+      indexMessage: vi.fn(),
+      retrieve: vi.fn(() => new Promise<never>(() => undefined)),
+      deleteForProfile: vi.fn().mockResolvedValue(undefined),
+      deleteForThread: vi.fn().mockResolvedValue(undefined),
+      clear: vi.fn().mockResolvedValue(undefined),
+    });
+
+    render(<ChatSearch profileId={PROFILE} onOpenResult={vi.fn()} />);
+    fireEvent.change(screen.getByTestId('chat-search-input'), { target: { value: 'shashtiamsa' } });
+
+    const fastCard = await screen.findByTestId(`chat-search-result-${mid}`);
+    expect(fastCard.querySelector('mark')?.textContent).toBe('Shashtiamsa');
+    expect(screen.getByTestId('chat-search-semantic-refining')).toBeTruthy();
   });
 });

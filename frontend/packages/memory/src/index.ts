@@ -52,6 +52,15 @@ export interface RetrievedChunk {
   readonly score: number;
 }
 
+/** Options for semantic vector retrieval. */
+export interface RetrieveOptions {
+  /** Minimum cosine similarity in [-1, 1] required to keep a chunk (default 0.35). */
+  readonly minScore?: number;
+}
+
+/** Default cosine similarity floor so unrelated queries do not return random chunks. */
+export const DEFAULT_MIN_SCORE = 0.35;
+
 /** The chat-memory facade the UI uses: index a message, retrieve by query. */
 export interface ChatMemory {
   /** Chunk → embed → persist a message's vectors for later retrieval. */
@@ -67,6 +76,7 @@ export interface ChatMemory {
     query: string,
     profileId: string,
     k?: number,
+    options?: RetrieveOptions,
   ): Promise<readonly RetrievedChunk[]>;
 }
 
@@ -76,6 +86,8 @@ export interface ChatMemoryDeps {
   readonly store?: VectorStore;
   /** Cross-realm dataset fence; changed generations discard stale embeddings. */
   readonly generation?: () => string | number;
+  /** Minimum cosine similarity floor applied when `retrieve` omits `options.minScore`. */
+  readonly minScore?: number;
 }
 
 const DEFAULT_K = 5;
@@ -93,6 +105,7 @@ export function createMemory(deps: ChatMemoryDeps): ChatMemory {
   const store = deps.store ?? createVectorStore();
   const { embedder } = deps;
   const generation = deps.generation ?? (() => 0);
+  const defaultMinScore = deps.minScore ?? DEFAULT_MIN_SCORE;
   const deletedProfiles = new Set<string>();
   const deletedThreads = new Set<string>();
   const pending = new Set<{
@@ -202,6 +215,7 @@ export function createMemory(deps: ChatMemoryDeps): ChatMemory {
       query: string,
       profileId: string,
       k: number = DEFAULT_K,
+      options?: RetrieveOptions,
     ): Promise<readonly RetrievedChunk[]> {
       await waitForClear();
       const startedInGeneration = generation();
@@ -216,12 +230,15 @@ export function createMemory(deps: ChatMemoryDeps): ChatMemory {
       if (generation() !== startedInGeneration) {
         return [];
       }
-      return hits.map((hit) => ({
-        text: hit.record.text,
-        message_id: hit.record.message_id,
-        thread_id: hit.record.thread_id,
-        score: hit.score,
-      }));
+      const floor = options?.minScore ?? defaultMinScore;
+      return hits
+        .filter((hit) => hit.score >= floor)
+        .map((hit) => ({
+          text: hit.record.text,
+          message_id: hit.record.message_id,
+          thread_id: hit.record.thread_id,
+          score: hit.score,
+        }));
     },
   };
 }

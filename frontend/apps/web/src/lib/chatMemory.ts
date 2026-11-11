@@ -44,7 +44,9 @@ import {
 import { chatFtsRows, type ChatFtsRows, type ChatKeywordHit } from './chatFtsRows';
 import {
   fuseByReciprocalRank,
+  informativeSearchTerms,
   matchThreadTitles,
+  searchTerms,
   snippetAround,
   type ChatSearchHit,
   type ThreadTitle,
@@ -363,6 +365,114 @@ export interface ChatHistorySearchOptions {
   readonly k?: number;
   /** Searchable title text per thread (title, period and place). */
   readonly titles?: readonly ThreadTitle[];
+}
+
+export interface ProgressiveChatSearchOptions extends ChatHistorySearchOptions {
+  /** Invoked after Phase 1 (~2ms lexical + FTS5 + title scan) before semantic worker finishes. */
+  readonly onFastResults?: (hits: readonly ChatSearchHit[]) => void;
+}
+
+/**
+ * Synchronous in-memory token/prefix scan over already-hydrated threads of
+ * `profileId` so brand-new messages (not yet flushed to OPFS FTS5) or sessions
+ * without OPFS SQLite still return instant Phase 1 matches in <1ms.
+ */
+function inMemoryMessageScan(
+  query: string,
+  profileId: string,
+  k: number,
+): readonly ChatSearchHit[] {
+  const terms = informativeSearchTerms(query);
+  if (terms.length === 0 || k <= 0) return [];
+  const chat = useChatStore.getState();
+  const candidates: Array<{ readonly hit: ChatSearchHit; readonly fullMatch: boolean; readonly createdAt: string }> = [];
+  for (const thread of Object.values(chat.threads)) {
+    if (!thread || thread.profile_id !== profileId) continue;
+    for (const msg of chat.messages[thread.id] ?? []) {
+      if (!msg || msg.error === true || msg.role === 'system' || msg.content.trim().length === 0) continue;
+      const tokens = searchTerms(msg.content.slice(0, 4_000));
+      const matched = terms.filter((term) => tokens.some((tok) => tok.startsWith(term))).length;
+      if (matched === 0) continue;
+      candidates.push({
+        hit: {
+          source: 'message',
+          thread_id: thread.id,
+          message_id: msg.id,
+          text: snippetAround(msg.content, query),
+          score: matched / terms.length,
+        },
+        fullMatch: matched === terms.length,
+        createdAt: msg.created_at ?? '',
+      });
+    }
+  }
+  candidates.sort((a, b) => {
+    if (a.fullMatch !== b.fullMatch) return a.fullMatch ? -1 : 1;
+    if (b.hit.score !== a.hit.score) return b.hit.score - a.hit.score;
+    return b.createdAt.localeCompare(a.createdAt);
+  });
+  return candidates.slice(0, Math.floor(k)).map((c) => c.hit);
+}
+
+function mergeLexicalHits(
+  ftsHits: readonly ChatSearchHit[],
+  memoryHits: readonly ChatSearchHit[],
+  limit: number,
+): readonly ChatSearchHit[] {
+  const seen = new Set(ftsHits.map((hit) => hit.message_id));
+  const merged = [...ftsHits];
+  for (const hit of memoryHits) {
+    if (seen.has(hit.message_id)) continue;
+    seen.add(hit.message_id);
+    merged.push(hit);
+    if (merged.length >= limit) break;
+  }
+  return merged;
+}
+
+/**
+ * Phase 1 (~2ms) chat search: SQLite FTS5 + in-memory canonical scan + thread
+ * titles ONLY. Never boots or touches the 80–95 MB MiniLM ONNX embedder Worker.
+ */
+export async function searchChatHistoryFast(
+  query: string,
+  profileId: string,
+  options: ChatHistorySearchOptions = {},
+): Promise<readonly ChatSearchHit[]> {
+  const k = options.k ?? SEARCH_K;
+  if (query.trim().length === 0) return [];
+  const ftsHits = await searchKeywords(query, profileId, k);
+  const lexical = mergeLexicalHits(ftsHits, inMemoryMessageScan(query, profileId, k), k);
+  const titles = matchThreadTitles(query, options.titles ?? [], profileId);
+  const threads = useChatStore.getState().threads;
+  const live = (hit: ChatSearchHit) => threads[hit.thread_id]?.profile_id === profileId;
+  return fuseByReciprocalRank([lexical.filter(live), titles.filter(live)], k);
+}
+
+/**
+ * Two-phase progressive hybrid search: emits Phase 1 (`onFastResults`) in ~2ms
+ * without waiting on ONNX Worker cold boot, then resolves with Phase 2 RRF
+ * fusion once semantic recall completes.
+ */
+export async function searchChatHistoryProgressive(
+  query: string,
+  profileId: string,
+  options: ProgressiveChatSearchOptions = {},
+): Promise<readonly ChatSearchHit[]> {
+  const k = options.k ?? SEARCH_K;
+  if (query.trim().length === 0) return [];
+  const ftsHits = await searchKeywords(query, profileId, k);
+  const lexical = mergeLexicalHits(ftsHits, inMemoryMessageScan(query, profileId, k), k);
+  const titles = matchThreadTitles(query, options.titles ?? [], profileId);
+  const liveNow = (hit: ChatSearchHit) => useChatStore.getState().threads[hit.thread_id]?.profile_id === profileId;
+  const fastHits = fuseByReciprocalRank([lexical.filter(liveNow), titles.filter(liveNow)], k);
+  options.onFastResults?.(fastHits);
+
+  const semantic = await searchMemory(query, profileId, k);
+  const threads = useChatStore.getState().threads;
+  const live = (hit: ChatSearchHit) => threads[hit.thread_id]?.profile_id === profileId;
+  const lists = [semantic.map((chunk) => ({ ...chunk, source: 'message' as const })), lexical, titles];
+  return fuseByReciprocalRank(lists.map((list) => list.filter(live)), k);
 }
 
 /**

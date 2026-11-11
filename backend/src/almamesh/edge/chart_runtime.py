@@ -43,6 +43,7 @@ from almamesh.schemas.astrology import SiderealContext
 from almamesh.schemas.mesh import MatchRole, Relationship
 from almamesh.snapshot import compute_stamped_chart
 from almamesh.transits.moon_window import moon_window_from_wire
+from almamesh.vargas.detail import varga_detail_from_wire
 
 _RUNTIME_VERSION = "almamesh-chart/0.1.0"
 
@@ -117,6 +118,11 @@ def compute_moon_window_payload(payload: Mapping[str, object]) -> dict[str, Json
     Pyodide worker glue maps its camelCase input onto the same validator.
     """
     return moon_window_from_wire(payload).model_dump(mode="json")
+
+
+def compute_varga_detail_payload(payload: Mapping[str, object]) -> dict[str, JsonValue]:
+    """Rich divisional-chart detail (houses, dignity, sensitivity, D60 amsas) as JSON."""
+    return varga_detail_from_wire(payload).model_dump(mode="json")
 
 
 def _birth_input(value: object) -> Mapping[str, object]:

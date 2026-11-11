@@ -94,13 +94,24 @@ describe('a trip thread shows what grounds it', () => {
     expect(screen.queryByTestId('trip-context-card')).toBeNull();
   });
 
-  it('the Tools chip lists the two tools the model has, in plain words', () => {
+  it('the Tools chip lists the registered tools the model has, in plain words', () => {
     useChatStore.getState().startThread('p1', 'c1', MAY_2019_SG);
     renderPanel();
     fireEvent.click(screen.getByTestId('chat-tools-button'));
     const rows = within(screen.getByTestId('chat-tools-list')).getAllByRole('listitem');
-    expect(rows.map((row) => row.getAttribute('data-tool-name'))).toEqual(['read_period', 'travel']);
-    expect(rows.map((row) => row.textContent)).toEqual(['Read a period: dashas, lords, sky, themes, dated windows', 'Travel to another time']);
+    expect(rows.map((row) => row.getAttribute('data-tool-name'))).toEqual([
+      'read_period',
+      'travel',
+      'set_current_location',
+      'read_varga',
+      'find_best_windows',
+      'read_mesh_member',
+      'remember_fact',
+    ]);
+    expect(rows.slice(0, 2).map((row) => row.textContent)).toEqual([
+      'Read a period: dashas, lords, sky, themes, dated windows',
+      'Travel to another time',
+    ]);
   });
 
   it('the card is built from the stored chart and the trip pin', () => {

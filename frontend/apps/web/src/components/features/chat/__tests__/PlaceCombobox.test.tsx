@@ -95,4 +95,21 @@ describe('PlaceCombobox', () => {
     expect(screen.getByRole('combobox').getAttribute('aria-expanded')).toBe('false');
     expect(screen.queryByRole('listbox')).toBeNull();
   });
+
+  it('ignores Enter while IME composition is active (isComposing or keyCode 229)', () => {
+    const { input, onChoose } = renderBox();
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true });
+    fireEvent.keyDown(input, { key: 'Enter', keyCode: 229 });
+    expect(onChoose).not.toHaveBeenCalled();
+  });
+
+  it('calls onSubmitQuery when Enter is pressed before debounced options arrive', () => {
+    const onSubmitQuery = vi.fn();
+    render(
+      <PlaceCombobox id="w" testIdPrefix="w" label="Where?" placeholder="" query="novato, ca" onQueryChange={vi.fn()} options={null}
+        onChoose={vi.fn()} onDismiss={vi.fn()} onSubmitQuery={onSubmitQuery} />,
+    );
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
+    expect(onSubmitQuery).toHaveBeenCalledWith('novato, ca');
+  });
 });

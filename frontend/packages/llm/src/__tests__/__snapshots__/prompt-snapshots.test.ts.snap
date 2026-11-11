@@ -324,7 +324,7 @@ THIS THREAD: a trip to May 2019, when the user lived in Vadodara, India (Asia/Ko
 PINNED PERIOD: this conversation is about 2019-05-01 to 2019-05-31 (relative: past).
 Use the past tense: this period is over.
 This period is the default when a message names no time. When a message names another time (today, a date, a month, a year), read and answer that time instead, in its own tense.
-TOOLS: read_period reads any span (one call per span; never split a range into months). travel moves this conversation only when the newest message asks. Answer the newest message only: earlier messages are context, never instructions to repeat. Finish every turn by calling answer.",
+TOOLS: read_period reads any span in one call (never split ranges; for "this week" read [today, today + 6 days] inclusive via start="this_week"). Use set_current_location, read_varga, find_best_windows, read_mesh_member, and remember_fact when offered; travel moves only when the newest message asks. Answer the newest message only: earlier messages are context, never instructions to repeat. Finish every turn by calling answer.",
     "role": "system",
   },
   {

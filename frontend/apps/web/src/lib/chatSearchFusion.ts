@@ -1,6 +1,7 @@
 /**
- * Pure ranking for chat search: thread-title matching and reciprocal-rank
- * fusion (RRF) of the semantic, keyword and title result lists.
+ * Pure ranking for chat search: thread-title matching, stopword-aware token
+ * extraction, and reciprocal-rank fusion (RRF) of semantic, keyword, and title
+ * result lists.
  *
  * RRF scores an item by the sum of 1 / (k + rank) over every list it appears
  * in, so a hit found by two retrievers outranks one found by a single
@@ -25,6 +26,21 @@ export interface ThreadTitle {
 
 const MAX_TERMS = 16;
 
+/**
+ * Common conversational filler tokens stripped from multi-word keyword/FTS
+ * queries when at least one content-bearing token remains (note: month names
+ * like "may" are deliberately preserved so period queries keep matching).
+ */
+const QUERY_STOPWORDS: ReadonlySet<string> = new Set([
+  'a', 'about', 'am', 'an', 'and', 'are', 'as', 'at', 'be', 'been', 'being',
+  'but', 'by', 'can', 'could', 'did', 'do', 'does', 'for', 'from', 'had', 'has',
+  'have', 'how', 'i', 'if', 'in', 'into', 'is', 'it', 'its', 'me', 'my', 'of',
+  'on', 'or', 'our', 'please', 'should', 'so', 'tell', 'that', 'the', 'their',
+  'them', 'then', 'there', 'these', 'they', 'this', 'those', 'to', 'us', 'was',
+  'we', 'were', 'what', 'when', 'where', 'which', 'who', 'why', 'will', 'with',
+  'would', 'you', 'your',
+]);
+
 function fold(text: string): string {
   return text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 }
@@ -39,6 +55,18 @@ export function searchTerms(query: string): readonly string[] {
   return terms;
 }
 
+/**
+ * Content-bearing search tokens: strips conversational stopwords when at least
+ * one non-stopword token exists, otherwise keeps the full token list so queries
+ * composed solely of stopwords (e.g. "what is this") still match verbatim.
+ */
+export function informativeSearchTerms(query: string): readonly string[] {
+  const all = searchTerms(query);
+  if (all.length <= 1) return all;
+  const filtered = all.filter((term) => !QUERY_STOPWORDS.has(term));
+  return filtered.length > 0 ? filtered : all;
+}
+
 /** Longest keyword snippet, before its ellipses. */
 export const SNIPPET_CHARS = 200;
 /** Context kept before the first matched word. */
@@ -51,7 +79,7 @@ const SNIPPET_LEAD = 60;
  */
 export function snippetAround(text: string, query: string): string {
   if (text.length <= SNIPPET_CHARS) return text;
-  const terms = searchTerms(query);
+  const terms = informativeSearchTerms(query);
   let first = 0;
   for (const match of text.matchAll(/[\p{L}\p{N}]+/gu)) {
     const word = fold(match[0]);
@@ -71,7 +99,7 @@ export function matchThreadTitles(
   titles: readonly ThreadTitle[],
   profileId: string,
 ): readonly ChatSearchHit[] {
-  const terms = searchTerms(query);
+  const terms = informativeSearchTerms(query);
   if (terms.length === 0) return [];
   const hits: ChatSearchHit[] = [];
   for (const title of titles) {
@@ -92,14 +120,27 @@ function hitKey(hit: ChatSearchHit): string {
 interface Fused {
   hit: ChatSearchHit;
   score: number;
+  bestContribution: number;
   order: number;
+}
+
+const SINGLE_LIST_TOP_WEIGHT = 0.95;
+const MULTI_LIST_BONUS_WEIGHT = 0.05;
+
+function normalizeFusedScore(entry: Fused, listCount: number, k: number): number {
+  const singleTop = 1 / (k + 1);
+  if (listCount <= 1) return Math.min(1, entry.bestContribution / singleTop);
+  const base = SINGLE_LIST_TOP_WEIGHT * (entry.bestContribution / singleTop);
+  const bonus = MULTI_LIST_BONUS_WEIGHT * ((entry.score - entry.bestContribution) / singleTop);
+  return Math.min(1, base + bonus);
 }
 
 /**
  * Merge ranked lists by reciprocal rank. Each item counts once per list, at
- * its best rank there. The fused score is normalized so rank 1 in every list
- * is 1.0. A thread-title hit is dropped when a message from that thread is
- * already in the results: the message is the more specific link.
+ * its best rank there. Ordering uses pure RRF sum; display score normalizes a
+ * single-retriever #1 match to 0.95 (95%) and boosts multi-retriever agreement
+ * smoothly up to 1.0 (100%), avoiding the misleading 33% ceiling when only one
+ * of three retrievers applies (e.g. thread title or exact keyword hit).
  */
 export function fuseByReciprocalRank(
   lists: readonly (readonly ChatSearchHit[])[],
@@ -115,15 +156,18 @@ export function fuseByReciprocalRank(
       seen.add(key);
       const contribution = 1 / (k + seen.size);
       const entry = fused.get(key);
-      if (entry) entry.score += contribution;
-      else fused.set(key, { hit, score: contribution, order: fused.size });
+      if (entry) {
+        entry.score += contribution;
+        if (contribution > entry.bestContribution) entry.bestContribution = contribution;
+      } else {
+        fused.set(key, { hit, score: contribution, bestContribution: contribution, order: fused.size });
+      }
     }
   }
-  const best = lists.length / (k + 1);
   const ranked = [...fused.values()].sort((a, b) => b.score - a.score || a.order - b.order);
   const messageThreads = new Set(ranked.filter((entry) => entry.hit.source === 'message').map((entry) => entry.hit.thread_id));
   return ranked
     .filter((entry) => entry.hit.source === 'message' || !messageThreads.has(entry.hit.thread_id))
     .slice(0, Math.max(0, limit))
-    .map((entry) => ({ ...entry.hit, score: entry.score / best }));
+    .map((entry) => ({ ...entry.hit, score: normalizeFusedScore(entry, lists.length, k) }));
 }

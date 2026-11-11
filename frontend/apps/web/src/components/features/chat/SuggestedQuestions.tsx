@@ -23,6 +23,9 @@ interface SuggestedQuestionsProps {
 
 /** The suggestion catalog — keys map to `chat:suggested.questions.*`. */
 const SUGGESTED_QUESTION_KEYS = [
+  'this_week',
+  'vargas',
+  'best_windows',
   'career',
   'relationship',
   'year',

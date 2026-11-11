@@ -3,14 +3,20 @@
  * registry"; chat tool layer redesign 2026-10-14). One seam file: `@assistant-ui/react`'s
  * toolkit API is imported here and in the other chat seam files only.
  *
- * The model's tools are read_period and travel (lib/chatTurn.ts runs them through the
- * tool loop, loaded on send). This registry gives each a plain-words label for the
- * visible Tools list and a renderer for its rows in the transcript; it carries no
- * schema and no handler, so the page's first chunk never loads the tool loop.
+ * `lib/chatTurn.ts` runs all tools through the tool loop (loaded lazily on send).
+ * This registry gives each tool a plain-words label for the visible Tools list
+ * and renders both rich generative cards and the expandable receipt row in the
+ * transcript; it carries no schema and no handler, so initial chunks stay lean.
  */
 import { defineToolkit, type Toolkit, type ToolCallMessagePartProps } from '@assistant-ui/react';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+
+import { BestWindowsCard } from './toolCards/BestWindowsCard';
+import { LocationSavedCard } from './toolCards/LocationSavedCard';
+import { MeshSynastryCard } from './toolCards/MeshSynastryCard';
+import { VargaChartCard } from './toolCards/VargaChartCard';
+import { WeeklyOutlookCard } from './toolCards/WeeklyOutlookCard';
 
 export interface ChatToolCatalogEntry {
   /** chat.json key for the one-line name shown in the Tools list and on each call row. */
@@ -21,6 +27,11 @@ export interface ChatToolCatalogEntry {
 export const CHAT_TOOL_CATALOG: Readonly<Record<string, ChatToolCatalogEntry>> = {
   read_period: { labelKey: 'tools.read_period' },
   travel: { labelKey: 'tools.travel' },
+  set_current_location: { labelKey: 'tools.set_current_location' },
+  read_varga: { labelKey: 'tools.read_varga' },
+  find_best_windows: { labelKey: 'tools.find_best_windows' },
+  read_mesh_member: { labelKey: 'tools.read_mesh_member' },
+  remember_fact: { labelKey: 'tools.remember_fact' },
 };
 
 /** Render-only entries: the tool loop (lib/chatTurn.ts) runs the tools; assistant-ui only draws their rows. */
@@ -43,10 +54,6 @@ type ToolCallRowProps = Pick<ToolCallMessagePartProps, 'toolName' | 'toolCallId'
 
 type RowOutcome = 'complete' | 'error' | 'skipped';
 
-/**
- * Threads saved before the tool redesign (2026-10-14) hold rows for the old tools. They are
- * drawn under the subject the new tools use (tools.rows.<subject>); a bare tool name is never shown.
- */
 const LEGACY_SUBJECTS: Readonly<Record<string, string>> = {
   get_timing: 'read_period',
   get_period_reading: 'read_period',
@@ -63,16 +70,13 @@ function isLegacy(toolName: string): boolean {
   return Object.hasOwn(LEGACY_SUBJECTS, toolName);
 }
 
-/** An old row recorded a failure as {code} or {error}; a new read_period ask may carry a code and still be complete. */
 function legacyFailed(result: unknown): boolean {
   const old = result as { code?: unknown; error?: unknown } | null | undefined;
   return old?.code !== undefined || old?.error !== undefined;
 }
 
-/** Skipped (answered without running) is its own neutral outcome; then a failure; else complete. */
 function outcomeOf(toolName: string, isError: boolean | undefined, result: unknown, artifact: unknown): RowOutcome {
   if (isError !== true && (artifact as { status?: unknown } | null | undefined)?.status === 'skipped') return 'skipped';
-  // A returned "unavailable" (read_period's typed reasons) is a lookup that got nothing. An ask (needs_place, a place to pick) completed.
   if (isLegacy(toolName) && legacyFailed(result)) return 'error';
   return isError === true || (result as { available?: unknown } | null)?.available === false ? 'error' : 'complete';
 }
@@ -82,9 +86,12 @@ const ROW_KEYS: Readonly<Record<RowOutcome, string>> = { complete: 'tools.row', 
 interface ResultHints {
   readonly period?: { readonly label?: unknown; readonly start?: unknown; readonly end?: unknown };
   readonly place?: { readonly label?: unknown };
-  /** travel's result. */
   readonly period_label?: unknown;
   readonly place_label?: unknown;
+  readonly chart?: unknown;
+  readonly domain?: unknown;
+  readonly role_label?: unknown;
+  readonly member_role?: unknown;
 }
 
 function text(value: unknown): string | undefined {
@@ -95,7 +102,6 @@ function lastDayOf(year: number, month: number): number {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
 
-/** A period as people say it: "May 2019", "2019", "4 May 2019", else its two dates. */
 function periodText(start: string, end: string, language: string): string {
   const [y, m, d] = start.split('-').map(Number);
   const noon = new Date(`${start}T12:00:00Z`);
@@ -106,23 +112,19 @@ function periodText(start: string, end: string, language: string): string {
   return `${start} – ${end}`;
 }
 
-/** What the call was about: the tool, in plain words. */
 function subjectOf(toolName: string, translate: (key: string) => string): string {
   if (isLegacy(toolName)) return translate(`tools.rows.${LEGACY_SUBJECTS[toolName]}`);
   return Object.hasOwn(CHAT_TOOL_CATALOG, toolName) ? translate(`tools.rows.${toolName}`) : toolName;
 }
 
-/**
- * "Looked up the period reading · May 2019 · Singapore": what, when and where, from the result the model got.
- * When before where: a narrow row truncates the place (the thread header names it), never the period.
- */
 function summaryOf(toolName: string, result: unknown, language: string, translate: (key: string) => string): string {
   const hints = (result ?? {}) as ResultHints;
   const place = text(hints.place?.label) ?? text(hints.place_label);
   const start = text(hints.period?.start);
   const end = text(hints.period?.end);
   const period = text(hints.period?.label) ?? text(hints.period_label) ?? (start && end ? periodText(start, end, language) : undefined);
-  return [subjectOf(toolName, translate), period, place].filter((part): part is string => part !== undefined).join(' · ');
+  const detail = text(hints.chart) ?? text(hints.domain) ?? text(hints.role_label) ?? text(hints.member_role);
+  return [subjectOf(toolName, translate), detail, period, place].filter((part): part is string => part !== undefined).join(' · ');
 }
 
 function pretty(value: unknown): string {
@@ -133,10 +135,17 @@ function pretty(value: unknown): string {
   }
 }
 
-/**
- * One tool call in the transcript, collapsed to a sentence. Opening it shows
- * the exact args and result the model got (rendered only once opened).
- */
+function GenerativeToolCard({ toolName, result }: { readonly toolName: string; readonly result: unknown }) {
+  if (toolName === 'read_period') return <WeeklyOutlookCard result={result} />;
+  if (toolName === 'read_varga') return <VargaChartCard result={result} />;
+  if (toolName === 'find_best_windows') return <BestWindowsCard result={result} />;
+  if (toolName === 'read_mesh_member') return <MeshSynastryCard result={result} />;
+  if (toolName === 'set_current_location' || toolName === 'remember_fact') {
+    return <LocationSavedCard toolName={toolName} result={result} />;
+  }
+  return null;
+}
+
 export function ToolCallRow({ toolName, toolCallId, args, result, isError, artifact }: ToolCallRowProps) {
   const { t, i18n } = useTranslation('chat');
   const [open, setOpen] = useState(false);
@@ -144,20 +153,23 @@ export function ToolCallRow({ toolName, toolCallId, args, result, isError, artif
   const summary = summaryOf(toolName, result, i18n.language || 'en', (key) => t(key));
   const sentence = t(ROW_KEYS[outcome], { what: summary });
   return (
-    <details className={`mb-2 rounded-lg border border-ui-border bg-background-tertiary/60 px-3 py-2 text-xs ${outcome === 'skipped' ? 'text-text-muted' : 'text-text-secondary'}`}
-      data-testid="chat-tool-call" data-tool-name={toolName} data-tool-call-id={toolCallId} data-status={outcome}
-      onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary className="cursor-pointer select-none truncate" data-testid="chat-tool-call-summary" title={sentence}>
-        {sentence}
-      </summary>
-      {open && (
-        <div className="mt-2 space-y-2">
-          <p className="text-text-muted">{t('tools.args')}</p>
-          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-background-primary p-2" data-testid="chat-tool-call-args">{pretty(args)}</pre>
-          <p className="text-text-muted">{t('tools.result')}</p>
-          <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded bg-background-primary p-2" data-testid="chat-tool-call-result">{pretty(result)}</pre>
-        </div>
-      )}
-    </details>
+    <>
+      {outcome === 'complete' && <GenerativeToolCard toolName={toolName} result={result} />}
+      <details className={`mb-2 rounded-lg border border-ui-border bg-background-tertiary/60 px-3 py-2 text-xs ${outcome === 'skipped' ? 'text-text-muted' : 'text-text-secondary'}`}
+        data-testid="chat-tool-call" data-tool-name={toolName} data-tool-call-id={toolCallId} data-status={outcome}
+        onToggle={(event) => setOpen(event.currentTarget.open)}>
+        <summary className="cursor-pointer select-none truncate" data-testid="chat-tool-call-summary" title={sentence}>
+          {sentence}
+        </summary>
+        {open && (
+          <div className="mt-2 space-y-2">
+            <p className="text-text-muted">{t('tools.args')}</p>
+            <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-background-primary p-2" data-testid="chat-tool-call-args">{pretty(args)}</pre>
+            <p className="text-text-muted">{t('tools.result')}</p>
+            <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded bg-background-primary p-2" data-testid="chat-tool-call-result">{pretty(result)}</pre>
+          </div>
+        )}
+      </details>
+    </>
   );
 }

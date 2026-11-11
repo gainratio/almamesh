@@ -131,11 +131,12 @@ describe('read_period: the tool', () => {
   it('every example in the description is a valid call, written with its null keys', () => {
     const { tool } = setup();
     const examples = [...tool.description.matchAll(/-> (\{[^}]*\})/g)].map((match) => JSON.parse(match[1] as string) as Record<string, unknown>);
-    expect(examples).toHaveLength(5);
+    expect(examples).toHaveLength(6);
     for (const example of examples) {
       expect(Object.keys(example).sort()).toEqual(['end', 'focus', 'place', 'start', 'time']);
       expect(tool.input.safeParse(example).success).toBe(true);
     }
+    expect(tool.description).toContain('"status for this week" -> {"start":"this_week"');
     expect(tool.description).toContain('"the rest of 2019", asked in a May 2019 trip -> {"start":"2019-06","end":"2019-12"');
     expect(tool.description).toContain('"How was Saturn for me in 2019?" -> {"start":"2019",');
   });
@@ -153,7 +154,7 @@ describe('read_period: the argument rules come back as the fix', () => {
     [{ start: '2019', time: '3pm' }, 'time must be HH:MM (24-hour)'],
     [{ start: '2019-06', end: '2021-11' }, 'start to end is 30 months; read at most 24 months, or ask which part matters most.'],
     [{ start: '2019-12', end: '2019-06' }, 'end (2019-06) is before start (2019-12); send the earlier date as start.'],
-    [{ start: '2019-06', focus: 'panchang' }, 'focus panchang needs a single day: send start as YYYY-MM-DD with end null, or another focus.'],
+    [{ start: '2019-06', focus: 'panchang' }, 'focus panchang supports at most 14 days: send a 1–14 day span (e.g. start="this_week"), or another focus.'],
     [{ start: '2019-02-30' }, '2019-02-30 is not a calendar day.'],
     [{ start: '2053-01' }, 'The sky is computed through 2052; ask about a period that ends by 2052-12-31.'],
   ])('%j', (partial, message) => {
@@ -414,10 +415,61 @@ describe('read_period: places', () => {
     expect(result).toEqual({ status: 'place_not_found', ask: 'Ask for the nearest larger city.' });
   });
 
-  it('under 7 days with no place at all: ask where the user was', async () => {
-    const { result, loadPeriodChart } = await read({ start: '2019-03-12', end: '2019-03-14' }, { threadPlace: undefined, homePlace: undefined });
+  it('a historical single day with no place at all asks where the user was', async () => {
+    const { result, loadPeriodChart } = await read({ start: '2019-03-12' }, { threadPlace: undefined, homePlace: undefined });
     expect(result).toEqual({ status: 'needs_place', ask: 'Ask where the user was that day.' });
     expect(loadPeriodChart).not.toHaveBeenCalled();
+  });
+
+  it('multi-day spans (>= 2 days, including "this_week") with no saved place compute in viewerZone() with place_note', async () => {
+    const threeDay = (await read({ start: '2019-03-12', end: '2019-03-14' }, { threadPlace: undefined, homePlace: undefined })).result as ReadPeriodReading;
+    expect(threeDay.place).toEqual({ timezone: 'America/Los_Angeles' });
+    expect(threeDay.place_note).toBe('Using device timezone; set your current city for local rising-sign timing');
+
+    const dailyMarks = [
+      {
+        date: '2026-10-14',
+        vara: 'Wednesday',
+        sign: 'scorpio',
+        nakshatra: 'Anuradha',
+        pada: 2,
+        nakshatra_lord: 'saturn',
+        tithi: 4,
+        tithi_name: 'Shukla Chaturthi',
+        paksha: 'shukla' as const,
+        yoga: 'Siddhi',
+        karana: 'Vishti',
+        house_from_moon: 7,
+        tara_number: 2,
+        tara_name: 'Sampat',
+        day_quality: 'supportive' as const,
+      },
+    ];
+    const weekly = (
+      await read(
+        { start: 'this_week', focus: 'panchang' },
+        {
+          threadPlace: undefined,
+          homePlace: undefined,
+          loadMoonWindow: vi.fn(async () => ({ at_place: { at_start: MARK, at_end: MARK }, event: null, days: dailyMarks })),
+        },
+      )
+    ).result as ReadPeriodReading;
+    expect(weekly.period).toMatchObject({ start: '2026-10-14', end: '2026-10-20' });
+    expect(weekly.place_note).toBe('Using device timezone; set your current city for local rising-sign timing');
+    expect(weekly.daily).toEqual(dailyMarks);
+    expect(readPeriodGrounding(weekly, 'en').windows.some((w) => w.date === '2026-10-14')).toBe(true);
+  });
+
+  it('persists a newly resolved city via onResolvedHomePlace when reading today/this_week with no saved homePlace', async () => {
+    const onResolvedHomePlace = vi.fn();
+    await read({ start: 'this_week', place: 'Pune' }, { threadPlace: undefined, homePlace: undefined, onResolvedHomePlace });
+    expect(onResolvedHomePlace).toHaveBeenCalledTimes(1);
+    expect(onResolvedHomePlace).toHaveBeenCalledWith(expect.objectContaining({ label: 'Pune, India', timezone: 'Asia/Kolkata' }));
+
+    const notOnPast = vi.fn();
+    await read({ start: '2019-03-12', place: 'Pune' }, { threadPlace: undefined, homePlace: undefined, onResolvedHomePlace: notOnPast });
+    expect(notOnPast).not.toHaveBeenCalled();
   });
 
   it('a week or longer with no place at all reads in the viewer zone, unlabelled', async () => {

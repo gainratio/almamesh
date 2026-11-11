@@ -209,6 +209,24 @@
       "D40": "Legado materno",
       "D45": "Carácter paterno",
       "D60": "Karma pasado — la división más fina"
+    },
+    "inspector": {
+      "ask_guide": "Preguntar a la Guía sobre {{chart}}",
+      "ask_guide_prompt": "Interpreta mi carta divisional {{chart}} ({{name}}) — posiciones clave, dignidades y qué significa para {{theme}}.",
+      "sensitivity_label": "Margen de hora natal: ~{{minutes}} min antes de que el Lagna {{chart}} cambie de signo",
+      "sensitivity_high": "Alta sensibilidad a la hora natal",
+      "rectify_cta": "Verificar hora natal",
+      "d60_heading": "Ṣaṣṭyāṁśa (D60) — Desglose Clásico de 60 Aṁśas",
+      "d60_subtitle": "Brihat Parāśara Horā Śāstra Cap. 6: divisiones kármicas sutiles de medio arco y naturaleza auspiciosa o exigente.",
+      "col_point": "Punto",
+      "col_sign_house": "Signo · Casa",
+      "col_amsa": "Aṁśa (#1–60)",
+      "col_nature": "Naturaleza",
+      "nature_saumya": "Saumya (Auspicioso)",
+      "nature_krura": "Krūra (Exigente)",
+      "house_short": "C{{house}}",
+      "dashboard_switcher_label": "Vista rápida de cartas divisionales",
+      "full_gallery_link": "Las 16 cartas divisionales"
     }
   },
   "strength": {

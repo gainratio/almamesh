@@ -11,7 +11,7 @@
  */
 import { readDeletionTombstones, readObservedDatasetEpoch, type DeletionTombstones } from '@almamesh/store';
 
-import { searchTerms } from './chatSearchFusion';
+import { informativeSearchTerms } from './chatSearchFusion';
 import { CHAT_FTS_BUILT_KEY, withDerivedDb, type DerivedDbAccess, type SqlDatabase } from './derivedDb';
 
 /** Default row cap: about 8 MB of index at most, on disk, never in the JS heap. */
@@ -48,10 +48,17 @@ export interface ChatFtsRows {
   clear(): Promise<void>;
 }
 
-/** Quoted prefix terms: FTS operators typed by the user are plain words. */
-function matchExpression(query: string): string | undefined {
-  const terms = searchTerms(query);
-  return terms.length === 0 ? undefined : terms.map((term) => `"${term}"*`).join(' OR ');
+/**
+ * Quoted prefix FTS5 expressions: strips conversational stopwords when content
+ * tokens exist, and builds high-precision `AND` first before `OR` fallback so
+ * multi-word queries rank messages containing ALL terms at the top.
+ */
+function matchExpressions(query: string): { readonly strict: string; readonly fallback?: string } | undefined {
+  const terms = informativeSearchTerms(query);
+  if (terms.length === 0) return undefined;
+  const quoted = terms.map((term) => `"${term}"*`);
+  if (quoted.length === 1) return { strict: quoted[0]! };
+  return { strict: quoted.join(' AND '), fallback: quoted.join(' OR ') };
 }
 
 /** The vector store's write fence: no restore running, and this tab's generation is still the active one. */
@@ -145,13 +152,29 @@ export function createChatFtsRows(
     }),
     isBuilt: () => withDb(async (db) => (await db.query('SELECT 1 FROM dataset_meta WHERE key = ?', [CHAT_FTS_BUILT_KEY])).length > 0),
     async search(query, profileId, k) {
-      const expression = matchExpression(query);
-      if (expression === undefined || k <= 0) return [];
-      const found = await withDb((db) => db.query<{ thread_id: string; message_id: string; rank: number }>(
-        'SELECT thread_id, message_id, bm25(chat_fts) AS rank FROM chat_fts WHERE chat_fts MATCH ? AND profile_id = ? ORDER BY rank LIMIT ?',
-        [expression, profileId, Math.floor(k)],
-      ));
-      return found.map((hit) => ({ thread_id: hit.thread_id, message_id: hit.message_id, score: -hit.rank }));
+      const expressions = matchExpressions(query);
+      const limit = Math.floor(k);
+      if (expressions === undefined || limit <= 0) return [];
+      return withDb(async (db) => {
+        const sql = 'SELECT thread_id, message_id, bm25(chat_fts) AS rank FROM chat_fts WHERE chat_fts MATCH ? AND profile_id = ? ORDER BY rank LIMIT ?';
+        const strictRows = await db.query<{ thread_id: string; message_id: string; rank: number }>(sql, [expressions.strict, profileId, limit]);
+        const merged: ChatKeywordHit[] = strictRows.map((hit) => ({
+          thread_id: hit.thread_id,
+          message_id: hit.message_id,
+          score: -hit.rank + 1,
+        }));
+        if (expressions.fallback !== undefined && merged.length < limit) {
+          const seen = new Set(merged.map((hit) => hit.message_id));
+          const broadRows = await db.query<{ thread_id: string; message_id: string; rank: number }>(sql, [expressions.fallback, profileId, limit]);
+          for (const hit of broadRows) {
+            if (seen.has(hit.message_id)) continue;
+            seen.add(hit.message_id);
+            merged.push({ thread_id: hit.thread_id, message_id: hit.message_id, score: -hit.rank * 0.5 });
+            if (merged.length >= limit) break;
+          }
+        }
+        return merged;
+      });
     },
     deleteForProfile: (profileId) => purge([['DELETE FROM chat_fts WHERE profile_id = ?', [profileId]]]),
     deleteForThread: (threadId) => purge([['DELETE FROM chat_fts WHERE thread_id = ?', [threadId]]]),

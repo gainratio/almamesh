@@ -9,7 +9,7 @@
  * - maximized: a wider drawer (up to 800px)
  */
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChatPanel, type ChatAsk } from './ChatPanel';
 import type { ViewMode } from '../../../lib/types';
@@ -28,6 +28,8 @@ interface FloatingChatPanelProps {
   onAskQuestionStream: ChatAsk;
   /** Start with the panel open (e.g. arriving via a "discuss in chat" link). */
   initialOpen?: boolean;
+  /** Optional prompt seeded into the composer (e.g. `?chat=open&ask=...`). */
+  initialDraft?: string;
 }
 
 // Icons as separate components for cleaner code
@@ -94,9 +96,16 @@ export function FloatingChatPanel({
   birthYear,
   onAskQuestionStream,
   initialOpen = false,
+  initialDraft,
 }: FloatingChatPanelProps) {
   const { t } = useTranslation('chat');
   const [panelState, setPanelState] = useState<PanelState>(initialOpen ? 'normal' : 'closed');
+
+  useEffect(() => {
+    if (initialOpen || (initialDraft && initialDraft.trim().length > 0)) {
+      setPanelState((prev) => (prev === 'closed' || prev === 'minimized' ? 'normal' : prev));
+    }
+  }, [initialOpen, initialDraft]);
 
   // Get width class based on panel state
   // Open, the chat is a full-height drawer on the right (a full-screen sheet on
@@ -240,6 +249,7 @@ export function FloatingChatPanel({
                   birthYear={birthYear}
                   onAskQuestionStream={onAskQuestionStream}
                   hideHeader
+                  {...(initialDraft ? { initialDraft } : {})}
                 />
               </div>
             )}

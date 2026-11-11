@@ -146,13 +146,44 @@ export interface MoonWindowEvent {
   readonly longitude: number;
 }
 
-/** A place's local window as two UTC instants, plus an optional event. */
+export interface MoonWindowDayInput {
+  readonly date: string;
+  readonly datetimeUtc: string;
+  readonly vara?: string;
+}
+
+export interface MoonWindowNatalMoonInput {
+  readonly sign: string;
+  readonly nakshatra: string;
+}
+
+export interface DayPanchangMark {
+  readonly date: string;
+  readonly vara: string;
+  readonly sign: string;
+  readonly nakshatra: string;
+  readonly pada: number;
+  readonly nakshatra_lord: string;
+  readonly tithi: number;
+  readonly tithi_name: string;
+  readonly paksha: "shukla" | "krishna";
+  readonly yoga: string;
+  readonly karana: string;
+  readonly house_from_moon: number | null;
+  readonly tara_number: number | null;
+  readonly tara_name: string | null;
+  readonly day_quality: "supportive" | "mixed" | "caution" | null;
+}
+
+/** A place's local window as two UTC instants, plus optional event and daily marks. */
 export interface MoonWindowInput {
   /** ISO UTC instant: the place's local 00:00 on the first day. */
   readonly placeStartUtc: string;
   /** ISO UTC instant: the place's local 00:00 after the last day. */
   readonly placeEndUtc: string;
   readonly event?: MoonWindowEvent;
+  readonly days?: readonly MoonWindowDayInput[];
+  readonly natalMoon?: MoonWindowNatalMoonInput;
 }
 
 /** The Moon's sign, nakshatra, tithi and paksha at one instant. */
@@ -171,6 +202,54 @@ export interface MoonEnds {
 export interface MoonWindow {
   readonly at_place: MoonEnds;
   readonly event: { readonly lagna_sign: string; readonly moon: MoonMark } | null;
+  readonly days?: readonly DayPanchangMark[];
+}
+
+export interface VargaDetailPlanetInput {
+  readonly longitude: number;
+  readonly isCombust?: boolean;
+}
+
+export interface VargaDetailInput {
+  readonly chart: string;
+  readonly lagnaLongitude: number;
+  readonly planets: Readonly<Record<string, VargaDetailPlanetInput>>;
+}
+
+export interface ShashtiamsaAmsa {
+  readonly number: number;
+  readonly name: string;
+  readonly nature: "saumya" | "krura";
+}
+
+export interface VargaDetailPlacement {
+  readonly graha: string;
+  readonly sign: string;
+  readonly sign_lord: string;
+  readonly house: number;
+  readonly dignity: "exalted" | "own" | "debilitated" | "neutral";
+  readonly is_combust: boolean;
+  readonly same_sign_as_d1: boolean;
+  readonly vargottama: boolean;
+  readonly shashtiamsa: ShashtiamsaAmsa | null;
+}
+
+export interface VargaLagnaSensitivity {
+  readonly nominal_window_minutes: number;
+  readonly margin_prev_deg: number;
+  readonly margin_next_deg: number;
+  readonly approx_minutes_to_cusp: number;
+  readonly high_time_sensitivity: boolean;
+}
+
+export interface VargaDetailResult {
+  readonly chart: string;
+  readonly lagna_sign: string;
+  readonly lagna_sign_lord: string;
+  readonly lagna_vargottama: boolean;
+  readonly lagna_shashtiamsa: ShashtiamsaAmsa | null;
+  readonly sensitivity: VargaLagnaSensitivity;
+  readonly placements: Readonly<Record<string, VargaDetailPlacement>>;
 }
 
 export interface ComputeMoonWindowRequest {
@@ -191,6 +270,12 @@ export interface ComputeRectificationRequest {
   readonly input: RectificationInput;
 }
 
+export interface ComputeVargaDetailRequest {
+  readonly kind: "computeVargaDetail";
+  readonly id: number;
+  readonly input: VargaDetailInput;
+}
+
 export type ChartWorkerRequest =
   | PrewarmRequest
   | BootRequest
@@ -198,7 +283,8 @@ export type ChartWorkerRequest =
   | ComputePredictiveRequest
   | ComputeMoonWindowRequest
   | ComputeMeshEdgeRequest
-  | ComputeRectificationRequest;
+  | ComputeRectificationRequest
+  | ComputeVargaDetailRequest;
 
 export interface PrewarmOk {
   readonly ok: true;
@@ -271,6 +357,13 @@ export interface RectificationOk {
   readonly rectification: RectificationResultRaw;
 }
 
+export interface VargaDetailOk {
+  readonly ok: true;
+  readonly kind: "computeVargaDetail";
+  readonly id: number;
+  readonly vargaDetail: VargaDetailResult;
+}
+
 export interface WorkerErr {
   readonly ok: false;
   readonly id: number;
@@ -288,6 +381,7 @@ export type ChartWorkerResponse =
   | MoonWindowOk
   | MeshEdgeOk
   | RectificationOk
+  | VargaDetailOk
   | WorkerErr;
 
 /**

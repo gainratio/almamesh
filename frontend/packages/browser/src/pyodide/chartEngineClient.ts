@@ -19,6 +19,8 @@ import type {
   MoonWindow,
   MoonWindowInput,
   PredictiveInput,
+  VargaDetailInput,
+  VargaDetailResult,
   WorkerLike,
 } from "./protocol";
 import type { RectificationInput, RectificationResultRaw } from "./rectification";
@@ -204,6 +206,18 @@ export class ChartEngineClient {
     const response = await this.#send({ kind: "computeRectification", id: this.#allocId(), input });
     if (response.ok && response.kind === "computeRectification") {
       return response.rectification;
+    }
+    throw response.ok ? new Error("unexpected response kind") : errorFromWorker(response.error, response.errorName);
+  }
+
+  /**
+   * Compute rich divisional varga detail (D1..D60) on-device: lagna cusp
+   * sensitivity, whole-sign houses, dignities, vargottama, and D60 Shashtiamsa.
+   */
+  public async computeVargaDetail(input: VargaDetailInput): Promise<VargaDetailResult> {
+    const response = await this.#send({ kind: "computeVargaDetail", id: this.#allocId(), input });
+    if (response.ok && response.kind === "computeVargaDetail") {
+      return response.vargaDetail;
     }
     throw response.ok ? new Error("unexpected response kind") : errorFromWorker(response.error, response.errorName);
   }

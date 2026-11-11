@@ -75,6 +75,12 @@ export function CurrentPlaceRow({ lookup = lookupPlaceLazily }: CurrentPlaceRowP
             }}
             options={options}
             onChoose={(option) => void save(toPinPlace(option))}
+            onSubmitQuery={(text) => {
+              void lookup(text).then((result) => {
+                const first = result.status === 'found' ? result.place : result.status === 'ambiguous' ? result.candidates[0] : undefined;
+                if (first) void save(toPinPlace(first));
+              });
+            }}
             onDismiss={close}
           />
         </div>

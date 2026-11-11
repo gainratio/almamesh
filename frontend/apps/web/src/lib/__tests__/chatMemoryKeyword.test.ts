@@ -13,6 +13,8 @@ import {
   indexChatMessage,
   rebuildMemory,
   searchChatHistory,
+  searchChatHistoryFast,
+  searchChatHistoryProgressive,
 } from '../chatMemory';
 import { __setDerivedDbForTest, migrateDerivedDb, type SqlDatabase } from '../derivedDb';
 
@@ -121,6 +123,52 @@ describe('hybrid chat search', () => {
     const messageId = useChatStore.getState().appendMessage(threadId, 'user', 'an old rahu question').id;
     expect(await ftsMessageIds()).toEqual([]);
     expect((await searchChatHistory('rahu', 'p1')).map((hit) => hit.message_id)).toEqual([messageId]);
+  });
+
+  it('searchChatHistoryFast returns lexical and title hits immediately without touching semantic memory', async () => {
+    const retrieve = vi.fn(() => new Promise<never>(() => undefined));
+    __setMemoryForTest({
+      indexMessage: vi.fn(),
+      retrieve,
+      deleteForProfile: vi.fn(),
+      deleteForThread: vi.fn(),
+      clear: vi.fn(),
+    });
+    const threadId = useChatStore.getState().startThread('p1');
+    const unindexedId = useChatStore.getState().appendMessage(threadId, 'user', 'Dasha sandhi transition ahead').id;
+    __setDerivedDbForTest(undefined);
+
+    const fast = await searchChatHistoryFast('dasha sandhi', 'p1');
+    expect(retrieve).not.toHaveBeenCalled();
+    expect(fast.map((hit) => hit.message_id)).toEqual([unindexedId]);
+    expect(Math.round((fast[0]?.score ?? 0) * 100)).toBe(95);
+  });
+
+  it('searchChatHistoryProgressive emits fast hits before semantic worker settles and fuses after', async () => {
+    const semanticGate = Promise.withResolvers<readonly RetrievedChunk[]>();
+    __setMemoryForTest({
+      indexMessage: vi.fn().mockResolvedValue(undefined),
+      retrieve: vi.fn(() => semanticGate.promise),
+      deleteForProfile: vi.fn().mockResolvedValue(undefined),
+      deleteForThread: vi.fn().mockResolvedValue(undefined),
+      clear: vi.fn().mockResolvedValue(undefined),
+    });
+    const { threadId, messageId } = await say('p1', 'Navamsa vargottama strength');
+    const fastSnapshots: string[][] = [];
+
+    const progressivePromise = searchChatHistoryProgressive('navamsa', 'p1', {
+      onFastResults: (hits) => fastSnapshots.push(hits.map((h) => h.message_id)),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fastSnapshots).toEqual([[messageId]]);
+
+    semanticGate.resolve([
+      { text: 'D9 spiritual dharma', message_id: 'sem-1', thread_id: threadId, score: 0.88 },
+      { text: 'Navamsa vargottama strength', message_id: messageId, thread_id: threadId, score: 0.92 },
+    ]);
+    const finalHits = await progressivePromise;
+    expect(finalHits.map((h) => h.message_id)).toEqual([messageId, 'sem-1']);
+    expect(finalHits[0]?.score).toBeCloseTo(1);
   });
 });
 

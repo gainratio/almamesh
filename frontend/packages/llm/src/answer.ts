@@ -49,6 +49,8 @@ export interface DatedFact {
 /** The readings completed this turn (read_period results, projected flat). */
 export interface AnswerGrounding {
   readonly readings: readonly GroundingReading[];
+  /** True when another specialist read tool (e.g. read_varga, find_best_windows, read_mesh_member) also ran this turn. */
+  readonly hasCompoundReads?: boolean;
 }
 
 export interface DashaLine {
@@ -434,9 +436,12 @@ function checkReflection(value: Wire, issue: Issue): void {
   }
 }
 
-function checkGeneral(value: Wire, readings: readonly GroundingReading[], issue: Issue): void {
-  if (readings.length > 0) issue('You read a period this turn: answer with kind "period" and its facts.', ["kind"]);
-  else if (!value.markdown?.trim()) issue('kind "general" needs markdown: the answer as plain prose.', ["markdown"]);
+function checkGeneral(value: Wire, grounding: AnswerGrounding, issue: Issue): void {
+  if (grounding.readings.length > 0 && !grounding.hasCompoundReads) {
+    issue('You read a period this turn: answer with kind "period" and its facts.', ["kind"]);
+  } else if (!value.markdown?.trim()) {
+    issue('kind "general" needs markdown: the answer as plain prose.', ["markdown"]);
+  }
 }
 
 function checkPeriod(value: Wire, readings: readonly GroundingReading[], language: Language, issue: Issue): void {
@@ -465,9 +470,9 @@ function checkPeriod(value: Wire, readings: readonly GroundingReading[], languag
 export function answerSchema(grounding: () => AnswerGrounding, language: Language = "en"): z.ZodType<ChatAnswer> {
   const schema = wireAnswer.superRefine((value, ctx) => {
     const issue: Issue = (message, path) => ctx.addIssue({ code: "custom", message, path });
-    const { readings } = grounding();
-    if (value.kind === "general") checkGeneral(value, readings, issue);
-    else checkPeriod(value, readings, language, issue);
+    const g = grounding();
+    if (value.kind === "general") checkGeneral(value, g, issue);
+    else checkPeriod(value, g.readings, language, issue);
     checkReflection(value, issue);
   });
   // The refinement guarantees the kind's keys are filled, so the parsed wire value is a ChatAnswer.
