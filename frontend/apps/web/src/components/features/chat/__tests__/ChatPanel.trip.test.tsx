@@ -94,12 +94,27 @@ describe('a trip thread shows what grounds it', () => {
     expect(screen.queryByTestId('trip-context-card')).toBeNull();
   });
 
-  it('the Tools chip lists the registered tools the model has, in plain words', () => {
+  it('the Tools chip lists the trip-grounded tools on a pinned trip thread, and all 7 tools on a today thread', () => {
     useChatStore.getState().startThread('p1', 'c1', MAY_2019_SG);
+    const { unmount } = render(
+      <MemoryRouter>
+        <ChatPanel personName="Marco" profileId="p1" chartId="c1" viewMode="layman" birthYear={1990} onAskQuestionStream={vi.fn<ChatAsk>(async () => 'ok')} />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByTestId('chat-tools-button'));
+    const tripRows = within(screen.getByTestId('chat-tools-list')).getAllByRole('listitem');
+    expect(tripRows.map((row) => row.getAttribute('data-tool-name'))).toEqual(['read_period', 'travel']);
+    expect(tripRows.map((row) => row.textContent)).toEqual([
+      'Read a period: dashas, lords, sky, themes, dated windows',
+      'Travel to another time',
+    ]);
+    unmount();
+
+    useChatStore.getState().startThread('p1', 'c1');
     renderPanel();
     fireEvent.click(screen.getByTestId('chat-tools-button'));
-    const rows = within(screen.getByTestId('chat-tools-list')).getAllByRole('listitem');
-    expect(rows.map((row) => row.getAttribute('data-tool-name'))).toEqual([
+    const todayRows = within(screen.getByTestId('chat-tools-list')).getAllByRole('listitem');
+    expect(todayRows.map((row) => row.getAttribute('data-tool-name'))).toEqual([
       'read_period',
       'travel',
       'set_current_location',
@@ -107,10 +122,6 @@ describe('a trip thread shows what grounds it', () => {
       'find_best_windows',
       'read_mesh_member',
       'remember_fact',
-    ]);
-    expect(rows.slice(0, 2).map((row) => row.textContent)).toEqual([
-      'Read a period: dashas, lords, sky, themes, dated windows',
-      'Travel to another time',
     ]);
   });
 

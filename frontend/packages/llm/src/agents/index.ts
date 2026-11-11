@@ -38,21 +38,21 @@ function selectRecommendedTools(
   active: readonly AgentSpecialist[],
   context?: AgentTurnContext,
 ): readonly string[] {
+  if (context?.hasTrip) return ["read_period"];
   const tools = new Set<string>(["read_period"]);
-  const hasTrip = Boolean(context?.hasTrip);
-  if (!hasTrip && (LOCATION_INTENT.test(trimmed) || (!context?.hasHomePlace && context?.lastAssistantAskedPlace))) {
+  if (LOCATION_INTENT.test(trimmed) || (!context?.hasHomePlace && context?.lastAssistantAskedPlace)) {
     tools.add("set_current_location");
   }
   if (active.some((a) => a.id === "natal_varga" || a.id === "rectification_advisor")) {
     tools.add("read_varga");
   }
-  if (!hasTrip && BEST_WINDOWS_INTENT.test(trimmed)) {
+  if (BEST_WINDOWS_INTENT.test(trimmed)) {
     tools.add("find_best_windows");
   }
   if (active.some((a) => a.id === "mesh_synastry")) {
     tools.add("read_mesh_member");
   }
-  if (!hasTrip && MEMORY_INTENT.test(trimmed)) {
+  if (MEMORY_INTENT.test(trimmed)) {
     tools.add("remember_fact");
   }
   return [...tools];

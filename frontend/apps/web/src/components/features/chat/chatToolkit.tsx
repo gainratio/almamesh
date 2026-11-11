@@ -45,9 +45,21 @@ export interface ChatToolListRow {
   readonly label: string;
 }
 
-/** The visible "Tools" list: every registered tool, labelled in plain words. */
-export function toolListOf(toolkit: Toolkit, translate: (key: string) => string): ChatToolListRow[] {
-  return Object.keys(toolkit).map((name) => ({ name, label: translate(CHAT_TOOL_CATALOG[name]?.labelKey ?? name) }));
+/** Tools offered on a pinned Time-Travel Trip thread (round 1 strictly grounds in the trip). */
+const TRIP_TOOL_NAMES: ReadonlySet<string> = new Set(['read_period', 'travel']);
+
+export interface ToolListOptions {
+  readonly pinnedTrip?: boolean;
+}
+
+/** The visible "Tools" list: every registered tool offered on this thread, labelled in plain words. */
+export function toolListOf(
+  toolkit: Toolkit,
+  translate: (key: string) => string,
+  options?: ToolListOptions,
+): ChatToolListRow[] {
+  const names = Object.keys(toolkit).filter((name) => !options?.pinnedTrip || TRIP_TOOL_NAMES.has(name));
+  return names.map((name) => ({ name, label: translate(CHAT_TOOL_CATALOG[name]?.labelKey ?? name) }));
 }
 
 type ToolCallRowProps = Pick<ToolCallMessagePartProps, 'toolName' | 'toolCallId' | 'args' | 'argsText' | 'result' | 'isError' | 'status' | 'artifact'>;

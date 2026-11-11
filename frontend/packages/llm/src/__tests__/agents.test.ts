@@ -61,5 +61,8 @@ describe("specialist agent routing (selectSpecialistsForTurn)", () => {
     expect(ChatAgent.planTurn("Deep dive my D9 and D60").recommendedTools).toContain("read_varga");
     expect(ChatAgent.planTurn("How compatible am I with my spouse?").recommendedTools).toContain("read_mesh_member");
     expect(ChatAgent.planTurn("Remember that I'm building an AI startup").recommendedTools).toContain("remember_fact");
+    expect(
+      ChatAgent.planTurn("Deep dive my D9 with my spouse and remember this", { hasTrip: true }).recommendedTools,
+    ).toEqual(["read_period"]);
   });
 });

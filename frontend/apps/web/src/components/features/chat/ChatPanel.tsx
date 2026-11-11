@@ -300,7 +300,7 @@ export function ChatPanel({
         <div className="shrink-0 border-b border-ui-border bg-background-tertiary px-4 py-2 text-xs text-text-secondary">
           <p className="mb-1 font-medium text-text-primary">{t('tools.heading')}</p>
           <ul data-testid="chat-tools-list" className="list-disc space-y-0.5 pl-4">
-            {toolListOf(toolkit, (key) => t(key)).map((row) => <li key={row.name} data-tool-name={row.name}>{row.label}</li>)}
+            {toolListOf(toolkit, (key) => t(key), { pinnedTrip: Boolean(asOf) }).map((row) => <li key={row.name} data-tool-name={row.name}>{row.label}</li>)}
           </ul>
         </div>
       )}

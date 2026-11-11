@@ -26,10 +26,14 @@ describe('the chat toolkit registers all agentic tools', () => {
     }
   });
 
-  it('the visible Tools list names each tool in plain words, in every language', () => {
+  it('the visible Tools list names each tool in plain words, and filters pinned trips to read_period + travel', () => {
     expect(toolListOf(CHAT_TOOLKIT, (key) => key)).toEqual(
       ALL_TOOL_NAMES.map((name) => ({ name, label: CHAT_TOOL_CATALOG[name]!.labelKey })),
     );
+    expect(toolListOf(CHAT_TOOLKIT, (key) => key, { pinnedTrip: true })).toEqual([
+      { name: 'read_period', label: CHAT_TOOL_CATALOG.read_period!.labelKey },
+      { name: 'travel', label: CHAT_TOOL_CATALOG.travel!.labelKey },
+    ]);
   });
 });
 
