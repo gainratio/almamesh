@@ -6,11 +6,11 @@ Your Vedic (traditional Indian) astrology chart, free and computed in your own b
 [![Version](https://img.shields.io/github/v/tag/gainratio/almamesh?label=version)](CHANGELOG.md)
 [![License: MIT](https://img.shields.io/github/license/gainratio/almamesh)](LICENSE)
 
-**[Live demo](https://almamesh.com)** · [Docs](docs/README.md) · [Quickstart](docs/QUICKSTART.md)
+**[Live demo](https://almamesh.com)** · [Docs](docs/README.md) · [Quickstart](docs/QUICKSTART.md) · **[1080p walkthrough](https://open-source.gainratio.com/almamesh/)**
 
 **Technical docs:** [Architecture](docs/ARCHITECTURE.md) · [Getting started for developers](docs/GETTING_STARTED.md) · [In-browser engine](docs/edgeproc-browser.md) · [Security policy](SECURITY.md)
 
-![AlmaMesh home screen: "Your real sky. Computed on your device. Free, forever." with a "Generate my chart — free" button](docs/assets/landing.png)
+![AlmaMesh walkthrough: entering birth details locally, computing sidereal planetary longitudes and Vimshottari dashas in the browser, and viewing the Vedic kundli](docs/assets/live-demo.gif)
 <sub>Real output of the example below — the home screen `make demo` opens at http://localhost:4173 (the same app runs at almamesh.com).</sub>
 
 ## At a glance
