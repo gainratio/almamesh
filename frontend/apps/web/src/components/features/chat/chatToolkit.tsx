@@ -186,6 +186,11 @@ function ToolCallPayload({ args, result }: { readonly args: unknown; readonly re
   );
 }
 
+function rowCardClass(outcome: RowOutcome): string {
+  const tone = outcome === 'skipped' ? 'text-text-muted' : 'text-text-secondary';
+  return `mb-2 rounded-lg border border-ui-border bg-background-tertiary/60 px-3 py-2 text-xs ${tone}`;
+}
+
 export function ToolCallRow({ toolName, toolCallId, args, result, isError, artifact }: ToolCallRowProps) {
   const { t, i18n } = useTranslation('chat');
   const [open, setOpen] = useState(false);
@@ -195,9 +200,8 @@ export function ToolCallRow({ toolName, toolCallId, args, result, isError, artif
   return (
     <>
       {outcome === 'complete' && <GenerativeToolCard toolName={toolName} result={result} />}
-      <div className={`mb-2 rounded-lg border border-ui-border bg-background-tertiary/60 px-3 py-2 text-xs ${outcome === 'skipped' ? 'text-text-muted' : 'text-text-secondary'}`}
-        data-testid="chat-tool-call" data-tool-name={toolName} data-tool-call-id={toolCallId} data-status={outcome}>
-        <details onToggle={(event) => setOpen(event.currentTarget.open)}>
+      <div className={rowCardClass(outcome)}>
+        <details data-testid="chat-tool-call" data-tool-name={toolName} data-tool-call-id={toolCallId} data-status={outcome} onToggle={(e) => setOpen(e.currentTarget.open)}>
           <summary className="cursor-pointer select-none truncate" data-testid="chat-tool-call-summary" title={sentence}>{sentence}</summary>
           {open && <ToolCallPayload args={args} result={result} />}
         </details>

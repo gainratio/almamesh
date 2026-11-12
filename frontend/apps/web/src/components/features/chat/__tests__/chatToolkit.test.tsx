@@ -284,6 +284,9 @@ describe('generative tool cards render alongside receipt rows', () => {
         }}
       />,
     );
+    const row = screen.getByTestId('chat-tool-call');
+    expect(row.tagName).toBe('DETAILS');
+    expect((row as HTMLDetailsElement).open).toBe(false);
     const reasonEl = screen.getByTestId('chat-tool-call-reason');
     expect(reasonEl.textContent).toContain(snippet);
     expect(reasonEl.closest('details')).toBeNull();

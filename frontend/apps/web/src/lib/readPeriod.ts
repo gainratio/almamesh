@@ -59,8 +59,8 @@ const MAX_PANCHANG_DAYS = 14;
 /** Multi-day spans (>= 2 inclusive days) fall back to viewerZone() with place_note instead of blocking. */
 const NEEDS_PLACE_DAYS = 2;
 export const DEVICE_TIMEZONE_PLACE_NOTE = 'Using device timezone; set your current city for local rising-sign timing';
-/** All of one call's Moon read; the period load before it has the rest of the tool's time. */
-const MOON_DEADLINE_MS = 8_000;
+/** All of one call's Moon read, including cold-boot or crash-reboot recovery when today's period_reading came from SQLite. */
+const MOON_DEADLINE_MS = 60_000;
 const LAST_SKY_DAY = `${EPHEMERIS_LAST_YEAR}-12-31`;
 
 const GRAHA_FOCI = ['sun', 'moon', 'mars', 'mercury', 'jupiter', 'venus', 'saturn', 'rahu', 'ketu'] as const;
