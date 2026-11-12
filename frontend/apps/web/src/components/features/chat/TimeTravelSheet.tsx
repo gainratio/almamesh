@@ -161,18 +161,18 @@ export function TimeTravelSheet(props: TimeTravelSheetProps) {
         <input type="date" aria-label={t('time_travel.sheet.day_label')} data-testid="time-travel-day" value={draft.day}
           min={`${years[0]}-01-01`} max={`${years.at(-1)}-12-31`}
           onChange={(event) => setDraft({ ...draft, day: event.target.value })}
-          className="mt-2 rounded-lg border border-ui-border bg-background-primary px-3 py-2 text-sm text-text-primary" />
+          className="mt-2 rounded-lg border border-ui-border bg-background-primary px-3 py-2 text-base sm:text-sm text-text-primary" />
       )}
       {draft.granularity === 'month' && (
         <div className="mt-2 flex gap-2">
           <select aria-label={t('time_travel.sheet.month_label')} data-testid="time-travel-month" value={draft.month.slice(5, 7)}
             onChange={(event) => setDraft({ ...draft, month: `${draft.month.slice(0, 4)}-${event.target.value}` })}
-            className="rounded-lg border border-ui-border bg-background-primary px-3 py-2 text-sm text-text-primary">
+            className="rounded-lg border border-ui-border bg-background-primary px-3 py-2 text-base sm:text-sm text-text-primary">
             {MONTHS.map((month) => <option key={month} value={month}>{monthName(month)}</option>)}
           </select>
           <select aria-label={t('time_travel.sheet.year_label')} data-testid="time-travel-month-year" value={draft.month.slice(0, 4)}
             onChange={(event) => setDraft({ ...draft, month: `${event.target.value}-${draft.month.slice(5, 7)}` })}
-            className="rounded-lg border border-ui-border bg-background-primary px-3 py-2 text-sm text-text-primary">
+            className="rounded-lg border border-ui-border bg-background-primary px-3 py-2 text-base sm:text-sm text-text-primary">
             {years.map((year) => <option key={year} value={year}>{year}</option>)}
           </select>
         </div>
@@ -180,7 +180,7 @@ export function TimeTravelSheet(props: TimeTravelSheetProps) {
       {draft.granularity === 'year' && (
         <select aria-label={t('time_travel.sheet.year_label')} data-testid="time-travel-year" value={draft.year}
           onChange={(event) => setDraft({ ...draft, year: Number(event.target.value) })}
-          className="mt-2 rounded-lg border border-ui-border bg-background-primary px-3 py-2 text-sm text-text-primary">
+          className="mt-2 rounded-lg border border-ui-border bg-background-primary px-3 py-2 text-base sm:text-sm text-text-primary">
           {years.map((year) => <option key={year} value={year}>{year}</option>)}
         </select>
       )}

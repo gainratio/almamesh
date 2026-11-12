@@ -180,7 +180,19 @@
       "remember_fact": "una nota de contexto",
       "place": "un lugar",
       "context": "los datos de la carta"
-    }
+    },
+    "reasons": {
+      "engine_unavailable": "El motor de cálculo en el dispositivo no pudo iniciarse. Pulsa Reintentar motor arriba o recarga la página.",
+      "other_tab": "Otra pestaña de AlmaMesh está usando la caché del motor. Cierra la otra pestaña y pulsa Reintentar motor.",
+      "timeout": "El cálculo del cielo en el dispositivo tardó demasiado (frecuente en modo de bajo consumo). Pulsa Reintentar motor y vuelve a preguntar.",
+      "incomplete_birth_data": "A tu carta natal le falta la zona horaria del lugar de nacimiento. Vuelve a elegirlo en Ajustes del perfil.",
+      "reading_unavailable": "La lectura en caché proviene de un formato anterior del motor. Pulsa Reintentar motor para actualizarla.",
+      "device_limit": "Este dispositivo limita los cálculos del cielo para mantenerse dentro de la memoria.",
+      "birth_year": "Las lecturas del cielo comienzan después de tu año de nacimiento."
+    },
+    "engine_error_banner": "El motor de cálculo en el dispositivo se detuvo antes de poder calcular el cielo de hoy.",
+    "retry_engine": "Reintentar motor",
+    "clear_engine_cache": "Actualizar caché del motor y recargar"
   },
   "threads": {
     "label": "Conversaciones",

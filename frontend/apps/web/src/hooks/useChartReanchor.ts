@@ -76,7 +76,10 @@ function endWait(waits: Waits, attempt: string): void {
 }
 
 export function useChartReanchor(): void {
-  const engine = useOptionalChartEngine()?.engine ?? null;
+  const engineCtx = useOptionalChartEngine();
+  const engine = engineCtx?.engine ?? null;
+  const engineError = engineCtx?.error ?? null;
+  const startBootstrap = engineCtx?.startBootstrap;
   const queryClient = useQueryClient();
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
   const charts = useChartLibraryStore((s) => s.charts);
@@ -111,7 +114,11 @@ export function useChartReanchor(): void {
     // happens) with no wait active: an answer streamed across the recompute
     // would be discarded.
     beginWait(waits.current, attempt, chartId);
-    if (!engine || attempted.current.has(attempt)) {
+    if (!engine) {
+      if (!engineError) startBootstrap?.();
+      return;
+    }
+    if (attempted.current.has(attempt)) {
       return;
     }
     attempted.current.add(attempt);
@@ -131,5 +138,5 @@ export function useChartReanchor(): void {
         finished.current.add(attempt);
         endWait(waits.current, attempt);
       });
-  }, [engine, chartId, behind, today, queryClient]);
+  }, [engine, engineError, startBootstrap, chartId, behind, today, queryClient]);
 }

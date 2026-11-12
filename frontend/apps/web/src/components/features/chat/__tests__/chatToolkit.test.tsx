@@ -1,8 +1,13 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
-import '../../../../i18n/config';
+import i18n from '../../../../i18n/config';
 import { CHAT_TOOL_CATALOG, CHAT_TOOLKIT, ToolCallRow, toolListOf } from '../chatToolkit';
+
+afterEach(async () => {
+  cleanup();
+  await i18n.changeLanguage('en');
+});
 
 const READING = { period: { label: 'May 2019', start: '2019-05-01', end: '2019-05-31' }, place: { label: 'Singapore', timezone: 'Asia/Singapore' }, dashas: { maha: [{ lord: 'jupiter' }] } };
 
@@ -255,5 +260,33 @@ describe('generative tool cards render alongside receipt rows', () => {
     expect(screen.getByTestId('tool-card-best-windows').textContent).toContain('Career');
     expect(screen.getByTestId('mesh-card-ashtakoota').textContent).toContain('28.5/36');
     expect(screen.getByTestId('tool-card-location-saved').textContent).toContain('Novato, California, United States');
+  });
+
+  it.each([
+    ['en', 'other_tab', 'Another AlmaMesh tab is using the on-device engine cache'],
+    ['es', 'timeout', 'modo de bajo consumo'],
+    ['hi', 'engine_unavailable', 'ऑन-डिवाइस गणना इंजन'],
+    ['pt', 'reading_unavailable', 'formato anterior do motor'],
+  ] as const)('renders visible failure reason below summary even when collapsed (%s / %s)', async (lang, reason, snippet) => {
+    await i18n.changeLanguage(lang);
+    render(
+      <ToolCallRow
+        toolName="read_period"
+        toolCallId="err-1"
+        args={{ start: 'today' }}
+        argsText=""
+        status={{ type: 'complete' }}
+        result={{
+          available: false,
+          reason,
+          period: { label: 'November 12, 2026' },
+          place: { label: 'Novato, California' },
+        }}
+      />,
+    );
+    const reasonEl = screen.getByTestId('chat-tool-call-reason');
+    expect(reasonEl.textContent).toContain(snippet);
+    expect(reasonEl.closest('details')).toBeNull();
+    expect(screen.queryByTestId('chat-tool-call-args')).toBeNull();
   });
 });

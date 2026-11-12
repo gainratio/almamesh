@@ -211,6 +211,10 @@ export function usePredictiveLayer({ auto = false }: UsePredictiveLayerOptions =
 
   const pendingKickoff = useRef<ScheduledKickoff | null>(null);
   useEffect(() => {
+    if (!auto || engine || engineCtx?.error || !input || rectGateActive) return;
+    engineCtx?.startBootstrap?.();
+  }, [auto, engine, engineCtx, input, rectGateActive]);
+  useEffect(() => {
     if (!auto || !engine || engineCtx?.error || !input || rectGateActive) {
       return;
     }

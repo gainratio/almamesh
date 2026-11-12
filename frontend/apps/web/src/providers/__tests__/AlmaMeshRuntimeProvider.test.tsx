@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 
 import {
   AlmaMeshRuntime,
+  EngineBootCancelledError,
   EngineOperationError,
   EngineStorageBlockedError,
   WorkerCrashError,
@@ -1099,5 +1100,24 @@ describe('AlmaMeshRuntimeProvider — post-ready failure and fresh recovery', ()
       expect(runtime.bootstrapCalls).toBe(2);
       expect(ctx!.meta?.bundle_id).toBe('new-generation');
     } finally { vi.unstubAllGlobals(); }
+  });
+
+  it('recovers automatically on iOS Safari pageshow after pagehide cancelled an in-flight bootstrap', async () => {
+    const runtime = makeFakeRuntime([
+      () => Promise.reject(new EngineBootCancelledError()),
+      () => Promise.resolve(makeFakeEngine('pageshow-recovered')),
+    ]);
+    let ctx: ReturnType<typeof useChartEngine> | null = null;
+    render(<AlmaMeshRuntimeProvider runtime={runtime}><Probe capture={(value) => { ctx = value; }} /></AlmaMeshRuntimeProvider>);
+    await waitFor(() => expect(ctx?.error?.name).toBe('EngineBootCancelledError'));
+    expect(ctx!.engine).toBeNull();
+
+    act(() => {
+      window.dispatchEvent(new Event('pageshow'));
+    });
+    await waitFor(() => expect(ctx?.engine).not.toBeNull());
+    expect(ctx!.error).toBeNull();
+    expect(ctx!.meta?.bundle_id).toBe('pageshow-recovered');
+    expect(runtime.bootstrapCalls).toBe(2);
   });
 });

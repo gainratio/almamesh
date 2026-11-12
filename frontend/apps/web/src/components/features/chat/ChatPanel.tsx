@@ -43,6 +43,7 @@ import { tripContext } from '../../../lib/tripContext';
 import { TripContextCard } from './TripContextCard';
 import { TravelOffer } from './TravelOffer';
 import { ChatContextBar } from './ChatContextBar';
+import { ChatEngineAlert } from './ChatEngineAlert';
 import { AiSetupDialog } from '../ai/AiSetupDialog';
 
 /** What a page's ask handler gets: the hook's stream input, the reader's voice and the status line. */
@@ -322,6 +323,8 @@ export function ChatPanel({
         </div>
       )}
 
+      <ChatEngineAlert />
+
       {reanchorWaits && aiConfigured && (
         <div className="mx-4 mt-3 rounded-lg border border-ui-border px-3 py-2 text-xs text-text-muted" data-testid="chat-reanchor-status" role="status">
           {t('reanchor.updating')}
@@ -409,7 +412,7 @@ export function ChatPanel({
           </button>
           <ComposerPrimitive.Input
             placeholder={t('input.placeholder')}
-            className="flex-1 min-w-0 px-3 py-2.5 bg-background-primary border border-ui-border rounded-xl text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-gold/50 resize-none text-sm leading-5 disabled:opacity-50"
+            className="flex-1 min-w-0 px-3 py-2.5 bg-background-primary border border-ui-border rounded-xl text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-gold/50 resize-none text-base sm:text-sm leading-5 disabled:opacity-50"
             minRows={2}
             maxRows={6}
             data-testid="chat-input"

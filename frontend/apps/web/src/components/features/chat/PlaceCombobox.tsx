@@ -99,7 +99,7 @@ export function PlaceCombobox(props: PlaceComboboxProps) {
         placeholder={props.placeholder}
         onChange={(event) => props.onQueryChange(event.target.value)}
         onKeyDown={onKeyDown}
-        className="mt-1 w-full rounded-lg border border-ui-border bg-background-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus-visible:border-accent-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60"
+        className="mt-1 w-full rounded-lg border border-ui-border bg-background-primary px-3 py-2 text-base sm:text-sm text-text-primary placeholder:text-text-muted focus-visible:border-accent-gold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60"
       />
       {open && (
         <ul id={listId} role="listbox" aria-label={props.label}

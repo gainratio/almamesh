@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { EngineStorageBlockedError } from '@almamesh/browser';
 import { useChartEngine } from '../providers/chartEngineContext';
 
-function heldByAnotherTab(error: unknown): boolean {
+export function isEngineHeldByAnotherTab(error: unknown): boolean {
   let current: unknown = error;
   for (let depth = 0; depth < 5 && current instanceof Error; depth += 1) {
     if (current instanceof EngineStorageBlockedError) return current.reason === 'pool-in-use';
@@ -18,7 +18,7 @@ function heldByAnotherTab(error: unknown): boolean {
 export function EngineOtherTabNotice() {
   const { t } = useTranslation();
   const { error, reboot } = useChartEngine();
-  if (!heldByAnotherTab(error)) return null;
+  if (!isEngineHeldByAnotherTab(error)) return null;
   return (
     <div
       role="alert"

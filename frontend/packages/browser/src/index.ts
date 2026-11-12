@@ -66,6 +66,7 @@ export type { DomainStrengthAssayResult } from "./pyodide/strengthAssay";
 // --- the Pyodide chart engine (compute layer) ---
 export { ChartEngineClient } from "./pyodide/chartEngineClient";
 export { isWasmBootFault } from "./pyodide/bootFault";
+export { EngineBootCancelledError } from "./pyodide/teardown";
 export {
   CHART_SNAPSHOT_SCHEMA,
   ChartSnapshotError,

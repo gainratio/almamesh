@@ -24,6 +24,7 @@ import type { ProcessedBirthData } from '@almamesh/shared-types';
 import { LocalTimeError } from '@almamesh/store';
 
 import type { PlaceLookup, ResolvedPlace } from './geo/placeLookup';
+import { isEngineHeldByAnotherTab } from '../components/EngineOtherTabNotice';
 import type { MoonWindowLoader } from './moonWindow';
 import { birthUtcYearOf, birthYearOf, PeriodSkyUnavailableError, type PeriodChartLoader } from './periodChart';
 import {
@@ -535,6 +536,7 @@ function unavailable(frame: ReadingFrame, reason: PeriodReadingFailure, notes?: 
 }
 
 function failureReason(error: unknown): PeriodReadingFailure {
+  if (isEngineHeldByAnotherTab(error)) return 'other_tab';
   if (error instanceof PeriodSkyUnavailableError) return error.reason;
   if (error instanceof PeriodSkyTimeoutError) return 'timeout';
   return 'engine_unavailable';
