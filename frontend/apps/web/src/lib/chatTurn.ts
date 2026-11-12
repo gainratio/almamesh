@@ -343,35 +343,31 @@ interface Framed {
 const PLACE_PROMPT_RE =
   /\b(?:where\s+(?:do\s+you\s+live|are\s+you)|current\s+(?:city|location)|what\s+city\s+are\s+you\s+in|nearest\s+larger\s+city|dónde\s+vives|onde\s+você\s+mora)\b/iu;
 
+function buildTurnExtras(plan: TurnAgentPlan, profile: Profile | undefined, largeWindow: boolean): Partial<ThreadFacts> {
+  const memoryNotes = largeWindow ? getProfileMemoryFacts(profile).map((f) => `[${f.category}] ${f.text}`) : [];
+  return {
+    ...(memoryNotes.length > 0 ? { memoryNotes } : {}),
+    ...(largeWindow && plan.specialistBlock ? { specialistBlock: plan.specialistBlock } : {}),
+    ...(plan.enforceRelationshipFence ? { enforceRelationshipFence: true } : {}),
+  };
+}
+
 function planTurnFor(
   input: ChatTurnInput,
   pin: ChatThreadAsOf | undefined,
   profile: Profile | undefined,
   profileId: string | undefined,
+  largeWindow: boolean,
 ): { readonly plan: TurnAgentPlan; readonly extras: Partial<ThreadFacts> } {
   const store = useProfilesStore.getState();
-  const memoryNotes = getProfileMemoryFacts(profile).map((f) => `[${f.category}] ${f.text}`);
-  const isRectified = Boolean(
-    input.rectification || (profileId && useRectificationRecordsStore.getState().getRecord(profileId)),
-  );
+  const isRectified = Boolean(input.rectification || (profileId && useRectificationRecordsStore.getState().getRecord(profileId)));
   const lastAssistant = [...input.history].reverse().find((t) => t.role === 'assistant')?.content ?? '';
-  const lastAssistantAskedPlace = !input.pendingTravel && PLACE_PROMPT_RE.test(lastAssistant);
   const plan = selectSpecialistsForTurn(input.question, {
-    hasHomePlace: Boolean(input.currentPlace),
-    hasTrip: Boolean(pin),
-    hasMeshEdge: Boolean(input.meshEdge),
-    hasMeshMembers: listMembersOf(store.profiles).length > 0,
-    isRectified,
-    lastAssistantAskedPlace,
+    hasHomePlace: Boolean(input.currentPlace), hasTrip: Boolean(pin), hasMeshEdge: Boolean(input.meshEdge),
+    hasMeshMembers: listMembersOf(store.profiles).length > 0, isRectified,
+    lastAssistantAskedPlace: !input.pendingTravel && PLACE_PROMPT_RE.test(lastAssistant),
   });
-  return {
-    plan,
-    extras: {
-      ...(memoryNotes.length > 0 ? { memoryNotes } : {}),
-      ...(plan.specialistBlock ? { specialistBlock: plan.specialistBlock } : {}),
-      ...(plan.enforceRelationshipFence ? { enforceRelationshipFence: true } : {}),
-    },
-  };
+  return { plan, extras: buildTurnExtras(plan, profile, largeWindow) };
 }
 
 /** The prompt's frame: a trip reads its natal chart at its own period; a today thread as of the chart. */
@@ -381,11 +377,12 @@ function frameOf(
   now: Date,
   profile: Profile | undefined,
   profileId: string | undefined,
+  largeWindow: boolean,
 ): Framed {
   const zone = (input.seams?.viewerZone ?? viewerTimeZone)();
   const facts = input.promptChart ?? input.chart;
   const today = formatNow(now, zone);
-  const { plan, extras } = planTurnFor(input, pin, profile, profileId);
+  const { plan, extras } = planTurnFor(input, pin, profile, profileId, largeWindow);
   if (!pin) {
     const home = input.currentPlace ? { home: { place: input.currentPlace.label, timezone: input.currentPlace.timezone } } : {};
     return { chart: facts, asOf: input.chartAsOf, thread: { now: today, ...home, ...extras }, plan };
@@ -487,7 +484,7 @@ export async function* runChatTurn(input: ChatTurnInput): AsyncGenerator<string>
   };
   // An old trip with no place reads the birth place (tripContext.ts).
   const pin = input.asOf ? tripPin(input.asOf, input.birth) : undefined;
-  const frame = frameOf(input, pin, now, profile, profileId);
+  const frame = frameOf(input, pin, now, profile, profileId, promptBudget.includeRawPredictive);
   const messages = buildChatMessages(
     sanitizeChartForLlm(frame.chart, frame.asOf), input.question, input.mode, input.history, input.retrievedContext,
     input.interpretationText, input.language, input.meshEdge, input.rectification, promptBudget, frame.pinned, frame.thread,
@@ -509,7 +506,9 @@ export async function* runChatTurn(input: ChatTurnInput): AsyncGenerator<string>
     input.onToolCall?.({ toolCallId: event.toolCallId, toolName: event.toolName, args, result: event.result, status: event.status });
   };
   const answerGrounding = () => ({ readings, ...(hasCompoundReads ? { hasCompoundReads: true } : {}) });
-  const recommended = new Set(frame.plan.recommendedTools);
+  const recommended = new Set(
+    promptBudget.includeRawPredictive ? frame.plan.recommendedTools : frame.plan.recommendedTools.slice(0, 2),
+  );
   const turnLimits = {
     maxRounds: TOOL_LOOP_LIMITS.maxRounds,
     maxCallsPerTool: { ...TOOL_LOOP_LIMITS.maxCallsPerTool, travel: 1 },

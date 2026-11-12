@@ -402,4 +402,23 @@ describe('useChartReanchor', () => {
     await vi.advanceTimersByTimeAsync(0);
     expect(isPending()).toBe(false);
   });
+
+  it('starts engine bootstrap when arriving from an engine-free splash route with a chart behind today', () => {
+    useChartLibraryStore.setState({
+      charts: { 'chart-1': chartCalculatedOn('2026-06-26T17:00:00.000Z') },
+      hydrated: true,
+    });
+    const startBootstrap = vi.fn();
+    const unbootedCtx: ChartEngineContextValue = {
+      engine: null,
+      stage: null,
+      error: null,
+      meta: null,
+      startBootstrap,
+      whenReady: () => new Promise<never>(() => {}),
+      reboot: () => new Promise<never>(() => {}),
+    };
+    renderReanchor(unbootedCtx);
+    expect(startBootstrap).toHaveBeenCalledTimes(1);
+  });
 });

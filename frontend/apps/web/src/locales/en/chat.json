@@ -177,7 +177,19 @@
       "remember_fact": "profile context note",
       "place": "a place",
       "context": "chart facts"
-    }
+    },
+    "reasons": {
+      "engine_unavailable": "The on-device calculation engine could not start. Tap Retry engine above or reload the page.",
+      "other_tab": "Another AlmaMesh tab is using the on-device engine cache. Close the other tab, then tap Retry engine.",
+      "timeout": "Today’s on-device sky calculation took too long (common in Low Power Mode). Tap Retry engine and ask again.",
+      "incomplete_birth_data": "Your birth chart is missing a birthplace timezone. Re-select your birthplace in Profile Settings.",
+      "reading_unavailable": "The cached sky reading is from an older engine format. Tap Retry engine to refresh it.",
+      "device_limit": "This device limits background sky calculations to stay within memory.",
+      "birth_year": "Sky readings start after your birth year."
+    },
+    "engine_error_banner": "The on-device calculation engine stopped before it could compute today’s sky.",
+    "retry_engine": "Retry engine",
+    "clear_engine_cache": "Refresh engine cache & reload"
   },
   "threads": {
     "label": "Conversations",

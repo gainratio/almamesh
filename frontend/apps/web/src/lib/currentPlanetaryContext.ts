@@ -7,6 +7,7 @@ import {
 } from '@almamesh/store';
 
 import { withDeadline } from './deadline';
+import { PERIOD_SKY_TIMEOUT_MS, PeriodSkyTimeoutError } from './periodSky';
 import { isCachedNatalLords, isCachedPeriodReading } from './periodSkyValidation';
 import { buildEnsurePredictiveInput, predictiveReferenceInstant } from './predictive';
 
@@ -25,8 +26,6 @@ function throwIfAborted(signal: AbortSignal): void {
   if (signal.reason instanceof Error) throw signal.reason;
   throw new DOMException('The operation was aborted', 'AbortError');
 }
-
-const CURRENT_CONTEXT_TIMEOUT_MS = 60_000;
 
 /** Use the chart-local calendar day as the engine's stable daily reference key. */
 export function planetaryReferenceInstantForZone(now: Date, timeZone: string): string {
@@ -62,8 +61,8 @@ export function readHydratedCurrentPeriodChart(
 
 function withCurrentContextDeadline<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
   return withDeadline(work, signal, {
-    timeoutMs: CURRENT_CONTEXT_TIMEOUT_MS,
-    onTimeout: () => new Error('Current planetary context calculation timed out.'),
+    timeoutMs: PERIOD_SKY_TIMEOUT_MS,
+    onTimeout: () => new PeriodSkyTimeoutError(),
     failureMessage: 'Current planetary context calculation failed.',
   });
 }
@@ -101,8 +100,8 @@ function waitForCurrentCalculation(
       }
     };
     const timeout = setTimeout(
-      () => finish(new Error('Current planetary context calculation timed out.')),
-      CURRENT_CONTEXT_TIMEOUT_MS,
+      () => finish(new PeriodSkyTimeoutError()),
+      PERIOD_SKY_TIMEOUT_MS,
     );
     signal.addEventListener('abort', onAbort, { once: true });
     unsubscribe = usePredictiveStore.subscribe(inspect);

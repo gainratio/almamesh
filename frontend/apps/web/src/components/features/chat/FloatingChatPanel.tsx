@@ -114,11 +114,11 @@ export function FloatingChatPanel({
   const getPlacementClass = () => {
     switch (panelState) {
       case 'minimized':
-        return 'bottom-6 right-6 w-[320px] sm:w-[400px] max-w-[calc(100vw-3rem)]';
+        return 'bottom-6 right-6 w-[320px] sm:w-[400px] max-w-[calc(100dvw-3rem)]';
       case 'maximized':
-        return 'inset-0 sm:left-auto sm:w-[min(800px,100vw)]';
+        return 'inset-0 max-w-[100dvw] sm:left-auto sm:w-[min(800px,100dvw)]';
       default:
-        return 'inset-0 sm:left-auto sm:w-[440px]';
+        return 'inset-0 max-w-[100dvw] sm:left-auto sm:w-[440px]';
     }
   };
 
@@ -185,15 +185,15 @@ export function FloatingChatPanel({
               onClick={handleHeaderClick}
             >
               {/* Title with chat icon */}
-              <div className="flex items-center gap-2">
-                <span className="text-accent-gold">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="shrink-0 text-accent-gold">
                   <ChatIcon />
                 </span>
-                <h3 className="text-text-primary font-medium text-sm">{t('title')}</h3>
+                <h3 className="truncate text-text-primary font-medium text-sm">{t('title')}</h3>
               </div>
 
               {/* Control buttons */}
-              <div className="flex items-center gap-1">
+              <div className="flex shrink-0 items-center gap-1">
                 {/* Minimize button - shown when normal or maximized */}
                 {(panelState === 'normal' || panelState === 'maximized') && (
                   <ControlButton

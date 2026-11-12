@@ -24,6 +24,7 @@ import type { ProcessedBirthData } from '@almamesh/shared-types';
 import { LocalTimeError } from '@almamesh/store';
 
 import type { PlaceLookup, ResolvedPlace } from './geo/placeLookup';
+import { isEngineHeldByAnotherTab } from '../components/EngineOtherTabNotice';
 import type { MoonWindowLoader } from './moonWindow';
 import { birthUtcYearOf, birthYearOf, PeriodSkyUnavailableError, type PeriodChartLoader } from './periodChart';
 import {
@@ -58,8 +59,8 @@ const MAX_PANCHANG_DAYS = 14;
 /** Multi-day spans (>= 2 inclusive days) fall back to viewerZone() with place_note instead of blocking. */
 const NEEDS_PLACE_DAYS = 2;
 export const DEVICE_TIMEZONE_PLACE_NOTE = 'Using device timezone; set your current city for local rising-sign timing';
-/** All of one call's Moon read; the period load before it has the rest of the tool's time. */
-const MOON_DEADLINE_MS = 8_000;
+/** All of one call's Moon read, including cold-boot or crash-reboot recovery when today's period_reading came from SQLite. */
+const MOON_DEADLINE_MS = 60_000;
 const LAST_SKY_DAY = `${EPHEMERIS_LAST_YEAR}-12-31`;
 
 const GRAHA_FOCI = ['sun', 'moon', 'mars', 'mercury', 'jupiter', 'venus', 'saturn', 'rahu', 'ketu'] as const;
@@ -535,6 +536,7 @@ function unavailable(frame: ReadingFrame, reason: PeriodReadingFailure, notes?: 
 }
 
 function failureReason(error: unknown): PeriodReadingFailure {
+  if (isEngineHeldByAnotherTab(error)) return 'other_tab';
   if (error instanceof PeriodSkyUnavailableError) return error.reason;
   if (error instanceof PeriodSkyTimeoutError) return 'timeout';
   return 'engine_unavailable';

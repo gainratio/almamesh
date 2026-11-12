@@ -158,30 +158,55 @@ function GenerativeToolCard({ toolName, result }: { readonly toolName: string; r
   return null;
 }
 
+const KNOWN_FAILURE_REASONS: ReadonlySet<string> = new Set([
+  'engine_unavailable',
+  'other_tab',
+  'timeout',
+  'incomplete_birth_data',
+  'reading_unavailable',
+  'device_limit',
+  'birth_year',
+]);
+
+function failureReasonText(outcome: RowOutcome, result: unknown, translate: (key: string) => string): string | undefined {
+  if (outcome !== 'error' || typeof result !== 'object' || result === null) return undefined;
+  const reason = text((result as { readonly reason?: unknown }).reason);
+  return reason && KNOWN_FAILURE_REASONS.has(reason) ? translate(`tools.reasons.${reason}`) : undefined;
+}
+
+function ToolCallPayload({ args, result }: { readonly args: unknown; readonly result: unknown }) {
+  const { t } = useTranslation('chat');
+  return (
+    <div className="mt-2 space-y-2">
+      <p className="text-text-muted">{t('tools.args')}</p>
+      <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-background-primary p-2" data-testid="chat-tool-call-args">{pretty(args)}</pre>
+      <p className="text-text-muted">{t('tools.result')}</p>
+      <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded bg-background-primary p-2" data-testid="chat-tool-call-result">{pretty(result)}</pre>
+    </div>
+  );
+}
+
+function rowCardClass(outcome: RowOutcome): string {
+  const tone = outcome === 'skipped' ? 'text-text-muted' : 'text-text-secondary';
+  return `mb-2 rounded-lg border border-ui-border bg-background-tertiary/60 px-3 py-2 text-xs ${tone}`;
+}
+
 export function ToolCallRow({ toolName, toolCallId, args, result, isError, artifact }: ToolCallRowProps) {
   const { t, i18n } = useTranslation('chat');
   const [open, setOpen] = useState(false);
   const outcome = outcomeOf(toolName, isError, result, artifact);
-  const summary = summaryOf(toolName, result, i18n.language || 'en', (key) => t(key));
-  const sentence = t(ROW_KEYS[outcome], { what: summary });
+  const sentence = t(ROW_KEYS[outcome], { what: summaryOf(toolName, result, i18n.language || 'en', (key) => t(key)) });
+  const reasonText = failureReasonText(outcome, result, (key) => t(key));
   return (
     <>
       {outcome === 'complete' && <GenerativeToolCard toolName={toolName} result={result} />}
-      <details className={`mb-2 rounded-lg border border-ui-border bg-background-tertiary/60 px-3 py-2 text-xs ${outcome === 'skipped' ? 'text-text-muted' : 'text-text-secondary'}`}
-        data-testid="chat-tool-call" data-tool-name={toolName} data-tool-call-id={toolCallId} data-status={outcome}
-        onToggle={(event) => setOpen(event.currentTarget.open)}>
-        <summary className="cursor-pointer select-none truncate" data-testid="chat-tool-call-summary" title={sentence}>
-          {sentence}
-        </summary>
-        {open && (
-          <div className="mt-2 space-y-2">
-            <p className="text-text-muted">{t('tools.args')}</p>
-            <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-background-primary p-2" data-testid="chat-tool-call-args">{pretty(args)}</pre>
-            <p className="text-text-muted">{t('tools.result')}</p>
-            <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded bg-background-primary p-2" data-testid="chat-tool-call-result">{pretty(result)}</pre>
-          </div>
-        )}
-      </details>
+      <div className={rowCardClass(outcome)}>
+        <details data-testid="chat-tool-call" data-tool-name={toolName} data-tool-call-id={toolCallId} data-status={outcome} onToggle={(e) => setOpen(e.currentTarget.open)}>
+          <summary className="cursor-pointer select-none truncate" data-testid="chat-tool-call-summary" title={sentence}>{sentence}</summary>
+          {open && <ToolCallPayload args={args} result={result} />}
+        </details>
+        {reasonText && <p className="mt-1 whitespace-normal break-words text-amber-300/90" data-testid="chat-tool-call-reason">{reasonText}</p>}
+      </div>
     </>
   );
 }

@@ -1,4 +1,4 @@
-import type { MoonWindow } from '@almamesh/browser';
+import { EngineStorageBlockedError, type MoonWindow } from '@almamesh/browser';
 import type { PeriodReadingContext, SiderealChart } from '@almamesh/browser/types';
 import { answerSchema, fillFromReadings, GRAHAS, renderAnswer, type AnswerGrounding, type ChatAnswer } from '@almamesh/llm/answer';
 import { z } from '@almamesh/llm/toolLoop';
@@ -856,5 +856,15 @@ describe('read_period: cite', () => {
     expect(unavailable).toMatchObject({ available: false });
     expect(ask).not.toHaveProperty('cite');
     expect(unavailable).not.toHaveProperty('cite');
+  });
+
+  it('classifies an OPFS pool-in-use refusal from another tab as reason="other_tab"', async () => {
+    const blocked = new EngineStorageBlockedError('pool-in-use');
+    const { result } = await read({ start: 'today' }, {
+      loadCurrentChart: vi.fn(async () => {
+        throw blocked;
+      }),
+    });
+    expect(result).toMatchObject({ available: false, reason: 'other_tab' });
   });
 });

@@ -230,7 +230,7 @@ export function ChatSearch({ profileId, onOpenResult }: ChatSearchProps) {
           placeholder={t('search.placeholder')}
           aria-label={t('search.aria_label')}
           data-testid="chat-search-input"
-          className="w-full rounded-xl border border-ui-border bg-background-primary py-2 pl-9 pr-3 text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-gold/50"
+          className="w-full rounded-xl border border-ui-border bg-background-primary py-2 pl-9 pr-3 text-base sm:text-sm text-text-primary placeholder-text-muted focus:outline-none focus:ring-2 focus:ring-accent-gold/50"
         />
       </div>
 

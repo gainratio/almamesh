@@ -4,6 +4,7 @@ import type { SiderealChart } from '@almamesh/browser/types';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
 import { usePredictiveStore } from '@almamesh/store';
 import { buildEnsurePredictiveInput, predictiveReferenceInstant } from '../predictive';
+import { PERIOD_SKY_TIMEOUT_MS, PeriodSkyTimeoutError } from '../periodSky';
 import {
   ensureCurrentPlanetaryContext,
   planetaryReferenceInstantForZone,
@@ -141,6 +142,27 @@ describe('ensureCurrentPlanetaryContext', () => {
     });
     await dashboardCompute;
     expect(runtime.computePredictive).toHaveBeenCalledTimes(1);
+  });
+
+  it('raises PeriodSkyTimeoutError after PERIOD_SKY_TIMEOUT_MS so read_period reports timeout instead of engine_unavailable', async () => {
+    vi.useFakeTimers();
+    try {
+      const runtime = { computePredictive: vi.fn(() => new Promise<never>(() => {})) };
+      const pending = ensureCurrentPlanetaryContext({
+        chart,
+        profileKey: 'profile-1',
+        birth,
+        chartTimeZone: 'UTC',
+        now: new Date('2026-03-08T12:00:00.000Z'),
+        runtime,
+        signal: new AbortController().signal,
+      });
+      const assertion = expect(pending).rejects.toBeInstanceOf(PeriodSkyTimeoutError);
+      await vi.advanceTimersByTimeAsync(PERIOD_SKY_TIMEOUT_MS);
+      await assertion;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

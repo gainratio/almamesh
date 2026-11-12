@@ -115,7 +115,7 @@ export function ChatLocationChip({ profileId, lookup = lookupPlaceLazily }: Chat
               closeAndRestoreFocus();
             }
           }}
-          className="absolute left-0 top-full z-30 mt-1.5 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-ui-border bg-background-secondary p-3 shadow-xl"
+          className="absolute left-0 top-full z-30 mt-1.5 w-72 max-w-[calc(100dvw-2rem)] rounded-xl border border-ui-border bg-background-secondary p-3 shadow-xl"
         >
           <div className="mb-1 flex items-center justify-between gap-2">
             <span className="text-xs font-medium text-text-primary">{t('context.location_popover_title')}</span>

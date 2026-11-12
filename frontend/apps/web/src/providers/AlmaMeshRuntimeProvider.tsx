@@ -22,6 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   AlmaMeshRuntime,
   defaultRuntimeDeps,
+  EngineBootCancelledError,
   EngineStorageBlockedError,
   spawnAlmaSyncEngine,
 } from '@almamesh/browser'
@@ -581,6 +582,21 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
     window.addEventListener('online', recordOnline)
     return () => window.removeEventListener('online', recordOnline)
   }, [])
+
+  const errorRef = useRef(error)
+  errorRef.current = error
+
+  // Recover a boot cancelled by iOS Safari pagehide when the page returns via bfcache pageshow.
+  useEffect(() => {
+    const onPageShow = () => {
+      const current = errorRef.current
+      if (!current || !(current instanceof EngineBootCancelledError || current.name === 'EngineBootCancelledError')) return
+      setError(null)
+      startBootstrap()
+    }
+    window.addEventListener('pageshow', onPageShow)
+    return () => window.removeEventListener('pageshow', onPageShow)
+  }, [startBootstrap])
 
   // Consume at most one retry for each connectivity transition. Browsers can
   // also keep `navigator.onLine === true` during a partial origin outage (or a

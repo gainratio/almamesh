@@ -180,7 +180,19 @@
       "remember_fact": "uma nota de contexto",
       "place": "um lugar",
       "context": "os dados do mapa"
-    }
+    },
+    "reasons": {
+      "engine_unavailable": "O motor de cálculo no dispositivo não pôde iniciar. Toque em Tentar motor novamente acima ou recarregue a página.",
+      "other_tab": "Outra aba do AlmaMesh está usando o cache do motor no dispositivo. Feche a outra aba e toque em Tentar motor novamente.",
+      "timeout": "O cálculo do céu no dispositivo demorou demais (comum no Modo Pouca Energia). Toque em Tentar motor novamente e pergunte de novo.",
+      "incomplete_birth_data": "Falta o fuso horário do local de nascimento no seu mapa. Selecione novamente o local nas Configurações do perfil.",
+      "reading_unavailable": "A leitura em cache vem de um formato anterior do motor. Toque em Tentar motor novamente para atualizar.",
+      "device_limit": "Este dispositivo limita os cálculos do céu para permanecer dentro da memória.",
+      "birth_year": "As leituras do céu começam após o seu ano de nascimento."
+    },
+    "engine_error_banner": "O motor de cálculo no dispositivo parou antes de calcular o céu de hoje.",
+    "retry_engine": "Tentar motor novamente",
+    "clear_engine_cache": "Atualizar cache do motor e recarregar"
   },
   "threads": {
     "label": "Conversas",

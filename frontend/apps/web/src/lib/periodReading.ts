@@ -189,6 +189,7 @@ export interface PeriodReading extends ReadingFrame {
 /** A typed reason the reading could not be computed (periodChart.ts's PeriodSkyUnavailableError reasons, plus the reading's own). */
 export type PeriodReadingFailure =
   | 'engine_unavailable'
+  | 'other_tab'
   | 'timeout'
   | 'incomplete_birth_data'
   | 'reading_unavailable'
