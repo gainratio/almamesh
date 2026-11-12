@@ -8,7 +8,7 @@
  * reads any period with read_period and finishes with `answer`, checked against the
  * readings of this turn. A trip turn must read before it may answer.
  */
-import { devicePolicy, type ChartEngine } from '@almamesh/browser';
+import { devicePolicy } from '@almamesh/browser';
 import type { SiderealChart } from '@almamesh/browser/types';
 import {
   buildChatMessages,
@@ -33,6 +33,7 @@ import type { ChatThreadAsOf, ProcessedBirthData } from '@almamesh/shared-types'
 import {
   getProfileMemoryFacts,
   listMembersOf,
+  usePredictiveStore,
   useProfilesStore,
   useRectificationRecordsStore,
   type CurrentPlace,
@@ -44,12 +45,13 @@ import { reportAgentToolFailure } from './agentToolDiagnostics';
 import { viewerTimeZone } from './analysisInstant';
 import { createFindBestWindowsTool, FIND_BEST_WINDOWS_TOOL_NAME } from './bestWindowsTool';
 import { chatContextFor } from './chatContextBudget';
-import { ensureCurrentPlanetaryContext } from './currentPlanetaryContext';
+import { ensureCurrentPlanetaryContext, planetaryReferenceInstantForZone, readHydratedCurrentPeriodChart } from './currentPlanetaryContext';
 import { createSetCurrentLocationTool } from './locationTool';
 import { createRememberFactTool } from './memoryTool';
 import { createReadMeshMemberTool, READ_MESH_MEMBER_TOOL_NAME } from './meshChatTool';
 import { createMoonWindowLoader } from './moonWindow';
-import { birthYearOf, createPeriodChartLoader, readyEngine } from './periodChart';
+import { birthYearOf, createPeriodChartLoader, readyEngine, scopeTurnEngine } from './periodChart';
+import { predictiveReferenceInstant } from './predictive';
 import { createReadPeriodTool, isReadPeriodReading, readPeriodGrounding, readPeriodSpanLabel, readPeriodStatusLabel, type DevicePlace, type ReadPeriodArgs, type ReadPeriodInput } from './readPeriod';
 import { READ_PERIOD_TOOL_NAME } from './periodReading';
 import { formatPinLabel } from './timeTravelSheet';
@@ -157,23 +159,47 @@ function natalOnly(chart: SiderealChart): SiderealChart {
   return { ...chart, transit_context: undefined, strength_context: undefined, varga_context_full: undefined, domains_context: undefined };
 }
 
-/** A failed engine is rebooted lazily, once per turn, and only when a tool needs it. */
-function recoveringEngine(context: ChartEngineContextValue | null): ChartEngineContextValue | null {
-  const failed = context?.error ? context : null;
-  if (!failed) return context;
-  let recovery: Promise<ChartEngine> | null = null;
-  return { ...failed, engine: null, startBootstrap: () => {}, whenReady: () => recovery ??= failed.reboot() };
+function isUnreanchoredToday(input: ChatTurnInput, todayInstant: string, zone: string): boolean {
+  if (input.chartAsOf.basis !== 'chart') return false;
+  return predictiveReferenceInstant(input.chartAsOf.instant, zone) !== todayInstant;
 }
 
-/** Today's chart for read_period's single "today", computed once per turn instant. */
-function currentChartLoader(input: ChatTurnInput, engine: ChartEngineContextValue | null, zone: () => string): ReadPeriodInput['loadCurrentChart'] {
+async function computeFreshTodayChart(
+  input: ChatTurnInput,
+  engine: ChartEngineContextValue | null,
+  todayZone: string,
+  periodLoader: NonNullable<ReadPeriodInput['loadPeriodChart']>,
+  context: ToolContext,
+): Promise<SiderealChart> {
+  const todayInstant = planetaryReferenceInstantForZone(context.now, todayZone);
+  const todayRange = { start: todayInstant.slice(0, 10), end: todayInstant.slice(0, 10) };
+  if (isUnreanchoredToday(input, todayInstant, todayZone)) return periodLoader(todayRange, context);
+  const runtime = await readyEngine(engine);
+  try {
+    return await ensureCurrentPlanetaryContext({
+      chart: input.chart, profileKey: input.profileKey, birth: input.birth, chartTimeZone: todayZone, now: context.now, runtime, signal: context.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && /superseded/i.test(error.message)) return periodLoader(todayRange, context);
+    throw error;
+  }
+}
+
+/** Today's chart for read_period's single "today", served from hydrated store or computed once per turn instant. */
+function currentChartLoader(
+  input: ChatTurnInput,
+  engine: ChartEngineContextValue | null,
+  zone: () => string,
+  periodLoader: NonNullable<ReadPeriodInput['loadPeriodChart']>,
+): ReadPeriodInput['loadCurrentChart'] {
   let cached: { readonly at: number; readonly chart: SiderealChart } | undefined;
   return async (context) => {
     if (cached?.at === context.now.getTime()) return cached.chart;
-    const runtime = await readyEngine(engine);
-    const chart = await ensureCurrentPlanetaryContext({
-      chart: input.chart, profileKey: input.profileKey, birth: input.birth, chartTimeZone: zone(), now: context.now, runtime, signal: context.signal,
-    });
+    const todayZone = zone();
+    const hydrated = readHydratedCurrentPeriodChart({ chart: input.chart, profileKey: input.profileKey, birth: input.birth, chartTimeZone: todayZone, now: context.now });
+    if (hydrated && hydrated !== 'stale_missing_reading') return (cached = { at: context.now.getTime(), chart: hydrated }).chart;
+    if (hydrated === 'stale_missing_reading') usePredictiveStore.getState().reset();
+    const chart = await computeFreshTodayChart(input, engine, todayZone, periodLoader, context);
     cached = { at: context.now.getTime(), chart };
     return chart;
   };
@@ -271,7 +297,7 @@ function turnTools(
 ): ToolDef<unknown>[] {
   const seams = input.seams ?? {};
   const zone = seams.viewerZone ?? viewerTimeZone;
-  const engine = recoveringEngine(input.engine);
+  const engine = scopeTurnEngine(input.engine);
   const skyAllowed = seams.periodSkyAllowed ?? devicePolicy().periodSkyComputeAllowed;
   const periodLoader = seams.loadPeriodChart ?? createPeriodChartLoader({ chart: input.chart, profileKey: input.profileKey, birth: input.birth, engine });
   const places = {
@@ -286,7 +312,7 @@ function turnTools(
     onResolvedHomePlace: loc.setHomePlace,
     birth: input.birth, chart: input.chart, language: input.language, viewerZone: zone, periodSkyAllowed: skyAllowed,
     loadPeriodChart: periodLoader,
-    loadCurrentChart: seams.loadCurrentChart ?? currentChartLoader(input, engine, zone),
+    loadCurrentChart: seams.loadCurrentChart ?? currentChartLoader(input, engine, zone, periodLoader),
     ...(skyAllowed ? { loadMoonWindow: seams.loadMoonWindow ?? createMoonWindowLoader(engine, natalMoonOf(input.chart)) } : {}),
   });
   // travel's null place keeps the trip's own place, never an old trip's birth-place fallback.

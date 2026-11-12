@@ -16,9 +16,11 @@ import type { ToolContext } from '@almamesh/llm/toolLoop';
 import type { ProcessedBirthData } from '@almamesh/shared-types';
 
 import type { ChartEngineContextValue } from '../providers/chartEngineContext';
-import { buildEnsurePredictiveInput } from './predictive';
 import { withDeadline } from './deadline';
 import { periodReferenceInstant, periodSkyCache, periodSkyDeadline, type PeriodSkyCache } from './periodSky';
+import { buildEnsurePredictiveInput } from './predictive';
+import { followTransientRetries } from './resolveReadyEngine';
+import { isRecoverableWorkerFailure } from './transientBootFailure';
 
 export type PeriodSkyFailure = 'engine_unavailable' | 'timeout' | 'incomplete_birth_data';
 
@@ -41,14 +43,114 @@ export interface PeriodChartLoaderInput {
 
 export type PeriodChartLoader = (period: PeriodRange, context: ToolContext) => Promise<SiderealChart>;
 
+const TURN_ENGINES = new WeakMap<ChartEngineContextValue, Promise<ChartEngine> | null>();
+const REBOOTABLE_ENGINES = new WeakSet<ChartEngineContextValue>();
+
+function canReboot(ctx: ChartEngineContextValue): boolean {
+  return REBOOTABLE_ENGINES.has(ctx) || (!TURN_ENGINES.has(ctx) && typeof (ctx as Partial<ChartEngineContextValue>).reboot === 'function');
+}
+
+async function resolveBootedEngine(context: ChartEngineContextValue): Promise<ChartEngine> {
+  if (context.engine) return context.engine;
+  if (context.error && canReboot(context)) return context.reboot();
+  context.startBootstrap();
+  try {
+    return await followTransientRetries(context.whenReady);
+  } catch (error) {
+    if (canReboot(context) && (context.error || isRecoverableWorkerFailure(error))) {
+      return context.reboot();
+    }
+    throw error;
+  }
+}
+
+function createRebootRunner(initial: ChartEngine, context: ChartEngineContextValue) {
+  let current = initial;
+  let recovery: Promise<ChartEngine> | null = null;
+  const run = async <T>(op: (eng: ChartEngine) => Promise<T>): Promise<T> => {
+    const used = current;
+    try {
+      return await op(used);
+    } catch (error) {
+      if (used !== initial || (!context.error && !isRecoverableWorkerFailure(error))) throw error;
+      recovery ??= context.reboot().then((fresh) => { current = fresh; return fresh; });
+      return op(await recovery);
+    }
+  };
+  return { getCurrent: () => current, run };
+}
+
+function withOneWorkerReboot(initial: ChartEngine, context: ChartEngineContextValue): ChartEngine {
+  if (!canReboot(context)) return initial;
+  const { getCurrent, run } = createRebootRunner(initial, context);
+  return {
+    ...(initial.identity ? { identity: () => getCurrent().identity?.() ?? initial.identity!() } : {}),
+    meta: () => getCurrent().meta(),
+    generateChart: (input) => run((eng) => eng.generateChart(input)),
+    computePredictive: (input, options) => run((eng) => eng.computePredictive(input, options)),
+    computeMoonWindow: (input) => run((eng) => eng.computeMoonWindow(input)),
+    computeMeshEdge: (input) => run((eng) => eng.computeMeshEdge(input)),
+    computeRectification: (input) => run((eng) => eng.computeRectification(input)),
+    computeVargaDetail: (input) => run((eng) => eng.computeVargaDetail(input)),
+  };
+}
+
+/** Live getter proxy over a ref-held `ChartEngineContextValue` so multi-second chat turns see mid-turn crashes/reboots. */
+export function liveChartEngine(read: () => ChartEngineContextValue | null): ChartEngineContextValue | null {
+  const initial = read();
+  if (!initial) return null;
+  const proxy: ChartEngineContextValue = {
+    get engine() { return read()?.engine ?? null; },
+    get stage() { return read()?.stage ?? null; },
+    get error() { return read()?.error ?? null; },
+    get meta() { return read()?.meta ?? null; },
+    lastProgressAt: () => read()?.lastProgressAt?.() ?? 0,
+    startBootstrap: () => read()?.startBootstrap(),
+    whenReady: () => (read() ?? initial).whenReady(),
+    reboot: () => (read() ?? initial).reboot(),
+  };
+  if (canReboot(initial)) REBOOTABLE_ENGINES.add(proxy);
+  return proxy;
+}
+
+/** Scope one shared, crash-resilient `readyEngine` across all tools within a single chat turn. */
+export function scopeTurnEngine(context: ChartEngineContextValue | null): ChartEngineContextValue | null {
+  if (!context) return null;
+  const scoped: ChartEngineContextValue = {
+    get engine() { return context.engine; },
+    get stage() { return context.stage; },
+    get error() { return context.error; },
+    get meta() { return context.meta; },
+    ...(context.lastProgressAt ? { lastProgressAt: context.lastProgressAt } : {}),
+    startBootstrap: () => context.startBootstrap(),
+    whenReady: () => context.whenReady(),
+    reboot: () => context.reboot(),
+  };
+  TURN_ENGINES.set(scoped, null);
+  if (canReboot(context)) REBOOTABLE_ENGINES.add(scoped);
+  return scoped;
+}
+
 /**
- * The one engine wait every chat engine load goes through: start the boot if
- * it has not started, then use the ready engine or await the in-flight boot.
+ * The one engine wait every chat/period engine load goes through: background
+ * moment effects (`!TURN_ENGINES.has(engine)`) await `whenReady` without auto-rebooting;
+ * explicit user chat turns (`scopeTurnEngine`) follow transient boots and reboot once on crash.
  */
 export async function readyEngine(engine: ChartEngineContextValue | null): Promise<ChartEngine> {
   if (!engine) throw new PeriodSkyUnavailableError('engine_unavailable');
-  engine.startBootstrap();
-  return engine.engine ?? (await engine.whenReady());
+  if (!TURN_ENGINES.has(engine)) {
+    engine.startBootstrap();
+    return engine.engine ?? (await engine.whenReady());
+  }
+  let pending = TURN_ENGINES.get(engine) ?? null;
+  if (!pending) {
+    pending = resolveBootedEngine(engine).then(
+      (raw) => withOneWorkerReboot(raw, engine),
+      (err) => { TURN_ENGINES.set(engine, null); throw err; },
+    );
+    TURN_ENGINES.set(engine, pending);
+  }
+  return pending;
 }
 
 export function createPeriodChartLoader(input: PeriodChartLoaderInput): PeriodChartLoader {

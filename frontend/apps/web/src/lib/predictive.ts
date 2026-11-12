@@ -124,6 +124,15 @@ export function selectPrimaryStoredChart(
   return scoped.find((chart) => chart.is_primary) ?? scoped[0];
 }
 
+/** Canonical profileKey shared across predictive store writers and readers (including legacy charts without profile_id). */
+export function predictiveProfileKeyOf(
+  stored: Pick<StoredChart, 'profile_id' | 'chart_id'> | undefined,
+  activeProfileId?: string | null,
+  chartId?: string | null,
+): string {
+  return stored?.profile_id ?? activeProfileId ?? stored?.chart_id ?? chartId ?? 'primary';
+}
+
 /** "aries" → "Aries", "saturn" → "Saturn" (pure casing, no vocabulary). */
 export function titleCaseToken(value: string): string {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : '';

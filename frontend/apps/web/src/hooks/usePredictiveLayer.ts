@@ -35,6 +35,7 @@ import type { VimshottariDasha } from '@almamesh/browser/types';
 import { useOptionalChartEngine } from '../providers/chartEngineContext';
 import {
   buildEnsurePredictiveInput,
+  predictiveProfileKeyOf,
   selectPrimaryStoredChart,
 } from '../lib/predictive';
 import { useRectificationGate } from '../lib/rectificationGate';
@@ -141,7 +142,7 @@ export function usePredictiveLayer({ auto = false }: UsePredictiveLayerOptions =
   const charts = useChartLibraryStore((s) => s.charts);
   const storedChart = selectPrimaryStoredChart(charts, activeProfileId);
   const birth = storedChart?.birth_data as ProcessedBirthData | undefined;
-  const profileKey = activeProfileId ?? storedChart?.chart_id ?? 'primary';
+  const profileKey = predictiveProfileKeyOf(storedChart, activeProfileId);
 
   // ONE analysis instant (#274): the predictive layer is computed for the
   // chart's own analysis day, never the wall clock, so the Life Atlas and Sky

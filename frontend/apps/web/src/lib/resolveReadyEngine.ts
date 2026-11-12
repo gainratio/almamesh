@@ -88,7 +88,7 @@ function withIdleBudget(
  */
 const MAX_FOLLOWED_BOOT_ATTEMPTS = 3;
 
-async function followTransientRetries(whenReady: () => Promise<ChartEngine>): Promise<ChartEngine> {
+export async function followTransientRetries(whenReady: () => Promise<ChartEngine>): Promise<ChartEngine> {
   for (let attempt = 1; ; attempt += 1) {
     try {
       return await whenReady();

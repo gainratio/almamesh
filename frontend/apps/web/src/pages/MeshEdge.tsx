@@ -12,7 +12,7 @@
  * reading, and — at the foot — the engine's own integrity note, verbatim.
  */
 
-import { Suspense, useCallback, useEffect, useMemo, useState, type ReactElement } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useQueryClient } from '@tanstack/react-query';
@@ -68,7 +68,7 @@ import {
   type MeshWindowYears,
 } from '../lib/mesh';
 import { predictiveReferenceInstant } from '../lib/predictive';
-import { birthYearOf } from '../lib/periodChart';
+import { birthYearOf, liveChartEngine } from '../lib/periodChart';
 import { lazyWithRetry } from '../lib/lazyWithRetry';
 import { chatStatusLabels } from '../lib/chatStatusLabels';
 import type { ViewMode } from '../lib/types';
@@ -251,6 +251,8 @@ function MeshEdgeContent({
   const charts = useChartLibraryStore((s) => s.charts);
   const chartsHydrated = useChartLibraryStore((s) => s.hydrated);
   const chartEngineContext = useOptionalChartEngine();
+  const chartEngineRef = useRef(chartEngineContext);
+  chartEngineRef.current = chartEngineContext;
   const engine = chartEngineContext?.engine ?? null;
   const contentMode = useContentModeStore((s) => s.contentMode);
   const viewMode: ViewMode = contentMode === 'technical' ? 'astrologer' : 'layman';
@@ -311,7 +313,7 @@ function MeshEdgeContent({
         chartAsOf: storedChartAnalysisInstant(anchorChart),
         profileKey: anchorChart.profile_id ?? anchorChart.chart_id ?? anchor.id,
         birth: anchorChart.birth_data as ProcessedBirthData | undefined,
-        engine: chartEngineContext,
+        engine: liveChartEngine(() => chartEngineRef.current),
         question: ask.question,
         mode: (ask.viewMode || viewMode) === 'astrologer' ? 'expert' : 'layman',
         language: useLanguageStore.getState().language,

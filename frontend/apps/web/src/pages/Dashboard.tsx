@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useMemo, useState, useEffect } from "react";
+import { Suspense, useCallback, useMemo, useRef, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -74,7 +74,7 @@ import { useReportPdfExport } from "../hooks/useReportPdfExport";
 import { isPlaceholderContent } from "./exportGate";
 import { personaText, resolveReportAudience } from "../lib/reportSelectors";
 import { rectificationDelta } from "../lib/rectification";
-import { birthYearOf } from "../lib/periodChart";
+import { birthYearOf, liveChartEngine } from "../lib/periodChart";
 import { lazyWithRetry } from "../lib/lazyWithRetry";
 import { chatStatusLabels } from "../lib/chatStatusLabels";
 import { natalOnlyNoted, waitForPredictiveFacts } from "../lib/predictiveWait";
@@ -87,6 +87,7 @@ import {
   type DashboardTravelSheet,
   useDashboardSheetReturnFocus,
 } from "../components/features/dashboard/useDashboardSheetReturnFocus";
+import { predictiveProfileKeyOf } from "../lib/predictive";
 import { useTimeTravel } from "../lib/timeTravel";
 import { useOptionalChartEngine } from "../providers/chartEngineContext";
 
@@ -118,6 +119,8 @@ function readChatLlmEnv(): LlmEnv {
 export default function DashboardPage() {
   const { t, i18n } = useTranslation(["dashboard", "life", "predictive"]);
   const chartEngineContext = useOptionalChartEngine();
+  const chartEngineRef = useRef(chartEngineContext);
+  chartEngineRef.current = chartEngineContext;
 
   // Auth state is handled by RequiresChartRoute guard
   const [chartData, setChartData] = useState<BirthChartGenerationResponse | null>(null);
@@ -374,9 +377,9 @@ export default function DashboardPage() {
         chart,
         promptChart: facts === 'ready' ? withRawPredictive(chart, chartId) : chart,
         chartAsOf: storedChartAnalysisInstant(storedChart),
-        profileKey: storedChart.profile_id ?? chartId ?? 'primary',
+        profileKey: predictiveProfileKeyOf(storedChart, activeProfileId, chartId),
         birth: storedChart.birth_data as ProcessedBirthData | undefined,
-        engine: chartEngineContext,
+        engine: liveChartEngine(() => chartEngineRef.current),
         question: ask.question,
         mode,
         language: useLanguageStore.getState().language,

@@ -46,13 +46,13 @@ export function ChatContextBar({ profileId, threadId, messages, initialDraft }: 
   return (
     <div
       data-testid="chat-context-bar"
-      className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-ui-border bg-background-secondary/80 px-3 py-1.5"
+      className="flex shrink-0 flex-wrap items-center gap-1 border-b border-ui-border bg-background-secondary/80 px-2.5 py-1.5"
     >
       <ChatLocationChip profileId={profileId} />
       <span
         data-testid="chat-specialist-pill"
         data-specialist={activeSpecialist}
-        className="inline-flex min-h-7 items-center gap-1 rounded-full border border-ui-border/80 bg-background-tertiary/70 px-2.5 py-0.5 text-[11px] text-text-secondary"
+        className="inline-flex min-h-7 max-w-[126px] items-center gap-1 rounded-full border border-ui-border/80 bg-background-tertiary/70 px-2 py-0.5 text-[11px] text-text-secondary sm:max-w-none"
       >
         <span aria-hidden="true" className="text-accent-gold">{SPECIALIST_ICONS[activeSpecialist]}</span>
         <span className="truncate">{t(`context.specialists.${activeSpecialist}`)}</span>
