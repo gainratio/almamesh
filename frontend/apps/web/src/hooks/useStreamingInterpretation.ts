@@ -39,6 +39,7 @@ import {
   useInterpretationStore,
   useLanguageStore,
   usePredictiveStore,
+  useProfilesStore,
   interpretationWriteRefusal,
   whenInterpretationHydrated,
   predictiveRequestKey,
@@ -60,7 +61,7 @@ import {
 } from '../lib/errors';
 import { createFrameBatcher, type FrameBatcher } from '../lib/frameBatcher';
 import { whenDataLifecycleReady } from '../lib/profileDataLifecycle';
-import { buildEnsurePredictiveInput, predictiveReferenceInstant } from '../lib/predictive';
+import { buildEnsurePredictiveInput, predictiveProfileKeyOf, predictiveReferenceInstant } from '../lib/predictive';
 import {
   storedChartAnalysisInstant,
   storedChartReferenceDay,
@@ -209,7 +210,7 @@ interface CurrentPredictiveFacts {
 /** The requested chart owns its profile identity, independent of active-UI races. */
 function predictiveProfileKey(chartId: string | null): string {
   const stored = chartId ? useChartLibraryStore.getState().getChart(chartId) : undefined;
-  return stored?.profile_id ?? chartId ?? 'primary';
+  return predictiveProfileKeyOf(stored, useProfilesStore.getState().activeProfileId, chartId);
 }
 
 /**

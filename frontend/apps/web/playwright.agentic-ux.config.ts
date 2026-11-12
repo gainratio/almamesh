@@ -8,6 +8,7 @@ const __dirname = resolve(__filename, '..');
 const PORT = Number(process.env.AGENTIC_UX_E2E_PORT ?? 4299);
 const EXTERNAL_BASE_URL = process.env.AGENTIC_UX_E2E_BASE_URL;
 const BASE_URL = EXTERNAL_BASE_URL ?? `http://127.0.0.1:${PORT}`;
+const WEBKIT_EVIDENCE = { trace: 'retain-on-failure', video: 'retain-on-failure' } as const;
 
 export default defineConfig({
   testDir: './e2e',
@@ -17,7 +18,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: 1,
   reporter: process.env.CI ? [['github'], ['list']] : 'list',
-  timeout: 300_000,
+  timeout: 360_000,
   expect: { timeout: 30_000 },
   use: {
     baseURL: BASE_URL,
@@ -29,6 +30,12 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
+      grepInvert: /@iphone/,
+    },
+    {
+      name: 'iphone-webkit',
+      use: { ...devices['iPhone 13'], serviceWorkers: 'block', ...WEBKIT_EVIDENCE },
+      grep: /@iphone/,
     },
   ],
   webServer: EXTERNAL_BASE_URL

@@ -190,6 +190,29 @@ describe('generative tool cards render alongside receipt rows', () => {
     expect(screen.getByTestId('weekly-place-note')).toBeTruthy();
   });
 
+  it('renders WeeklyOutlookCard for a single-day "outlook today?" reading with Yoga and Karana', () => {
+    render(
+      <ToolCallRow
+        toolName="read_period"
+        toolCallId="w0"
+        args={{ preset: 'today' }}
+        argsText=""
+        status={{ type: 'complete' }}
+        result={{
+          period: { label: 'November 11, 2026' },
+          place: { label: 'Novato, California, United States', timezone: 'America/Los_Angeles' },
+          daily: [
+            { date: '2026-11-11', vara: 'wednesday', sign: 'scorpio', nakshatra: 'anuradha', pada: 2, nakshatra_lord: 'saturn', tithi: 2, tithi_name: 'dvitiya', paksha: 'shukla', yoga: 'sobha', karana: 'balava', house_from_moon: 1, tara_number: 2, tara_name: 'sampat', day_quality: 'supportive' },
+          ],
+        }}
+      />,
+    );
+    const dayCell = screen.getByTestId('weekly-day-2026-11-11');
+    expect(dayCell.textContent).toContain('Sobha');
+    expect(dayCell.textContent).toContain('Balava');
+    expect(dayCell.textContent).toContain('Supportive');
+  });
+
   it('renders VargaChartCard with authentic Kundli SVG, D60 Shashtiamsa amsa, and cusp sensitivity CTA', () => {
     render(
       <ToolCallRow

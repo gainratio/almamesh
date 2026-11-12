@@ -1604,3 +1604,64 @@ for (const tag of ['', '@iphone15']) {
     expect(errors, 'the tool journey keeps a clean console').toEqual([]);
   });
 }
+
+for (const tag of ['', '@iphone', '@iphone15']) {
+  test(`[contract/stubbed] ${tag} returning visitor with Novato currentPlace recovers from a mid-turn Worker crash on outlook today`, async ({ page }, testInfo) => {
+    await prepare(page);
+    const modelDownloads = captureLocalModelDownloads(page);
+    const seen: ChatToolBody[] = [];
+    const todayQuestion = 'outlook today?';
+    await scripted(page, {
+      [todayQuestion]: (body) => {
+        if (reads(body).some((r) => r.content.includes('"available":false'))) {
+          return { name: 'answer', args: generalAnswer('The day-specific reading is unavailable.') };
+        }
+        return stubCallFor(body, readPeriodArgs('today'), 'Here is your grounded Novato outlook for today.');
+      },
+    }, seen, [], new Set<string>());
+    await bootEngine(page);
+    await seedChart(page);
+    await openDashboard(page);
+    await waitForLifeAtlasAsOf(page);
+    await page.getByTestId('floating-chat-button').click();
+    await page.getByTestId('chat-location-chip').click();
+    await page.getByTestId('chat-context-place-input').pressSequentially('novato, ca');
+    await expect(page.getByTestId('chat-context-place-option-0')).toHaveText('Novato, California, United States', { timeout: 60_000 });
+    await page.getByTestId('chat-context-place-input').press('Enter');
+    await expect(page.getByTestId('chat-location-chip')).toContainText('Novato, California');
+    await expect(page.getByTestId('chat-location-chip')).toHaveAttribute('data-saving', 'false', { timeout: 30_000 });
+    await page.addInitScript(() => {
+      let crashed = false;
+      window.Worker = new Proxy(window.Worker, {
+        construct(Target, args: [string | URL, WorkerOptions?]) {
+          const worker = Reflect.construct(Target, args) as Worker;
+          if (!String(args[0]).includes('chartWorker') || crashed) return worker;
+          const post = worker.postMessage.bind(worker);
+          worker.postMessage = ((req: { kind: string }, transfer?: Transferable[] | StructuredSerializeOptions) => {
+            if (!crashed && (req.kind === 'computePredictive' || req.kind === 'computeMoonWindow')) {
+              crashed = true;
+              queueMicrotask(() => worker.dispatchEvent(new ErrorEvent('error', { message: 'WebKit Low Power Mode worker jetsam' })));
+              return;
+            }
+            if (Array.isArray(transfer)) post(req, transfer); else post(req, transfer);
+          }) as Worker['postMessage'];
+          return worker;
+        },
+      });
+    });
+    await explicitReload(page, () => page.reload());
+    await expect(page.getByTestId('floating-chat-button')).toBeVisible({ timeout: 120_000 });
+    await page.getByTestId('floating-chat-button').click();
+    await expect(page.getByTestId('chat-location-chip')).toContainText('Novato, California');
+    await page.getByTestId('chat-input').fill(todayQuestion);
+    await page.getByTestId('chat-send-button').click();
+    await expect(page.getByTestId('chat-panel').getByText('Here is your grounded Novato outlook for today.')).toBeVisible({ timeout: 240_000 });
+    await expect(page.locator('[data-testid="chat-tool-call"][data-tool-name="read_period"]').first()).toHaveAttribute('data-status', 'complete');
+    await expect(page.getByTestId('tool-card-weekly-outlook').first()).toBeVisible();
+    const todayRead = reads(seen[seen.length - 1])[0]?.content ?? '';
+    expect(todayRead).not.toContain('"available":false');
+    expect(todayRead).toContain('"label":"Novato, California, United States"');
+    await page.screenshot({ path: testInfo.outputPath('novato-outlook-today-recovered.png'), fullPage: true });
+    if (tag) expect(modelDownloads, 'constrained tool use must not boot the optional embedding model').toEqual([]);
+  });
+}

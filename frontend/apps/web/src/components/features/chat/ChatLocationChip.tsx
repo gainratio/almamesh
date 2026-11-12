@@ -34,6 +34,7 @@ export function ChatLocationChip({ profileId, lookup = lookupPlaceLazily }: Chat
   const setCurrentPlace = useProfilesStore((s) => s.setCurrentPlace);
 
   const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [query, setQuery] = useState(place?.label ?? '');
   const triggerRef = useRef<HTMLButtonElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -65,12 +66,15 @@ export function ChatLocationChip({ profileId, lookup = lookupPlaceLazily }: Chat
     const prev = place;
     setQuery(next?.label ?? '');
     closeAndRestoreFocus();
-    if (!setCurrentPlace(targetId, next).ok) return;
+    setSaving(true);
+    if (!setCurrentPlace(targetId, next).ok) { setSaving(false); return; }
     try {
       await waitForStoreSaved('people');
     } catch {
       setCurrentPlace(targetId, prev);
       setQuery(prev?.label ?? '');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -87,15 +91,16 @@ export function ChatLocationChip({ profileId, lookup = lookupPlaceLazily }: Chat
         aria-haspopup="dialog"
         title={place ? place.label : t('context.location_unset_hint')}
         data-testid="chat-location-chip"
+        data-saving={saving ? 'true' : 'false'}
         onClick={() => setOpen((prev) => !prev)}
-        className={`inline-flex min-h-7 items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60 disabled:opacity-60 ${
+        className={`inline-flex min-h-7 items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold/60 disabled:opacity-60 ${
           place
             ? 'border-accent-gold/40 bg-accent-gold/10 text-text-primary hover:border-accent-gold'
             : 'border-ui-border bg-background-tertiary text-text-secondary hover:border-accent-gold/60 hover:text-text-primary'
         }`}
       >
         <span aria-hidden="true">📍</span>
-        <span className="max-w-[140px] truncate">{label}</span>
+        <span className="max-w-[120px] truncate sm:max-w-[148px]">{label}</span>
       </button>
 
       {open && canEdit && (

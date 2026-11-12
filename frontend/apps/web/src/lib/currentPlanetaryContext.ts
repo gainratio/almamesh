@@ -7,6 +7,7 @@ import {
 } from '@almamesh/store';
 
 import { withDeadline } from './deadline';
+import { isCachedNatalLords, isCachedPeriodReading } from './periodSkyValidation';
 import { buildEnsurePredictiveInput, predictiveReferenceInstant } from './predictive';
 
 export interface EnsureCurrentPlanetaryContextInput {
@@ -30,6 +31,33 @@ const CURRENT_CONTEXT_TIMEOUT_MS = 60_000;
 /** Use the chart-local calendar day as the engine's stable daily reference key. */
 export function planetaryReferenceInstantForZone(now: Date, timeZone: string): string {
   return predictiveReferenceInstant(now, timeZone);
+}
+
+export type HydratedCurrentPeriodResult = SiderealChart | 'stale_missing_reading' | null;
+
+function hasValidPeriodReading(raw: unknown): boolean {
+  if (!raw || typeof raw !== 'object') return false;
+  const reading = (raw as { readonly period_reading?: Record<string, unknown> }).period_reading;
+  return reading !== undefined && isCachedPeriodReading(reading) && isCachedNatalLords(reading.natal_lords);
+}
+
+/** Instant 0ms read when `usePredictiveStore` already holds today's validated `period_reading`. */
+export function readHydratedCurrentPeriodChart(
+  options: Omit<EnsureCurrentPlanetaryContextInput, 'runtime' | 'signal'>,
+): HydratedCurrentPeriodResult {
+  const input = buildEnsurePredictiveInput(
+    options.profileKey,
+    options.birth,
+    planetaryReferenceInstantForZone(options.now, options.chartTimeZone),
+  );
+  if (!input) return null;
+  const state = usePredictiveStore.getState();
+  if (state.status !== 'ready' || state.profileKey !== options.profileKey || state.requestKey !== predictiveRequestKey(input)) {
+    return null;
+  }
+  return state.rawContexts && hasValidPeriodReading(state.rawContexts)
+    ? { ...options.chart, ...state.rawContexts }
+    : 'stale_missing_reading';
 }
 
 function withCurrentContextDeadline<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
