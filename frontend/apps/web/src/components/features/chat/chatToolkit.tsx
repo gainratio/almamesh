@@ -9,9 +9,10 @@
  * transcript; it carries no schema and no handler, so initial chunks stay lean.
  */
 import { defineToolkit, type Toolkit, type ToolCallMessagePartProps } from '@assistant-ui/react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { useOptionalChartEngine, type ChartEngineContextValue } from '../../../providers/chartEngineContext';
 import { BestWindowsCard } from './toolCards/BestWindowsCard';
 import { LocationSavedCard } from './toolCards/LocationSavedCard';
 import { MeshSynastryCard } from './toolCards/MeshSynastryCard';
@@ -168,10 +169,50 @@ const KNOWN_FAILURE_REASONS: ReadonlySet<string> = new Set([
   'birth_year',
 ]);
 
-function failureReasonText(outcome: RowOutcome, result: unknown, translate: (key: string) => string): string | undefined {
+const INLINE_RETRY_REASONS: ReadonlySet<string> = new Set(['engine_unavailable', 'timeout', 'reading_unavailable']);
+
+function reasonKeyOf(reason: string, engineCtx: ChartEngineContextValue | null): string | undefined {
+  if (!KNOWN_FAILURE_REASONS.has(reason)) return undefined;
+  if (reason !== 'engine_unavailable') return `tools.reasons.${reason}`;
+  if (engineCtx?.engine && !engineCtx.error) return 'tools.reasons.engine_ready_now';
+  return engineCtx?.error ? 'tools.reasons.engine_unavailable' : 'tools.reasons.engine_unavailable_inline';
+}
+
+function canRetryInline(outcome: RowOutcome, result: unknown, engineCtx: ChartEngineContextValue | null): boolean {
+  if (outcome !== 'error' || !engineCtx || engineCtx.error || typeof result !== 'object' || result === null) return false;
+  const reason = text((result as { readonly reason?: unknown }).reason);
+  if (!reason || !INLINE_RETRY_REASONS.has(reason)) return false;
+  return reason !== 'engine_unavailable' || engineCtx.engine === null;
+}
+
+function failureReasonText(outcome: RowOutcome, result: unknown, engineCtx: ChartEngineContextValue | null, translate: (key: string) => string): string | undefined {
   if (outcome !== 'error' || typeof result !== 'object' || result === null) return undefined;
   const reason = text((result as { readonly reason?: unknown }).reason);
-  return reason && KNOWN_FAILURE_REASONS.has(reason) ? translate(`tools.reasons.${reason}`) : undefined;
+  const key = reason ? reasonKeyOf(reason, engineCtx) : undefined;
+  return key ? translate(key) : undefined;
+}
+
+interface FailureFooterProps {
+  readonly reasonText: string | undefined;
+  readonly showRetry: boolean;
+  readonly retryLabel: string;
+  readonly onRetry: () => void;
+}
+
+function ToolCallFailureFooter({ reasonText, showRetry, retryLabel, onRetry }: FailureFooterProps) {
+  const reasonId = useId();
+  if (!reasonText) return null;
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2">
+      <p id={reasonId} className="whitespace-normal break-words text-amber-300/90" data-testid="chat-tool-call-reason">{reasonText}</p>
+      {showRetry && (
+        <button type="button" data-testid="chat-tool-retry-engine" aria-describedby={reasonId} onClick={onRetry}
+          className="min-h-6 min-w-6 [@media(pointer:coarse)]:min-h-9 rounded-md border border-accent-gold/60 px-2.5 py-1 text-xs font-medium text-accent-gold hover:bg-accent-gold/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-gold">
+          {retryLabel}
+        </button>
+      )}
+    </div>
+  );
 }
 
 function ToolCallPayload({ args, result }: { readonly args: unknown; readonly result: unknown }) {
@@ -193,10 +234,12 @@ function rowCardClass(outcome: RowOutcome): string {
 
 export function ToolCallRow({ toolName, toolCallId, args, result, isError, artifact }: ToolCallRowProps) {
   const { t, i18n } = useTranslation('chat');
+  const engineCtx = useOptionalChartEngine();
   const [open, setOpen] = useState(false);
   const outcome = outcomeOf(toolName, isError, result, artifact);
   const sentence = t(ROW_KEYS[outcome], { what: summaryOf(toolName, result, i18n.language || 'en', (key) => t(key)) });
-  const reasonText = failureReasonText(outcome, result, (key) => t(key));
+  const reasonText = failureReasonText(outcome, result, engineCtx, (key) => t(key));
+  const showRetry = canRetryInline(outcome, result, engineCtx);
   return (
     <>
       {outcome === 'complete' && <GenerativeToolCard toolName={toolName} result={result} />}
@@ -205,7 +248,7 @@ export function ToolCallRow({ toolName, toolCallId, args, result, isError, artif
           <summary className="cursor-pointer select-none truncate" data-testid="chat-tool-call-summary" title={sentence}>{sentence}</summary>
           {open && <ToolCallPayload args={args} result={result} />}
         </details>
-        {reasonText && <p className="mt-1 whitespace-normal break-words text-amber-300/90" data-testid="chat-tool-call-reason">{reasonText}</p>}
+        <ToolCallFailureFooter reasonText={reasonText} showRetry={showRetry} retryLabel={t('tools.retry_engine')} onRetry={() => void engineCtx?.reboot().catch(() => undefined)} />
       </div>
     </>
   );

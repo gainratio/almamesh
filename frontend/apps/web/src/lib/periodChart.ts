@@ -25,8 +25,8 @@ import { isRecoverableWorkerFailure } from './transientBootFailure';
 export type PeriodSkyFailure = 'engine_unavailable' | 'timeout' | 'incomplete_birth_data';
 
 export class PeriodSkyUnavailableError extends Error {
-  constructor(readonly reason: PeriodSkyFailure) {
-    super(`The period sky is unavailable: ${reason}`);
+  constructor(readonly reason: PeriodSkyFailure, message = `The period sky is unavailable: ${reason}`) {
+    super(message);
     this.name = 'PeriodSkyUnavailableError';
   }
 }

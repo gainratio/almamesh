@@ -183,6 +183,8 @@
     },
     "reasons": {
       "engine_unavailable": "El motor de cálculo en el dispositivo no pudo iniciarse. Pulsa Reintentar motor arriba o recarga la página.",
+      "engine_unavailable_inline": "El motor de cálculo en el dispositivo no pudo completar esta lectura. Pulsa Reintentar motor o recarga la página.",
+      "engine_ready_now": "El motor de cálculo en el dispositivo no estaba listo cuando se envió este mensaje; ya está listo ahora. Vuelve a preguntar para ver la lectura de hoy.",
       "other_tab": "Otra pestaña de AlmaMesh está usando la caché del motor. Cierra la otra pestaña y pulsa Reintentar motor.",
       "timeout": "El cálculo del cielo en el dispositivo tardó demasiado (frecuente en modo de bajo consumo). Pulsa Reintentar motor y vuelve a preguntar.",
       "incomplete_birth_data": "A tu carta natal le falta la zona horaria del lugar de nacimiento. Vuelve a elegirlo en Ajustes del perfil.",

@@ -32,18 +32,21 @@ export function isNetworkLoadFailure(reason: unknown): boolean {
 }
 
 export interface PageLifecycle {
-  /** True between `pagehide` and the next `pageshow` (a bfcache restore). */
+  /** True between `pagehide` and the next `pageshow` or visible foreground restore. */
   isTearingDown(): boolean;
 }
 
-/** Follow `pagehide`/`pageshow` on `target` (the window). */
-export function trackPageTeardown(target: EventTarget): PageLifecycle {
+export interface VisibilityTarget extends EventTarget {
+  readonly visibilityState?: DocumentVisibilityState;
+}
+
+/** Follow `pagehide`/`pageshow` and foreground `visibilitychange` so iOS app-switches never stick in teardown. */
+export function trackPageTeardown(target: EventTarget, doc?: VisibilityTarget): PageLifecycle {
   let tearingDown = false;
-  target.addEventListener("pagehide", () => {
-    tearingDown = true;
-  });
-  target.addEventListener("pageshow", () => {
-    tearingDown = false;
+  target.addEventListener("pagehide", () => { tearingDown = true; });
+  target.addEventListener("pageshow", () => { tearingDown = false; });
+  doc?.addEventListener("visibilitychange", () => {
+    if (doc.visibilityState === "visible") tearingDown = false;
   });
   return { isTearingDown: () => tearingDown };
 }

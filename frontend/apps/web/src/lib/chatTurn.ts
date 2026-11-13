@@ -50,8 +50,9 @@ import { createSetCurrentLocationTool } from './locationTool';
 import { createRememberFactTool } from './memoryTool';
 import { createReadMeshMemberTool, READ_MESH_MEMBER_TOOL_NAME } from './meshChatTool';
 import { createMoonWindowLoader } from './moonWindow';
-import { birthYearOf, createPeriodChartLoader, readyEngine, scopeTurnEngine } from './periodChart';
-import { predictiveReferenceInstant } from './predictive';
+import { birthYearOf, createPeriodChartLoader, PeriodSkyUnavailableError, readyEngine, scopeTurnEngine } from './periodChart';
+import { PeriodSkyTimeoutError } from './periodSky';
+import { buildEnsurePredictiveInput, predictiveReferenceInstant } from './predictive';
 import { createReadPeriodTool, isReadPeriodReading, readPeriodGrounding, readPeriodSpanLabel, readPeriodStatusLabel, type DevicePlace, type ReadPeriodArgs, type ReadPeriodInput } from './readPeriod';
 import { READ_PERIOD_TOOL_NAME } from './periodReading';
 import { formatPinLabel } from './timeTravelSheet';
@@ -164,6 +165,11 @@ function isUnreanchoredToday(input: ChatTurnInput, todayInstant: string, zone: s
   return predictiveReferenceInstant(input.chartAsOf.instant, zone) !== todayInstant;
 }
 
+function shouldFallbackToPeriodLoader(error: unknown, signal: AbortSignal): boolean {
+  if (signal.aborted) return false;
+  return !(error instanceof PeriodSkyUnavailableError) && !(error instanceof PeriodSkyTimeoutError);
+}
+
 async function computeFreshTodayChart(
   input: ChatTurnInput,
   engine: ChartEngineContextValue | null,
@@ -173,6 +179,9 @@ async function computeFreshTodayChart(
 ): Promise<SiderealChart> {
   const todayInstant = planetaryReferenceInstantForZone(context.now, todayZone);
   const todayRange = { start: todayInstant.slice(0, 10), end: todayInstant.slice(0, 10) };
+  if (!buildEnsurePredictiveInput(input.profileKey, input.birth, todayInstant)) {
+    throw new PeriodSkyUnavailableError('incomplete_birth_data');
+  }
   if (isUnreanchoredToday(input, todayInstant, todayZone)) return periodLoader(todayRange, context);
   const runtime = await readyEngine(engine);
   try {
@@ -180,7 +189,7 @@ async function computeFreshTodayChart(
       chart: input.chart, profileKey: input.profileKey, birth: input.birth, chartTimeZone: todayZone, now: context.now, runtime, signal: context.signal,
     });
   } catch (error) {
-    if (error instanceof Error && /superseded/i.test(error.message)) return periodLoader(todayRange, context);
+    if (shouldFallbackToPeriodLoader(error, context.signal)) return periodLoader(todayRange, context);
     throw error;
   }
 }

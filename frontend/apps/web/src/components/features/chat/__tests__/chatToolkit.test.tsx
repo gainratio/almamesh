@@ -1,7 +1,8 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import i18n from '../../../../i18n/config';
+import { ChartEngineContext, type ChartEngineContextValue } from '../../../../providers/chartEngineContext';
 import { CHAT_TOOL_CATALOG, CHAT_TOOLKIT, ToolCallRow, toolListOf } from '../chatToolkit';
 
 afterEach(async () => {
@@ -291,5 +292,64 @@ describe('generative tool cards render alongside receipt rows', () => {
     expect(reasonEl.textContent).toContain(snippet);
     expect(reasonEl.closest('details')).toBeNull();
     expect(screen.queryByTestId('chat-tool-call-args')).toBeNull();
+  });
+
+  it('when engine is ready now (earlier persisted failure), says engine is ready now and never points to a missing banner above', () => {
+    const ctx = {
+      engine: {} as ChartEngineContextValue['engine'],
+      stage: null,
+      error: null,
+      meta: null,
+      startBootstrap: vi.fn(),
+      whenReady: vi.fn(),
+      reboot: vi.fn(),
+    } as ChartEngineContextValue;
+    render(
+      <ChartEngineContext.Provider value={ctx}>
+        <ToolCallRow
+          toolName="read_period"
+          toolCallId="err-ready"
+          args={{ start: 'today' }}
+          argsText=""
+          status={{ type: 'complete' }}
+          result={{ available: false, reason: 'engine_unavailable', period: { label: 'November 12, 2026' } }}
+        />
+      </ChartEngineContext.Provider>,
+    );
+    const text = screen.getByTestId('chat-tool-call-reason').textContent ?? '';
+    expect(text).toContain('ready now');
+    expect(text).not.toContain('above');
+    expect(screen.queryByTestId('chat-tool-retry-engine')).toBeNull();
+  });
+
+  it('when engine is not ready and error is null (no banner above), renders an inline Retry engine button with aria-describedby and never says "above"', () => {
+    const reboot = vi.fn().mockResolvedValue({});
+    const ctx: ChartEngineContextValue = {
+      engine: null,
+      stage: null,
+      error: null,
+      meta: null,
+      startBootstrap: vi.fn(),
+      whenReady: vi.fn(),
+      reboot,
+    };
+    render(
+      <ChartEngineContext.Provider value={ctx}>
+        <ToolCallRow
+          toolName="read_period"
+          toolCallId="err-inline"
+          args={{ start: 'today' }}
+          argsText=""
+          status={{ type: 'complete' }}
+          result={{ available: false, reason: 'engine_unavailable', period: { label: 'November 12, 2026' } }}
+        />
+      </ChartEngineContext.Provider>,
+    );
+    const reasonEl = screen.getByTestId('chat-tool-call-reason');
+    expect(reasonEl.textContent).not.toContain('above');
+    const retryBtn = screen.getByTestId('chat-tool-retry-engine');
+    expect(retryBtn.getAttribute('aria-describedby')).toBe(reasonEl.id);
+    fireEvent.click(retryBtn);
+    expect(reboot).toHaveBeenCalledTimes(1);
   });
 });

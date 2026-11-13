@@ -1120,4 +1120,23 @@ describe('AlmaMeshRuntimeProvider — post-ready failure and fresh recovery', ()
     expect(ctx!.meta?.bundle_id).toBe('pageshow-recovered');
     expect(runtime.bootstrapCalls).toBe(2);
   });
+
+  it('recovers automatically on iOS Safari visibilitychange(visible) after EngineBootCancelledError', async () => {
+    const runtime = makeFakeRuntime([
+      () => Promise.reject(new EngineBootCancelledError()),
+      () => Promise.resolve(makeFakeEngine('visibility-recovered')),
+    ]);
+    let ctx: ReturnType<typeof useChartEngine> | null = null;
+    render(<AlmaMeshRuntimeProvider runtime={runtime}><Probe capture={(value) => { ctx = value; }} /></AlmaMeshRuntimeProvider>);
+    await waitFor(() => expect(ctx?.error?.name).toBe('EngineBootCancelledError'));
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await waitFor(() => expect(ctx?.engine).not.toBeNull());
+    expect(ctx!.error).toBeNull();
+    expect(ctx!.meta?.bundle_id).toBe('visibility-recovered');
+    expect(runtime.bootstrapCalls).toBe(2);
+  });
 });

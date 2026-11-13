@@ -183,6 +183,8 @@
     },
     "reasons": {
       "engine_unavailable": "O motor de cálculo no dispositivo não pôde iniciar. Toque em Tentar motor novamente acima ou recarregue a página.",
+      "engine_unavailable_inline": "O motor de cálculo no dispositivo não pôde concluir esta leitura. Toque em Tentar motor novamente ou recarregue a página.",
+      "engine_ready_now": "O motor de cálculo no dispositivo não estava pronto quando esta mensagem foi enviada — já está pronto agora. Pergunte novamente para ver a leitura de hoje.",
       "other_tab": "Outra aba do AlmaMesh está usando o cache do motor no dispositivo. Feche a outra aba e toque em Tentar motor novamente.",
       "timeout": "O cálculo do céu no dispositivo demorou demais (comum no Modo Pouca Energia). Toque em Tentar motor novamente e pergunte de novo.",
       "incomplete_birth_data": "Falta o fuso horário do local de nascimento no seu mapa. Selecione novamente o local nas Configurações do perfil.",
