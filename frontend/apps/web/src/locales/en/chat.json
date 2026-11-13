@@ -180,6 +180,8 @@
     },
     "reasons": {
       "engine_unavailable": "The on-device calculation engine could not start. Tap Retry engine above or reload the page.",
+      "engine_unavailable_inline": "The on-device calculation engine could not complete this reading. Tap Retry engine or reload the page.",
+      "engine_ready_now": "The on-device calculation engine wasn’t ready when this message was sent — it is ready now. Ask again for today’s reading.",
       "other_tab": "Another AlmaMesh tab is using the on-device engine cache. Close the other tab, then tap Retry engine.",
       "timeout": "Today’s on-device sky calculation took too long (common in Low Power Mode). Tap Retry engine and ask again.",
       "incomplete_birth_data": "Your birth chart is missing a birthplace timezone. Re-select your birthplace in Profile Settings.",

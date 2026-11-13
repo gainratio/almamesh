@@ -190,7 +190,9 @@ const defaultScheduleIdle: IdleScheduler = (task) => {
 };
 
 const pageLifecycle: PageLifecycle | null =
-  typeof window === "undefined" ? null : trackPageTeardown(window);
+  typeof window === "undefined"
+    ? null
+    : trackPageTeardown(window, typeof document === "undefined" ? undefined : document);
 const defaultIsPageTearingDown = (): boolean => pageLifecycle?.isTearingDown() ?? false;
 
 const defaultDeps: RuntimeDeps = {

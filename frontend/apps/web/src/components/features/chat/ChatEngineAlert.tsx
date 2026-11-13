@@ -25,7 +25,7 @@ function CacheResetButton({ error, clearing, label, onReset }: CacheResetButtonP
       onReset={onReset}
       renderTrigger={(onClick) => (
         <button type="button" data-testid="chat-clear-engine-cache" disabled={clearing} onClick={onClick}
-          className="rounded-md border border-ui-border px-2.5 py-1 text-xs text-text-secondary hover:bg-background-tertiary disabled:opacity-50">
+          className="min-h-6 min-w-6 [@media(pointer:coarse)]:min-h-9 rounded-md border border-ui-border px-2.5 py-1 text-xs text-text-secondary hover:bg-background-tertiary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-gold disabled:opacity-50">
           {label}
         </button>
       )}
@@ -56,7 +56,7 @@ export function ChatEngineAlert({ onReload }: ChatEngineAlertProps = {}): ReactE
       )}
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" data-testid="chat-engine-retry" onClick={() => void engineCtx?.reboot().catch(() => undefined)}
-          className="rounded-md border border-accent-gold/60 px-2.5 py-1 text-xs font-medium text-accent-gold hover:bg-accent-gold/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-gold">
+          className="min-h-6 min-w-6 [@media(pointer:coarse)]:min-h-9 rounded-md border border-accent-gold/60 px-2.5 py-1 text-xs font-medium text-accent-gold hover:bg-accent-gold/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-gold">
           {t('tools.retry_engine')}
         </button>
         {!otherTab && <CacheResetButton error={error} clearing={clearing} label={t('tools.clear_engine_cache')} onReset={() => void handleClear()} />}

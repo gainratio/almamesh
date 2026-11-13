@@ -586,16 +586,21 @@ export function AlmaMeshRuntimeProvider({ children, runtime }: ProviderProps) {
   const errorRef = useRef(error)
   errorRef.current = error
 
-  // Recover a boot cancelled by iOS Safari pagehide when the page returns via bfcache pageshow.
+  // Recover a boot cancelled by iOS Safari pagehide when returning via bfcache pageshow or app-switcher visibilitychange.
   useEffect(() => {
-    const onPageShow = () => {
+    const recoverCancelledBoot = () => {
       const current = errorRef.current
       if (!current || !(current instanceof EngineBootCancelledError || current.name === 'EngineBootCancelledError')) return
       setError(null)
       startBootstrap()
     }
-    window.addEventListener('pageshow', onPageShow)
-    return () => window.removeEventListener('pageshow', onPageShow)
+    const onVisibility = () => { if (document.visibilityState === 'visible') recoverCancelledBoot() }
+    window.addEventListener('pageshow', recoverCancelledBoot)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('pageshow', recoverCancelledBoot)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
   }, [startBootstrap])
 
   // Consume at most one retry for each connectivity transition. Browsers can

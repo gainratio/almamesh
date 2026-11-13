@@ -51,6 +51,17 @@ describe("trackPageTeardown", () => {
     target.dispatchEvent(new Event("pageshow"));
     expect(page.isTearingDown()).toBe(false);
   });
+
+  it("clears teardown when visibility returns to visible even if pageshow did not fire (iOS Safari app switch)", () => {
+    const win = new EventTarget();
+    const doc = Object.assign(new EventTarget(), { visibilityState: "hidden" as DocumentVisibilityState });
+    const page = trackPageTeardown(win, doc);
+    win.dispatchEvent(new Event("pagehide"));
+    expect(page.isTearingDown()).toBe(true);
+    doc.visibilityState = "visible";
+    doc.dispatchEvent(new Event("visibilitychange"));
+    expect(page.isTearingDown()).toBe(false);
+  });
 });
 
 describe("observeOrphanedLoadFailures", () => {

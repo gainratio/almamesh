@@ -127,7 +127,7 @@ test('[contract/iphone] @iphone returning iPhone visitor reload + Low Power Mode
       return fulfillToolCall(route, { name: 'answer', args: generalAnswer('Day reading unavailable.') });
     }
     if (turn === 'seed') return fulfillToolCall(route, { name: 'answer', args: generalAnswer('Saturn builds steady foundations.') });
-    if (turn === 'today') return fulfillReadThenAnswer(route, body, readPeriodArgs('today'), 'Your outlook today in Novato is grounded in calculated timing.');
+    if (turn === 'today') return fulfillReadThenAnswer(route, body, readPeriodArgs('today', { place: 'Novato, CA' }), 'Your outlook today in Novato is grounded in calculated timing.');
     if (turn === 'week') return fulfillReadThenAnswer(route, body, readPeriodArgs('this_week', { focus: 'panchang' }), 'Your week ahead in Novato tracks seven daily Panchang marks.');
     if (toolResults(body).some((r) => r.name === 'read_varga')) {
       return fulfillToolCall(route, { name: 'answer', args: generalAnswer('Your D60 Shashtiamsa refines your natal promise.') });
@@ -175,6 +175,11 @@ test('[contract/iphone] @iphone returning iPhone visitor reload + Low Power Mode
 
   await page.reload();
   await expect(page.getByTestId('floating-chat-button')).toBeVisible({ timeout: 120_000 });
+  await page.evaluate(() => {
+    window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
   await page.getByTestId('floating-chat-button').click();
   await expect(page.getByTestId('chat-location-chip')).toContainText('Novato, California');
 

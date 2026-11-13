@@ -7,6 +7,7 @@ import {
 } from '@almamesh/store';
 
 import { withDeadline } from './deadline';
+import { PeriodSkyUnavailableError } from './periodChart';
 import { PERIOD_SKY_TIMEOUT_MS, PeriodSkyTimeoutError } from './periodSky';
 import { isCachedNatalLords, isCachedPeriodReading } from './periodSkyValidation';
 import { buildEnsurePredictiveInput, predictiveReferenceInstant } from './predictive';
@@ -124,7 +125,7 @@ export async function ensureCurrentPlanetaryContext(
     planetaryReferenceInstantForZone(options.now, options.chartTimeZone),
   );
   if (!input) {
-    throw new Error('Current planetary context requires complete birth data.');
+    throw new PeriodSkyUnavailableError('incomplete_birth_data', 'Current planetary context requires complete birth data.');
   }
 
   const expectedKey = predictiveRequestKey(input);

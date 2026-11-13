@@ -192,4 +192,43 @@ describe('returning-device iPhone "outlook today?" resilience', () => {
     expect(calls.map((c) => [c.toolName, c.status])).toEqual([['read_varga', 'complete']]);
     expect(reply).toContain('D60 recovered after reboot.');
   });
+
+  it('7. falls back to isolated periodLoader when usePredictiveStore fails or is superseded while engineCtx.error is null', async () => {
+    let predictiveCall = 0;
+    const computePredictive = vi.fn(async () => {
+      predictiveCall += 1;
+      if (predictiveCall === 1) {
+        // Simulate Dashboard usePredictiveLayer contention or transient store failure without killing Worker
+        usePredictiveStore.getState().reset();
+        return FULL_CONTEXTS;
+      }
+      return FULL_CONTEXTS;
+    });
+    const runtime = { computePredictive, computeMoonWindow: vi.fn(async () => ({ days: [] })), meta: () => null } as unknown as ChartEngine;
+    const engine = { engine: runtime, error: null, startBootstrap: vi.fn(), whenReady: async () => runtime, reboot: async () => runtime } as unknown as ChartEngineContextValue;
+
+    const { calls, reply } = await runOutlookTurn({
+      engine,
+      chartAsOf: { basis: 'chart', instant: new Date('2019-09-15T12:00:00Z') },
+    });
+    expect(calls.map((c) => [c.toolName, c.status])).toEqual([['read_period', 'complete']]);
+    expect(calls[0]?.result).not.toHaveProperty('available', false);
+    expect(reply).toContain('Grounded today outlook in Novato.');
+  });
+
+  it('8. classifies incomplete birth data on today read as incomplete_birth_data instead of engine_unavailable', async () => {
+    const runtime = { computePredictive: vi.fn(async () => FULL_CONTEXTS), computeMoonWindow: vi.fn(async () => ({ days: [] })), meta: () => null } as unknown as ChartEngine;
+    const engine = { engine: runtime, error: null, startBootstrap: vi.fn(), whenReady: async () => runtime, reboot: async () => runtime } as unknown as ChartEngineContextValue;
+    const incompleteBirth = {
+      birth_datetime_utc: '1990-01-15T12:00:00Z',
+      birth_location_details: { city: 'Delhi', latitude: 28.6139, longitude: 77.209 },
+    } as unknown as ProcessedBirthData;
+
+    const { calls } = await runOutlookTurn({
+      engine,
+      birth: incompleteBirth,
+      chartAsOf: { basis: 'chart', instant: new Date('2019-09-15T12:00:00Z') },
+    });
+    expect(calls[0]?.result).toMatchObject({ available: false, reason: 'incomplete_birth_data' });
+  });
 });
