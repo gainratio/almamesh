@@ -134,29 +134,40 @@ interface DocumentLifecycle {
   generation(): number;
   subscribePagehide(cancel: () => void): () => void;
 }
-const documentLifecycles = new WeakMap<EventTarget, DocumentLifecycle>();
-function documentLifecycle(target: EventTarget): DocumentLifecycle {
-  const existing = documentLifecycles.get(target);
-  if (existing) return existing;
+interface VisibilitySource extends EventTarget {
+  readonly visibilityState?: DocumentVisibilityState;
+}
+function bindVisibilityClear(target: EventTarget, clearHidden: () => void): void {
+  if (typeof window === 'undefined' || target !== window || typeof document === 'undefined') return;
+  const doc = document as VisibilitySource;
+  doc.addEventListener('visibilitychange', () => {
+    if (doc.visibilityState === 'visible') clearHidden();
+  });
+}
+function attachPagehideListeners(target: EventTarget, onHide: () => void, onShow: () => void): void {
+  target.addEventListener('pagehide', onHide);
+  target.addEventListener('pageshow', onShow);
+  bindVisibilityClear(target, onShow);
+}
+function createDocumentLifecycle(target: EventTarget): DocumentLifecycle {
   let hidden = false;
   let generation = 0;
   const cancellations = new Set<() => void>();
-  target.addEventListener('pagehide', () => {
-    hidden = true;
-    generation += 1;
+  attachPagehideListeners(target, () => {
+    hidden = true; generation += 1;
     for (const cancel of cancellations) cancel();
-  });
-  target.addEventListener('pageshow', () => { hidden = false; });
-  const lifecycle = {
+  }, () => { hidden = false; });
+  return {
     isHidden: () => hidden,
     generation: () => generation,
-    subscribePagehide: (cancel: () => void) => {
-      cancellations.add(cancel);
-      return () => { cancellations.delete(cancel); };
-    },
+    subscribePagehide: (cancel) => { cancellations.add(cancel); return () => { cancellations.delete(cancel); }; },
   };
-  documentLifecycles.set(target, lifecycle);
-  return lifecycle;
+}
+const documentLifecycles = new WeakMap<EventTarget, DocumentLifecycle>();
+function documentLifecycle(target: EventTarget): DocumentLifecycle {
+  const existing = documentLifecycles.get(target) ?? createDocumentLifecycle(target);
+  documentLifecycles.set(target, existing);
+  return existing;
 }
 // Observe teardown before the first lookup: a caller can still be awaiting
 // canonical hydration when pagehide occurs. This creates no SQL Worker.

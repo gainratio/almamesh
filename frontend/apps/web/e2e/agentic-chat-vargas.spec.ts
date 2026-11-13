@@ -175,13 +175,13 @@ test('[contract/iphone] @iphone returning iPhone visitor reload + Low Power Mode
 
   await page.reload();
   await expect(page.getByTestId('floating-chat-button')).toBeVisible({ timeout: 120_000 });
+  await page.getByTestId('floating-chat-button').click();
+  await expect(page.getByTestId('chat-location-chip')).toContainText('Novato, California');
   await page.evaluate(() => {
     window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
     document.dispatchEvent(new Event('visibilitychange'));
   });
-  await page.getByTestId('floating-chat-button').click();
-  await expect(page.getByTestId('chat-location-chip')).toContainText('Novato, California');
 
   turn = 'today';
   await page.getByTestId('chat-input').fill('outlook today?');

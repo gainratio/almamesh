@@ -589,6 +589,7 @@ describe('derived database page lifecycle', () => {
     vi.doMock('@gainratio/browser/sql', () => ({ openSqlDatabase: openDatabase, removeSqlDatabase: async () => undefined }));
     vi.doMock('@almamesh/store', () => ({ readDeletionTombstones: async () => ({ restoreEpoch: 0 }) }));
     const addListener = vi.spyOn(window as EventTarget, 'addEventListener');
+    const addDocListener = vi.spyOn(document as EventTarget, 'addEventListener');
     try {
       const module = await import('../derivedDb');
       await assert({ module, openDatabase, addListener, close });
@@ -598,7 +599,11 @@ describe('derived database page lifecycle', () => {
       for (const [type, listener, options] of addListener.mock.calls) {
         if ((type === 'pagehide' || type === 'pageshow') && listener) window.removeEventListener(type, listener, options);
       }
+      for (const [type, listener, options] of addDocListener.mock.calls) {
+        if (type === 'visibilitychange' && listener) document.removeEventListener(type, listener, options);
+      }
       addListener.mockRestore();
+      addDocListener.mockRestore();
       if (descriptor) Object.defineProperty(navigator, 'locks', descriptor);
       else Reflect.deleteProperty(navigator, 'locks');
       vi.doUnmock('@gainratio/browser/sql');
@@ -614,6 +619,17 @@ describe('derived database page lifecycle', () => {
       expect(openDatabase).not.toHaveBeenCalled();
       window.dispatchEvent(new Event('pageshow'));
       await expect(module.withDerivedDb(async () => 'fresh work')).resolves.toBe('fresh work');
+      expect(openDatabase).toHaveBeenCalledOnce();
+    });
+  });
+
+  it('clears hidden state on iOS Safari foreground visibilitychange when pageshow did not fire', async () => {
+    await withBrowserModule(async ({ module, openDatabase }) => {
+      window.dispatchEvent(new Event('pagehide'));
+      await expect(module.withDerivedDb(async () => 'blocked while hidden')).rejects.toMatchObject({ name: 'AbortError' });
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+      document.dispatchEvent(new Event('visibilitychange'));
+      await expect(module.withDerivedDb(async () => 'resumed after app switch')).resolves.toBe('resumed after app switch');
       expect(openDatabase).toHaveBeenCalledOnce();
     });
   });
