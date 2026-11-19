@@ -29,6 +29,17 @@ interface BrowserProblems {
   readonly externalRequests: string[];
 }
 
+/**
+ * The same benign-abort policy as portableInvariants.helpers.ts: navigating or
+ * reloading while the app is healthy cancels its own background prefetches
+ * (the signed bundle's manifest and chunks, the SQLite and Pyodide Workers, the
+ * on-device model weights). Chromium reports that intentional cancellation as a
+ * failed request even though no response failed and the app handles it
+ * normally. Only same-origin static engine assets qualify here; an app-shell or
+ * data failure still fails.
+ */
+const BENIGN_ABORT_PATHS = ["/pyodide/", "/bundle/", "/models/", "/assets/"];
+
 function watchBrowser(
   context: BrowserContext,
   origin: string,
@@ -57,7 +68,9 @@ function watchBrowser(
     // request even though no response failed and the app handles it normally.
     if (
       request.failure()?.errorText === "net::ERR_ABORTED" &&
-      new URL(request.url()).pathname.startsWith("/pyodide/")
+      BENIGN_ABORT_PATHS.some((prefix) =>
+        new URL(request.url()).pathname.startsWith(prefix),
+      )
     ) {
       return;
     }
