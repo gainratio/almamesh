@@ -39,6 +39,9 @@
     "generate_for": "Gerar o mapa de {{name}}",
     "generate_yours": "Gerar o seu mapa",
     "discuss": "Conversar no chat",
+    "export_pdf": "Baixar PDF de afinidade",
+    "export_pdf_title": "Baixar um PDF gerado localmente deste relatório de afinidade",
+    "export_pdf_failed": "Não foi possível gerar o PDF de afinidade. Tente novamente.",
     "integrity_label": "Promessa de somente leitura"
   },
   "compat": {

@@ -38,6 +38,9 @@
     "generate_for": "Generate {{name}}'s chart",
     "generate_yours": "Generate your chart",
     "discuss": "Discuss in chat",
+    "export_pdf": "Download Match PDF",
+    "export_pdf_title": "Download a locally-generated PDF of this match report",
+    "export_pdf_failed": "Could not generate the Match PDF. Please try again.",
     "integrity_label": "Read-only promise"
   },
   "compat": {

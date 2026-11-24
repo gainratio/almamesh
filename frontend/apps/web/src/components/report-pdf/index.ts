@@ -7,7 +7,10 @@
  */
 
 export { ReportDocument } from './ReportDocument';
+export { MatchReportDocument } from './MatchReportDocument';
 export { buildReportPdfData } from './buildReportPdfData';
+export { buildMatchPdfData } from './buildMatchPdfData';
+export type { BuildMatchPdfInput, MatchPdfData, MatchPdfLabels } from './buildMatchPdfData';
 export type { BirthDetailLabels, BuildReportPdfDataInput } from './buildReportPdfData';
 export { buildEvidenceSection } from './buildEvidenceSection';
 export type { EvidenceText } from './buildEvidenceSection';

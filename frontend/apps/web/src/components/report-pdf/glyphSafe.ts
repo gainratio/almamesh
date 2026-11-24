@@ -51,6 +51,13 @@ const GLYPH_MAP: ReadonlyArray<readonly [RegExp, string]> = [
   [/[Ḷ]/g, 'L'],
 ];
 
+const DEVANAGARI_RE = /[\u0900-\u097F]/;
+
+/** True when `text` contains any Devanagari Unicode code point (Hindi/Sanskrit). */
+export function containsDevanagari(text: string): boolean {
+  return DEVANAGARI_RE.test(text);
+}
+
 /** Replace glyphs absent from the report fonts with safe Latin equivalents. */
 export function glyphSafe(text: string): string {
   return GLYPH_MAP.reduce((acc, [pattern, replacement]) => acc.replace(pattern, replacement), text);

@@ -28,40 +28,91 @@ import { Font, StyleSheet } from '@react-pdf/renderer';
 export const FONT_DISPLAY = 'Fraunces Report';
 export const FONT_BODY = 'Hanken Grotesk Report';
 export const FONT_MONO = 'Spline Sans Mono Report';
+export const FONT_DEVANAGARI = 'Noto Sans Devanagari Report';
 
 /** Absolute, same-origin font URLs (served from `public/fonts/`). */
 const FONT_BASE = '/fonts';
 
+export interface RegisterReportFontsOptions {
+  /**
+   * Bind display and body faces to the self-hosted Noto Sans Devanagari TTFs
+   * (full Devanagari + Basic Latin coverage) so Hindi PDF exports never emit tofu.
+   */
+  readonly devanagari?: boolean;
+}
+
 /**
- * Register all report faces. Idempotent-safe to call once at module load.
+ * Register all report faces. Idempotent-safe to call before rendering.
  * `fontBase` lets the Node harness rewrite the same URLs onto local files.
  */
-export function registerReportFonts(fontBase: string = FONT_BASE): void {
+export function registerReportFonts(
+  fontBase: string = FONT_BASE,
+  options: RegisterReportFontsOptions = {},
+): void {
+  const devanagariRegular = `${fontBase}/NotoSansDevanagari-Regular.ttf`;
+  const devanagariSemiBold = `${fontBase}/NotoSansDevanagari-SemiBold.ttf`;
+
   Font.register({
-    family: FONT_DISPLAY,
+    family: FONT_DEVANAGARI,
     fonts: [
-      { src: `${fontBase}/Fraunces-Regular.ttf`, fontWeight: 400 },
-      { src: `${fontBase}/Fraunces-SemiBold.ttf`, fontWeight: 600 },
-      { src: `${fontBase}/Fraunces-Italic.ttf`, fontWeight: 400, fontStyle: 'italic' },
-    ],
-  });
-  Font.register({
-    family: FONT_BODY,
-    fonts: [
-      { src: `${fontBase}/HankenGrotesk-Report-Regular.ttf`, fontWeight: 400 },
-      { src: `${fontBase}/HankenGrotesk-Report-Medium.ttf`, fontWeight: 500 },
-      { src: `${fontBase}/HankenGrotesk-Report-SemiBold.ttf`, fontWeight: 600 },
-    ],
-  });
-  Font.register({
-    family: FONT_MONO,
-    fonts: [
-      { src: `${fontBase}/SplineSansMono-Regular.ttf`, fontWeight: 400 },
-      { src: `${fontBase}/SplineSansMono-SemiBold.ttf`, fontWeight: 600 },
+      { src: devanagariRegular, fontWeight: 400 },
+      { src: devanagariRegular, fontWeight: 400, fontStyle: 'italic' },
+      { src: devanagariSemiBold, fontWeight: 500 },
+      { src: devanagariSemiBold, fontWeight: 600 },
     ],
   });
 
-  // Never hyphenate — Sanskrit transliteration and proper nouns must stay whole.
+  if (options.devanagari) {
+    Font.register({
+      family: FONT_DISPLAY,
+      fonts: [
+        { src: devanagariRegular, fontWeight: 400 },
+        { src: devanagariSemiBold, fontWeight: 600 },
+        { src: devanagariRegular, fontWeight: 400, fontStyle: 'italic' },
+      ],
+    });
+    Font.register({
+      family: FONT_BODY,
+      fonts: [
+        { src: devanagariRegular, fontWeight: 400 },
+        { src: devanagariSemiBold, fontWeight: 500 },
+        { src: devanagariSemiBold, fontWeight: 600 },
+      ],
+    });
+    Font.register({
+      family: FONT_MONO,
+      fonts: [
+        { src: devanagariRegular, fontWeight: 400 },
+        { src: devanagariSemiBold, fontWeight: 600 },
+      ],
+    });
+  } else {
+    Font.register({
+      family: FONT_DISPLAY,
+      fonts: [
+        { src: `${fontBase}/Fraunces-Regular.ttf`, fontWeight: 400 },
+        { src: `${fontBase}/Fraunces-SemiBold.ttf`, fontWeight: 600 },
+        { src: `${fontBase}/Fraunces-Italic.ttf`, fontWeight: 400, fontStyle: 'italic' },
+      ],
+    });
+    Font.register({
+      family: FONT_BODY,
+      fonts: [
+        { src: `${fontBase}/HankenGrotesk-Report-Regular.ttf`, fontWeight: 400 },
+        { src: `${fontBase}/HankenGrotesk-Report-Medium.ttf`, fontWeight: 500 },
+        { src: `${fontBase}/HankenGrotesk-Report-SemiBold.ttf`, fontWeight: 600 },
+      ],
+    });
+    Font.register({
+      family: FONT_MONO,
+      fonts: [
+        { src: `${fontBase}/SplineSansMono-Regular.ttf`, fontWeight: 400 },
+        { src: `${fontBase}/SplineSansMono-SemiBold.ttf`, fontWeight: 600 },
+      ],
+    });
+  }
+
+  // Never hyphenate — Sanskrit/Devanagari words and proper nouns must stay whole.
   Font.registerHyphenationCallback((word) => [word]);
 }
 

@@ -31,6 +31,7 @@ import type { ReportChartFields } from './reportData';
 import type { RectificationDelta } from './rectification';
 import { verifyStrengthProvenance, type StrengthProvenance } from './strengthProvenance';
 import { canonicalizeFontSubsetTags } from './reportPdfDeterminism';
+import { containsDevanagari } from '../components/report-pdf/glyphSafe';
 
 /** All localized chrome strings the document needs (passed from React/i18n). */
 export interface ReportPdfChrome {
@@ -128,6 +129,8 @@ export interface DownloadReportPdfInput {
   readonly evidence?: ReportPdfEvidence;
   /** The download file name (without extension). */
   readonly fileBaseName: string;
+  /** Optional UI locale (e.g. 'hi'); enables self-hosted Devanagari PDF typography. */
+  readonly locale?: string;
 }
 
 /**
@@ -171,7 +174,12 @@ export async function downloadReportPdf(input: DownloadReportPdfInput): Promise<
     '../components/report-pdf'
   );
 
-  registerReportFonts();
+  const devanagari =
+    input.locale === 'hi' ||
+    containsDevanagari(
+      `${input.chrome.personName}${input.chrome.subtitle}${input.chrome.kicker}${input.chrome.chromeLabels.footerNote}`,
+    );
+  registerReportFonts(undefined, { devanagari });
 
   const provenance = await resolveStrengthProvenance(input.comprehensive);
 

@@ -39,6 +39,9 @@
     "generate_for": "Generar la carta de {{name}}",
     "generate_yours": "Generar tu carta",
     "discuss": "Conversar en el chat",
+    "export_pdf": "Descargar PDF de afinidad",
+    "export_pdf_title": "Descargar un PDF generado localmente de este informe de afinidad",
+    "export_pdf_failed": "No se pudo generar el PDF de afinidad. Inténtalo de nuevo.",
     "integrity_label": "Promesa de solo lectura"
   },
   "compat": {
