@@ -21,6 +21,7 @@ import {
   getCurrentPlace,
   pairKeyOf,
   useAnchorProfile,
+  useAyanamsaStore,
   useChartLibraryStore,
   useContentModeStore,
   useLanguageStore,
@@ -258,12 +259,16 @@ function MeshEdgeContent({
   const viewMode: ViewMode = contentMode === 'technical' ? 'astrologer' : 'layman';
 
   // The explicit window: pinned reference instant, now → +N years, role seats.
+  const ayanamsa = useAyanamsaStore((s) => s.ayanamsa);
   const [years, setYears] = useState<MeshWindowYears>(DEFAULT_MESH_WINDOW_YEARS);
   const [brideSide, setBrideSide] = useState<BrideTableSide>('anchor');
   const referenceInstant = useMemo(() => predictiveReferenceInstant(), []);
   const window = useMemo(
-    () => meshEdgeWindow(referenceInstant, years, brideSide),
-    [referenceInstant, years, brideSide],
+    () => ({
+      ...meshEdgeWindow(referenceInstant, years, brideSide),
+      ...(ayanamsa !== 'LAHIRI' ? { ayanamsaType: ayanamsa } : {}),
+    }),
+    [referenceInstant, years, brideSide, ayanamsa],
   );
 
   const anchorReady = hasBirthChart(charts, anchor.id);

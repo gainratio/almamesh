@@ -9,6 +9,7 @@ export { PeriodsPanel } from './PeriodsPanel';
 export { TransitsPanel } from './TransitsPanel';
 export { ShodasavargaPanel, VARGA_ORDER } from './ShodasavargaPanel';
 export { StrengthPanel } from './StrengthPanel';
+export { VarshaphalaPanel } from './VarshaphalaPanel';
 export {
   DomainsPanel,
   DomainCard,

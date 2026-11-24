@@ -24,7 +24,12 @@
 
 import { create } from 'zustand';
 import type { MatchRole, MeshEdgeCtx } from '@almamesh/shared-types';
-import type { MeshBirthInput, MeshEdgeContext, MeshEdgeInput } from '@almamesh/browser/types';
+import type {
+  AyanamsaType,
+  MeshBirthInput,
+  MeshEdgeContext,
+  MeshEdgeInput,
+} from '@almamesh/browser/types';
 
 import { toMeshEdgeCtx } from './adapters/mesh';
 import { useChartLibraryStore, whenChartLibraryHydrated } from './chartLibrary';
@@ -56,6 +61,7 @@ export interface MeshEdgeWindow {
   readonly referenceInstant: string; // ISO-8601 — pins both "current" dashas
   readonly anchorRole?: MatchRole;
   readonly memberRole?: MatchRole;
+  readonly ayanamsaType?: AyanamsaType;
 }
 
 /** One pair's edge slot: status + the adapted edge + its request identity. */
@@ -159,6 +165,9 @@ function buildMeshRequest(
     windowStart: window.start,
     windowEnd: window.end,
     referenceInstant: window.referenceInstant,
+    ...(window.ayanamsaType !== undefined && window.ayanamsaType !== 'LAHIRI'
+      ? { ayanamsaType: window.ayanamsaType }
+      : {}),
   };
   // The request identity IS the inputs (the chart-id convention): any birth,
   // relationship, role or window change yields a new key -> recompute.

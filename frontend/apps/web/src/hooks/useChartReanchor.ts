@@ -26,6 +26,7 @@ import { safeWarn } from '@almamesh/shared-types';
 import {
   newChartReferenceInstant,
   reanchorChart,
+  useAyanamsaStore,
   useChartLibraryStore,
   useProfilesStore,
 } from '@almamesh/store';
@@ -82,12 +83,16 @@ export function useChartReanchor(): void {
   const startBootstrap = engineCtx?.startBootstrap;
   const queryClient = useQueryClient();
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
+  const ayanamsa = useAyanamsaStore((s) => s.ayanamsa);
   const charts = useChartLibraryStore((s) => s.charts);
   const chart = selectPrimaryStoredChart(charts, activeProfileId);
   const today = useDailyReferenceInstant(viewerTimeZone());
-  // A chart that records no instant at all (the oldest backups) is behind too.
+  const storedAyanamsa = (chart?.sidereal_chart?.snapshot?.ayanamsa ?? 'LAHIRI').toUpperCase();
+  const ayanamsaChanged = chart !== undefined && storedAyanamsa !== ayanamsa;
+  // A chart that records no instant at all (the oldest backups) or uses a
+  // different ayanamsa than the active preference is behind too.
   const behind = chart !== undefined &&
-    (!storedChartRecordsInstant(chart) || storedChartReferenceDay(chart, today) < today);
+    (!storedChartRecordsInstant(chart) || storedChartReferenceDay(chart, today) < today || ayanamsaChanged);
   // Per attempt (`chartId|day`): the active wait, and whether the recompute
   // started / finished. Refs survive StrictMode's simulated remount.
   const waits = useRef<Waits>(new Map());
@@ -105,7 +110,7 @@ export function useChartReanchor(): void {
     if (chartId === undefined || !behind) {
       return;
     }
-    const attempt = `${chartId}|${today}`;
+    const attempt = `${chartId}|${today}|${ayanamsa}`;
     if (finished.current.has(attempt)) {
       return;
     }
@@ -126,6 +131,7 @@ export function useChartReanchor(): void {
       engine,
       library: useChartLibraryStore.getState(),
       referenceInstant: newChartReferenceInstant(),
+      ayanamsaType: ayanamsa,
     };
     reanchorChart(chartId, deps)
       .then((saved) => {
@@ -138,5 +144,5 @@ export function useChartReanchor(): void {
         finished.current.add(attempt);
         endWait(waits.current, attempt);
       });
-  }, [engine, engineError, startBootstrap, chartId, behind, today, queryClient]);
+  }, [engine, engineError, startBootstrap, chartId, behind, today, ayanamsa, queryClient]);
 }

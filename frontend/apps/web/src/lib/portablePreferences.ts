@@ -4,6 +4,7 @@ import {
   LLM_SETTINGS_KEY,
 } from '@almamesh/llm';
 import {
+  hydrateAyanamsaPreference,
   hydrateContentModePreference,
   markPortableStateUnavailable,
   portablePreferenceStorage,
@@ -36,6 +37,7 @@ export async function initializePortablePreferences(): Promise<void> {
 export async function rehydratePortablePreferences(): Promise<void> {
   hydrateLlmSettings(await portablePreferenceStorage.getItem(LLM_SETTINGS_KEY));
   await hydrateContentModePreference();
+  await hydrateAyanamsaPreference();
   hydrateSlowModelSuggestion(
     await portablePreferenceStorage.getItem(MODEL_SUGGESTION_DISMISSED_KEY),
   );

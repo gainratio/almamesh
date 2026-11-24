@@ -25,7 +25,7 @@ from typing import Final
 
 from pydantic import BaseModel, ConfigDict
 
-from almamesh.calculations import SkyfieldAstronomy, calculate_sidereal_context
+from almamesh.calculations import AyanamsaType, SkyfieldAstronomy, calculate_sidereal_context
 from almamesh.domains import compute_life_domains
 from almamesh.reading import compute_period_reading
 from almamesh.reading.bounds import reading_end_from_wire
@@ -107,6 +107,7 @@ def compute_predictive_contexts(
     civil_offset: timedelta,
     window_months: int = _DEFAULT_WINDOW_MONTHS,
     reading_end: date | None = None,
+    ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
 ) -> PredictiveContexts:
     """All four predictive contexts at one EXPLICIT instant (no silent now()).
 
@@ -129,13 +130,19 @@ def compute_predictive_contexts(
     # invocation bounds both duplicates and resource lifetime, including failures.
     with SkyfieldAstronomy() as astronomy:
         natal = calculate_sidereal_context(
-            birth_dt, latitude, longitude, reference_date=reference_instant, astronomy=astronomy
+            birth_dt,
+            latitude,
+            longitude,
+            ayanamsa_type=ayanamsa_type,
+            reference_date=reference_instant,
+            astronomy=astronomy,
         )
         transits = calculate_transit_context(
             natal,
             birth_dt,
             transit_instant=reference_instant,
             window_months=window_months,
+            ayanamsa_type=ayanamsa_type,
             astronomy=astronomy,
         )
         run = _Run(natal, transits, birth_dt, latitude, longitude, civil_offset, reading_end)

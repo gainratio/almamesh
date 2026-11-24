@@ -156,6 +156,7 @@ export function assertSupportedPortableStateSchema(schemaVersion: number): void 
 export const PORTABLE_PREFERENCE_MIRROR_KEYS = [
   'almamesh-llm-settings',
   'almamesh-content-mode',
+  'almamesh-ayanamsa',
   'almamesh-model-suggestion-dismissed',
 ] as const;
 export type PortablePreferenceMirrorKey = (typeof PORTABLE_PREFERENCE_MIRROR_KEYS)[number];
@@ -1265,6 +1266,17 @@ function validatePortablePreferenceMirror(
       (parsed.contentMode !== 'layman' && parsed.contentMode !== 'technical')
     ) {
       throw new Error('Portable content mode is invalid.');
+    }
+    return;
+  }
+  if (key === 'almamesh-ayanamsa') {
+    const validAyanamsas = new Set(['LAHIRI', 'TRUE_CHITRA', 'RAMAN', 'KP', 'FAGAN_BRADLEY']);
+    if (
+      Object.keys(parsed).length !== 1 ||
+      typeof parsed.ayanamsa !== 'string' ||
+      !validAyanamsas.has(parsed.ayanamsa)
+    ) {
+      throw new Error('Portable ayanamsa preference is invalid.');
     }
     return;
   }

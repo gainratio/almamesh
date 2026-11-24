@@ -23,7 +23,7 @@ from edgeproc import (
 )
 from edgeproc.core.models import JsonValue
 
-from almamesh.calculations import calculate_sidereal_context
+from almamesh.calculations import AyanamsaType, calculate_sidereal_context
 from almamesh.constants.astrology import EventType
 from almamesh.mesh import compute_mesh_edge
 from almamesh.predictive import (
@@ -44,6 +44,7 @@ from almamesh.schemas.mesh import MatchRole, Relationship
 from almamesh.snapshot import compute_stamped_chart
 from almamesh.transits.moon_window import moon_window_from_wire
 from almamesh.vargas.detail import varga_detail_from_wire
+from almamesh.varshaphala import varshaphala_from_wire
 
 _RUNTIME_VERSION = "almamesh-chart/0.1.0"
 
@@ -59,6 +60,15 @@ def _parse_payload_number(value: object, *, field: str) -> float:
     if not math.isfinite(number):
         raise ValueError(f"invalid numeric field: {field}")
     return number
+
+
+def _parse_ayanamsa_type(raw: object) -> AyanamsaType:
+    """Parse optional ayanamsa_type wire field, defaulting to LAHIRI."""
+    if raw is None:
+        return AyanamsaType.LAHIRI
+    if not isinstance(raw, str):
+        raise ValueError("invalid ayanamsa_type: expected string")
+    return AyanamsaType(raw)
 
 
 def _compute_chart(payload: Mapping[str, object]) -> dict[str, JsonValue]:
@@ -78,9 +88,14 @@ def _compute_chart(payload: Mapping[str, object]) -> dict[str, JsonValue]:
     reference_date = (
         datetime.fromisoformat(str(raw_reference)) if raw_reference else datetime.now(UTC)
     )
-    return compute_stamped_chart(dt, latitude, longitude, reference_date=reference_date).model_dump(
-        mode="json"
-    )
+    ayanamsa_type = _parse_ayanamsa_type(payload.get("ayanamsa_type"))
+    return compute_stamped_chart(
+        dt,
+        latitude,
+        longitude,
+        reference_date=reference_date,
+        ayanamsa_type=ayanamsa_type,
+    ).model_dump(mode="json")
 
 
 def compute_predictive(payload: Mapping[str, object]) -> dict[str, JsonValue]:
@@ -107,6 +122,7 @@ def compute_predictive(payload: Mapping[str, object]) -> dict[str, JsonValue]:
         civil_offset=civil_offset_from_minutes(payload["utc_offset_minutes"]),
         window_months=window_months_from_wire(payload.get("window_months")),
         reading_end=reading_end_from_wire(payload.get("reading_end")),
+        ayanamsa_type=_parse_ayanamsa_type(payload.get("ayanamsa_type")),
     )
     return contexts.model_dump(mode="json")
 
@@ -125,6 +141,11 @@ def compute_varga_detail_payload(payload: Mapping[str, object]) -> dict[str, Jso
     return varga_detail_from_wire(payload).model_dump(mode="json")
 
 
+def compute_varshaphala_payload(payload: Mapping[str, object]) -> dict[str, JsonValue]:
+    """Annual Tajaka Varshaphala (Solar Return, Muntha, Varshesha, Mudda, Yogas) as JSON."""
+    return varshaphala_from_wire(payload).model_dump(mode="json")
+
+
 def _birth_input(value: object) -> Mapping[str, object]:
     """Narrow a mesh birth input to a mapping — fail loud on anything else."""
     if not isinstance(value, Mapping):
@@ -132,12 +153,17 @@ def _birth_input(value: object) -> Mapping[str, object]:
     return value
 
 
-def _natal_for_mesh(birth: Mapping[str, object], reference_instant: datetime) -> SiderealContext:
+def _natal_for_mesh(
+    birth: Mapping[str, object],
+    reference_instant: datetime,
+    ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
+) -> SiderealContext:
     """One read-only natal context for the mesh, with its dasha clock pinned."""
     return calculate_sidereal_context(
         datetime.fromisoformat(str(birth["datetime_utc"])),
         _parse_payload_number(birth["latitude"], field="latitude"),
         _parse_payload_number(birth["longitude"], field="longitude"),
+        ayanamsa_type=ayanamsa_type,
         reference_date=reference_instant,
     )
 
@@ -153,9 +179,10 @@ def compute_mesh(payload: Mapping[str, object]) -> dict[str, JsonValue]:
     (and byte-parity-testable) by construction.
     """
     reference_instant = datetime.fromisoformat(str(payload["reference_instant"]))
+    ayanamsa_type = _parse_ayanamsa_type(payload.get("ayanamsa_type"))
     edge = compute_mesh_edge(
-        _natal_for_mesh(_birth_input(payload["a"]), reference_instant),
-        _natal_for_mesh(_birth_input(payload["b"]), reference_instant),
+        _natal_for_mesh(_birth_input(payload["a"]), reference_instant, ayanamsa_type),
+        _natal_for_mesh(_birth_input(payload["b"]), reference_instant, ayanamsa_type),
         relationship=Relationship(str(payload["relationship"])),
         role_a=MatchRole(str(payload["role_a"])),
         role_b=MatchRole(str(payload["role_b"])),

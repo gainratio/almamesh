@@ -10,6 +10,15 @@
     "portuguese": "Português",
     "hindi": "हिन्दी"
   },
+  "ayanamsa": {
+    "title": "Ayanamsa (ponto zero sideral)",
+    "description": "Convenção de precessão sideral usada em mapas, trânsitos e Varshaphala. O padrão é Lahiri oficial (Chitrapaksha).",
+    "lahiri": "Lahiri (Chitrapaksha · Padrão)",
+    "true_chitra": "True Chitra (Spica 180°)",
+    "kp": "Krishnamurti (KP)",
+    "raman": "B.V. Raman",
+    "fagan_bradley": "Fagan-Bradley"
+  },
   "nav": {
     "profile": "Perfil",
     "profile_description": "Dados de nascimento e perfil do mapa",

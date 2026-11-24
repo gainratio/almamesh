@@ -9,7 +9,39 @@
     "periods": "Periods",
     "vargas": "Divisional Charts",
     "strength": "Strength",
-    "domains": "Life Domains"
+    "domains": "Life Domains",
+    "varshaphala": "Solar Year"
+  },
+  "varshaphala": {
+    "heading": "Varshaphala — Annual Solar Return",
+    "subtitle": "Tajaka annual chart cast for the exact sidereal Sun return, with Muntha, Year Lord (Varshesha), Panchavargiya Bala, Mudda Dasha, and Tajaka Yogas.",
+    "year_label": "Solar year",
+    "age_suffix": "age {{age}}",
+    "computing": "Computing solar return for {{year}} on your device…",
+    "solar_return_title": "Varsha Pravesh (Solar Return)",
+    "varsha_lagna": "Varsha Lagna: {{sign}}",
+    "day_chart": "Day chart",
+    "night_chart": "Night chart",
+    "muntha_title": "Muntha (Progressed Ascendant)",
+    "muntha_detail": "House {{house}} from Varsha Lagna · Lord {{lord}}",
+    "varshesha_title": "Varshesha (Year Lord)",
+    "varshesha_note": "Selected from the five Panchadhikari office-holders by Panchavargiya strength and Lagna aspect.",
+    "chart_title": "Varsha Lagna Chart · {{year}}",
+    "mudda_title": "Mudda Dasha (Annual Periods)",
+    "col_lord": "Lord",
+    "col_start": "Starts",
+    "col_end": "Ends",
+    "col_days": "Days",
+    "bala_title": "Panchavargiya Bala",
+    "col_score": "Virupas",
+    "col_band": "Strength",
+    "band": {
+      "strong": "Strong",
+      "moderate": "Moderate",
+      "weak": "Weak"
+    },
+    "yogas_title": "Tajaka Yogas (Ithasala & Easarpha)",
+    "yogas_empty": "No tight Tajaka aspects within Deeptamsha orb for this solar return."
   },
   "periods": {
     "title": "Vimśottarī Periods",

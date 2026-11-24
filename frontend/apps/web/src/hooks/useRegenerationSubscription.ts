@@ -25,6 +25,7 @@ import {
   newChartReferenceInstant,
   regenerateOnBirthChange,
   registerRegenerationRunner,
+  useAyanamsaStore,
   useChartLibraryStore,
   useChatStore,
   useInterpretationStore,
@@ -73,6 +74,7 @@ export function useRegenerationSubscription(): void {
       // The app's "as of now" — read here, at the edge, and recorded on the
       // chart. Everything below this line is a pure function of it.
       referenceInstant: newChartReferenceInstant(),
+      ayanamsaType: useAyanamsaStore.getState().ayanamsa,
       onRegenerated: () => {
         // The predictive superset is natal-input-dependent. A rectification,
         // birth-time edit, or location edit must never leave the previous

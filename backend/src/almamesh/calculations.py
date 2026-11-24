@@ -120,6 +120,9 @@ class AyanamsaType(StrEnum):
 
     LAHIRI = "LAHIRI"  # official Chitrapaksha (default)
     TRUE_CHITRA = "TRUE_CHITRA"  # Spica forced to exactly 180.000 deg
+    RAMAN = "RAMAN"  # B.V. Raman (Swiss Ephemeris J2000 anchor 22°24'39")
+    KP = "KP"  # Krishnamurti Paddhati (Swiss Ephemeris J2000 anchor 23°45'37")
+    FAGAN_BRADLEY = "FAGAN_BRADLEY"  # Western Sidereal (J2000 anchor 24°44'25")
 
 
 class NodeType(StrEnum):
@@ -153,8 +156,37 @@ HOUSE_SYSTEM: HouseSystem = HouseSystem.WHOLE_SIGN
 # This is the official sidereal-zero epoch used by the Indian Astronomical
 # Ephemeris (IAE) / Rashtriya Panchang for Lahiri (Chitrapaksha) ayanamsa.
 LAHIRI_J2000_ANCHOR_DEG = 23.85306
+# Documented J2000.0 anchors (degrees) matching Swiss Ephemeris sidereal modes
+# with IAU 2006 general precession in longitude.
+AYANAMSA_J2000_ANCHORS_DEG: dict[AyanamsaType, float] = {
+    AyanamsaType.LAHIRI: LAHIRI_J2000_ANCHOR_DEG,
+    AyanamsaType.RAMAN: 22.4108,  # 22°24'39" (SE_SIDM_RAMAN at J2000.0)
+    AyanamsaType.KP: 23.7602,  # 23°45'37" (SE_SIDM_KRISHNAMURTI at J2000.0)
+    AyanamsaType.FAGAN_BRADLEY: 24.7403,  # 24°44'25" (SE_SIDM_FAGAN_BRADLEY at J2000.0)
+}
 _J2000_JD = 2451545.0
 _ARCSEC_TO_DEG = 1.0 / 3600.0
+
+
+def _iau2006_precession_deg(jd: float) -> float:
+    """IAU 2006 general precession in longitude p_A (degrees) from J2000.0."""
+    t = (jd - _J2000_JD) / 36525.0
+    p_arcsec = (
+        5028.796195 * t
+        + 1.1054348 * t**2
+        + 0.00007964 * t**3
+        - 0.000023857 * t**4
+        - 0.0000000383 * t**5
+    )
+    return p_arcsec * _ARCSEC_TO_DEG
+
+
+def get_ayanamsa_for_convention(jd: float, ayanamsa_type: AyanamsaType) -> float:
+    """Precession-based ayanamsa (degrees) for a J2000-anchored convention."""
+    anchor = AYANAMSA_J2000_ANCHORS_DEG.get(ayanamsa_type)
+    if anchor is None:
+        raise ValueError(f"No J2000 precession anchor for ayanamsa_type: {ayanamsa_type}")
+    return anchor + _iau2006_precession_deg(jd)
 
 
 def get_ayanamsa(jd: float) -> float:
@@ -169,15 +201,7 @@ def get_ayanamsa(jd: float) -> float:
 
     `jd` is the Terrestrial-Time Julian Date of the instant.
     """
-    t = (jd - _J2000_JD) / 36525.0
-    p_arcsec = (
-        5028.796195 * t
-        + 1.1054348 * t**2
-        + 0.00007964 * t**3
-        - 0.000023857 * t**4
-        - 0.0000000383 * t**5
-    )
-    return LAHIRI_J2000_ANCHOR_DEG + p_arcsec * _ARCSEC_TO_DEG
+    return get_ayanamsa_for_convention(jd, AyanamsaType.LAHIRI)
 
 
 class InvalidBirthInputError(ValueError):
@@ -778,6 +802,9 @@ def _resolve_ayanamsa(
         return ayanamsa_calc.get_ayanamsa(t.tt)
     if ayanamsa_type is AyanamsaType.TRUE_CHITRA:
         return astro.spica_chitra_ayanamsa(dt_utc)
+    if ayanamsa_type in AYANAMSA_J2000_ANCHORS_DEG:
+        t = astro.ts.from_datetime(_to_utc(dt_utc))
+        return get_ayanamsa_for_convention(t.tt, ayanamsa_type)
     raise NotImplementedError(f"Unsupported ayanamsa_type: {ayanamsa_type}")
 
 

@@ -10,7 +10,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { useLanguageStore, type Language } from '@almamesh/store';
+import type { AyanamsaType } from '@almamesh/browser/types';
+import { useAyanamsaStore, useLanguageStore, usePredictiveStore, type Language } from '@almamesh/store';
 import { useContentModeStore } from '../../stores/contentMode';
 import { Select } from '../../components/ui/Select';
 import { Dialog } from '../../components/ui/Dialog';
@@ -22,6 +23,13 @@ export default function PreferencesSettings() {
   const navigate = useNavigate();
   const language = useLanguageStore((s) => s.language);
   const setLanguage = useLanguageStore((s) => s.setLanguage);
+  const ayanamsa = useAyanamsaStore((s) => s.ayanamsa);
+  const setAyanamsa = useAyanamsaStore((s) => s.setAyanamsa);
+
+  const handleAyanamsaChange = (next: AyanamsaType): void => {
+    setAyanamsa(next);
+    usePredictiveStore.getState().reset();
+  };
 
   // Danger zone: a confirmed "start fresh" that erases the chart + everything
   // derived from it (but keeps language, AI settings and the downloaded engine).
@@ -159,6 +167,30 @@ export default function PreferencesSettings() {
                 <option value="es">{t('language.spanish')}</option>
                 <option value="pt">{t('language.portuguese')}</option>
                 <option value="hi">{t('language.hindi')}</option>
+              </Select>
+            </div>
+          </div>
+
+          {/* Ayanamsa — persisted sidereal zero-point convention; changing it re-anchors charts on-device. */}
+          <div className="p-4 bg-background-tertiary border border-ui-border rounded-lg">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <p className="text-text-primary font-medium">{t('ayanamsa.title')}</p>
+                <p className="text-text-secondary text-sm mt-1">{t('ayanamsa.description')}</p>
+              </div>
+              <Select
+                id="ayanamsa-select"
+                aria-label={t('ayanamsa.title')}
+                value={ayanamsa}
+                onChange={(e) => handleAyanamsaChange(e.target.value as AyanamsaType)}
+                className="w-auto min-w-[12rem]"
+                data-testid="ayanamsa-select"
+              >
+                <option value="LAHIRI">{t('ayanamsa.lahiri')}</option>
+                <option value="TRUE_CHITRA">{t('ayanamsa.true_chitra')}</option>
+                <option value="KP">{t('ayanamsa.kp')}</option>
+                <option value="RAMAN">{t('ayanamsa.raman')}</option>
+                <option value="FAGAN_BRADLEY">{t('ayanamsa.fagan_bradley')}</option>
               </Select>
             </div>
           </div>

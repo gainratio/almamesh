@@ -12,6 +12,7 @@ import tzPlugin from "dayjs/plugin/timezone";
 import utcPlugin from "dayjs/plugin/utc";
 
 import type {
+  AyanamsaType,
   BirthInput,
   DashaPeriod,
   MahaDashaPeriod,
@@ -166,12 +167,14 @@ function effectiveFold(birth: LocalBirthInput): DstFold | undefined {
 export function toBirthInput(
   input: LocalBirthInput,
   referenceInstant: string,
+  ayanamsaType?: AyanamsaType,
 ): BirthInput {
   return {
     datetimeUtc: birthDatetimeUtc(input),
     latitude: input.latitude,
     longitude: input.longitude,
     referenceDate: requireChartReferenceInstant(referenceInstant, "toBirthInput: referenceInstant"),
+    ...(ayanamsaType !== undefined && ayanamsaType !== "LAHIRI" ? { ayanamsaType } : {}),
   };
 }
 

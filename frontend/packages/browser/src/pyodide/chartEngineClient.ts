@@ -21,6 +21,8 @@ import type {
   PredictiveInput,
   VargaDetailInput,
   VargaDetailResult,
+  VarshaphalaContext,
+  VarshaphalaInput,
   WorkerLike,
 } from "./protocol";
 import type { RectificationInput, RectificationResultRaw } from "./rectification";
@@ -218,6 +220,18 @@ export class ChartEngineClient {
     const response = await this.#send({ kind: "computeVargaDetail", id: this.#allocId(), input });
     if (response.ok && response.kind === "computeVargaDetail") {
       return response.vargaDetail;
+    }
+    throw response.ok ? new Error("unexpected response kind") : errorFromWorker(response.error, response.errorName);
+  }
+
+  /**
+   * Compute annual Tajaka Varshaphala (Solar Return chart, Muntha, Varshesha,
+   * Panchavargiya Bala, Mudda Dasha, and Tajaka Yogas) on-device.
+   */
+  public async computeVarshaphala(input: VarshaphalaInput): Promise<VarshaphalaContext> {
+    const response = await this.#send({ kind: "computeVarshaphala", id: this.#allocId(), input });
+    if (response.ok && response.kind === "computeVarshaphala") {
+      return response.varshaphala;
     }
     throw response.ok ? new Error("unexpected response kind") : errorFromWorker(response.error, response.errorName);
   }

@@ -17,6 +17,7 @@
 
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
+  useAyanamsaStore,
   useChartLibraryStore,
   usePredictiveStore,
   useProfilesStore,
@@ -139,6 +140,7 @@ export function usePredictiveLayer({ auto = false }: UsePredictiveLayerOptions =
   const ensurePredictive = usePredictiveStore((s) => s.ensurePredictive);
 
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
+  const ayanamsa = useAyanamsaStore((s) => s.ayanamsa);
   const charts = useChartLibraryStore((s) => s.charts);
   const storedChart = selectPrimaryStoredChart(charts, activeProfileId);
   const birth = storedChart?.birth_data as ProcessedBirthData | undefined;
@@ -152,8 +154,8 @@ export function usePredictiveLayer({ auto = false }: UsePredictiveLayerOptions =
   const todayDay = useDailyReferenceInstant(viewerTimeZone());
   const referenceInstant = storedChart ? storedChartReferenceDay(storedChart, todayDay) : todayDay;
   const input = useMemo(
-    () => buildEnsurePredictiveInput(profileKey, birth, referenceInstant),
-    [profileKey, birth, referenceInstant],
+    () => buildEnsurePredictiveInput(profileKey, birth, referenceInstant, {}, ayanamsa),
+    [profileKey, birth, referenceInstant, ayanamsa],
   );
   const expectedRequestKey = input ? predictiveRequestKey(input) : undefined;
   const cacheMatchesInput =

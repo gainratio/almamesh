@@ -10,7 +10,39 @@
     "periods": "Períodos",
     "vargas": "Mapas Divisionais",
     "strength": "Força",
-    "domains": "Áreas da Vida"
+    "domains": "Áreas da Vida",
+    "varshaphala": "Ano Solar"
+  },
+  "varshaphala": {
+    "heading": "Varshaphala — Retorno Solar Anual",
+    "subtitle": "Mapa anual Tajaka para o retorno exato do Sol sideral, com Muntha, Senhor do Ano (Varshesha), Panchavargiya Bala, Mudda Dasha e Yogas Tajaka.",
+    "year_label": "Ano solar",
+    "age_suffix": "idade {{age}}",
+    "computing": "Calculando o retorno solar de {{year}} no seu dispositivo…",
+    "solar_return_title": "Varsha Pravesh (Retorno Solar)",
+    "varsha_lagna": "Varsha Lagna: {{sign}}",
+    "day_chart": "Mapa diurno",
+    "night_chart": "Mapa noturno",
+    "muntha_title": "Muntha (Ascendente Progredido)",
+    "muntha_detail": "Casa {{house}} a partir do Varsha Lagna · Regente {{lord}}",
+    "varshesha_title": "Varshesha (Senhor do Ano)",
+    "varshesha_note": "Escolhido entre os cinco Panchadhikaris pela força Panchavargiya e aspecto ao Lagna.",
+    "chart_title": "Mapa Varsha Lagna · {{year}}",
+    "mudda_title": "Mudda Dasha (Períodos Anuais)",
+    "col_lord": "Regente",
+    "col_start": "Início",
+    "col_end": "Fim",
+    "col_days": "Dias",
+    "bala_title": "Panchavargiya Bala",
+    "col_score": "Virupas",
+    "col_band": "Força",
+    "band": {
+      "strong": "Forte",
+      "moderate": "Moderada",
+      "weak": "Fraca"
+    },
+    "yogas_title": "Yogas Tajaka (Ithasala e Easarpha)",
+    "yogas_empty": "Sem aspectos Tajaka próximos dentro da orbe Deeptamsha neste retorno solar."
   },
   "periods": {
     "title": "Períodos Vimśottarī",

@@ -26,6 +26,7 @@ import type {
   VargaCtxFull,
 } from '@almamesh/shared-types';
 import type {
+  AyanamsaType,
   PredictiveCallOptions,
   PredictiveContexts,
   PredictiveInput,
@@ -77,6 +78,8 @@ export interface EnsurePredictiveInput {
   readonly windowMonths?: 24;
   /** The period reading's inclusive last day; omitted means the reference day (today). */
   readonly readingEnd?: string;
+  /** Optional sidereal zero-point convention; omitted means LAHIRI (default). */
+  readonly ayanamsaType?: AyanamsaType;
 }
 
 export interface PredictiveStore {
@@ -138,7 +141,11 @@ export function predictiveRequestKey(input: EnsurePredictiveInput): string {
   ];
   const window = input.windowMonths === undefined ? [] : [input.windowMonths];
   const reading = input.readingEnd === undefined ? [] : [{ readingEnd: input.readingEnd }];
-  return JSON.stringify([...base, ...window, ...reading]);
+  const ayanamsa =
+    input.ayanamsaType === undefined || input.ayanamsaType === 'LAHIRI'
+      ? []
+      : [{ ayanamsaType: input.ayanamsaType }];
+  return JSON.stringify([...base, ...window, ...reading, ...ayanamsa]);
 }
 
 // --- Persistence (canonical OPFS SQLite) ------------------------------------
@@ -350,6 +357,9 @@ export const predictiveStoreCreator: StateCreator<PredictiveStore> = (set, get) 
         longitude: input.longitude,
         referenceInstant: input.referenceInstant,
         utcOffsetMinutes: input.utcOffsetMinutes,
+        ...(input.ayanamsaType !== undefined && input.ayanamsaType !== 'LAHIRI'
+          ? { ayanamsaType: input.ayanamsaType }
+          : {}),
       });
       if (get().requestKey !== key) {
         return; // superseded by a newer profile/instant while in flight

@@ -10,6 +10,15 @@
     "portuguese": "Português",
     "hindi": "हिन्दी"
   },
+  "ayanamsa": {
+    "title": "Ayanamsa (punto cero sideral)",
+    "description": "Convención de precesión sideral utilizada para cartas, tránsitos y Varshaphala. Por defecto usa Lahiri oficial (Chitrapaksha).",
+    "lahiri": "Lahiri (Chitrapaksha · Predeterminado)",
+    "true_chitra": "True Chitra (Spica 180°)",
+    "kp": "Krishnamurti (KP)",
+    "raman": "B.V. Raman",
+    "fagan_bradley": "Fagan-Bradley"
+  },
   "nav": {
     "profile": "Perfil",
     "profile_description": "Datos de nacimiento y perfil de la carta",
