@@ -69,6 +69,7 @@ const LEGACY_LOCAL_STORAGE_KEYS = [
   'almamesh-language',
   'almamesh-llm-settings',
   'almamesh-content-mode',
+  'almamesh-ayanamsa',
   'almamesh-model-suggestion-dismissed',
   'almamesh-restore-epoch',
   'almamesh-restore-in-progress',

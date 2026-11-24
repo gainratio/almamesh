@@ -13,7 +13,7 @@
  * callback that resets ephemeral interpretation/chat and triggers the re-stream.
  */
 
-import type { BirthInput, SiderealChart } from '@almamesh/browser/types';
+import type { AyanamsaType, BirthInput, SiderealChart } from '@almamesh/browser/types';
 
 import {
   type BirthMeta,
@@ -75,6 +75,8 @@ export interface RegenerateDeps {
    * chart, which is the whole determinism claim.
    */
   readonly referenceInstant: string;
+  /** Optional sidereal zero-point convention; omitted means LAHIRI (default). */
+  readonly ayanamsaType?: AyanamsaType;
 }
 
 /** Build the new primary `StoredChart`, preserving the owning profile. */
@@ -141,21 +143,28 @@ export function regenerateOnBirthChange(
  * birth data lost (or never wrote back) its zone keeps the old id; comparing
  * ids alone would skip the save forever and the zone would never come back.
  */
-function alreadyStored(prior: StoredChart | undefined, birth: BirthMeta, nextId: string): boolean {
+function alreadyStored(
+  prior: StoredChart | undefined,
+  birth: BirthMeta,
+  nextId: string,
+  ayanamsaType?: AyanamsaType,
+): boolean {
   if (prior?.chart_id !== nextId) return false;
-  return (prior.birth_data?.birth_location_details?.timezone ?? '') === birth.timezone;
+  if ((prior.birth_data?.birth_location_details?.timezone ?? '') !== birth.timezone) return false;
+  const storedAyanamsa = (prior.sidereal_chart?.snapshot?.ayanamsa ?? 'LAHIRI').toUpperCase();
+  return storedAyanamsa === (ayanamsaType ?? 'LAHIRI');
 }
 
 async function regenerateNow(event: BirthInfoChanged, deps: RegenerateDeps): Promise<void> {
   const { birth, profileId } = event;
   const nextId = chartId(birth);
   const prior = primaryForProfile(deps.library, profileId);
-  if (alreadyStored(prior, birth, nextId)) {
+  if (alreadyStored(prior, birth, nextId, deps.ayanamsaType)) {
     return;
   }
   // ONE instant for both the engine input and the stored `calculation_timestamp`.
-  const { referenceInstant } = deps;
-  const chart = await deps.engine.generateChart(toBirthInput(birth, referenceInstant));
+  const { referenceInstant, ayanamsaType } = deps;
+  const chart = await deps.engine.generateChart(toBirthInput(birth, referenceInstant, ayanamsaType));
   deps.library.saveChart(buildPrimary(chart, birth, profileId, referenceInstant));
   if (prior && prior.chart_id !== nextId) {
     deps.library.deleteChart(prior.chart_id);
@@ -173,6 +182,8 @@ export interface ReanchorDeps {
   readonly library: Pick<RegenerateLibrary, 'listAllCharts' | 'saveChart'>;
   /** The new analysis instant — mint it with `newChartReferenceInstant()`. */
   readonly referenceInstant: string;
+  /** Optional sidereal zero-point convention; omitted means LAHIRI (default). */
+  readonly ayanamsaType?: AyanamsaType;
 }
 
 function findChart(library: ReanchorDeps['library'], id: string): StoredChart | undefined {
@@ -180,7 +191,11 @@ function findChart(library: ReanchorDeps['library'], id: string): StoredChart | 
 }
 
 /** The engine input for the SAME birth, as of a new instant; null without a stored birth. */
-function reanchorInput(prior: StoredChart, referenceInstant: string): BirthInput | null {
+function reanchorInput(
+  prior: StoredChart,
+  referenceInstant: string,
+  ayanamsaType?: AyanamsaType,
+): BirthInput | null {
   const datetimeUtc = prior.birth_data?.birth_datetime_utc;
   const location = prior.birth_data?.birth_location_details;
   if (!datetimeUtc || !location) {
@@ -191,6 +206,7 @@ function reanchorInput(prior: StoredChart, referenceInstant: string): BirthInput
     latitude: location.latitude,
     longitude: location.longitude,
     referenceDate: requireChartReferenceInstant(referenceInstant, 'reanchorChart: referenceInstant'),
+    ...(ayanamsaType !== undefined && ayanamsaType !== 'LAHIRI' ? { ayanamsaType } : {}),
   };
 }
 
@@ -217,7 +233,7 @@ export function reanchorChart(id: string, deps: ReanchorDeps): Promise<boolean> 
 
 async function reanchorNow(id: string, deps: ReanchorDeps): Promise<boolean> {
   const prior = findChart(deps.library, id);
-  const input = prior ? reanchorInput(prior, deps.referenceInstant) : null;
+  const input = prior ? reanchorInput(prior, deps.referenceInstant, deps.ayanamsaType) : null;
   if (!prior || !input) {
     return false;
   }

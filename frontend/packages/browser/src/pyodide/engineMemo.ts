@@ -19,13 +19,19 @@
 import { devicePolicy } from "../deviceTier";
 import type { SiderealChart } from "./chart";
 import type { PredictiveContexts } from "./predictive";
-import type { BirthInput, PredictiveCallOptions, PredictiveInput } from "./protocol";
+import type {
+  BirthInput,
+  PredictiveCallOptions,
+  PredictiveInput,
+  VarshaphalaContext,
+  VarshaphalaInput,
+} from "./protocol";
 import type { ChartEngine } from "./runtime";
 
 /** Entries kept per engine; a chart is ~30 KB and a predictive payload ~60 KB. */
 const DEFAULT_MEMO_CAPACITY = 32;
 
-type MemoKind = "generateChart" | "computePredictive";
+type MemoKind = "generateChart" | "computePredictive" | "computeVarshaphala";
 
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
@@ -132,6 +138,14 @@ export function memoizeChartEngine(
     computeMeshEdge: (input) => engine.computeMeshEdge(input),
     computeRectification: (input) => engine.computeRectification(input),
     computeVargaDetail: (input) => engine.computeVargaDetail(input),
+    ...(engine.computeVarshaphala === undefined
+      ? {}
+      : {
+          computeVarshaphala: (input: VarshaphalaInput): Promise<VarshaphalaContext> =>
+            memo.run(memoKey(identity, "computeVarshaphala", input), () =>
+              engine.computeVarshaphala!(input),
+            ),
+        }),
     meta: () => engine.meta(),
   };
 }

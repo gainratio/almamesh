@@ -39,6 +39,8 @@ import type {
   PyodideAsset,
   VargaDetailInput,
   VargaDetailResult,
+  VarshaphalaContext,
+  VarshaphalaInput,
 } from "./protocol";
 import type { RectificationInput, RectificationResultRaw } from "./rectification";
 import { EngineBootCancelledError, trackPageTeardown } from "./teardown";
@@ -100,6 +102,7 @@ export interface ChartEnginePort {
   computeMeshEdge(input: MeshEdgeInput): Promise<MeshEdgeContext>;
   computeRectification(input: RectificationInput): Promise<RectificationResultRaw>;
   computeVargaDetail?(input: VargaDetailInput): Promise<VargaDetailResult>;
+  computeVarshaphala?(input: VarshaphalaInput): Promise<VarshaphalaContext>;
   /** Exact terminal client error; optional for ports without a client lifecycle. */
   closedError?(): Error | null;
   /** Stop the chart Worker and release Pyodide resources. */
@@ -149,6 +152,8 @@ export interface ChartEngine {
   computeRectification(input: RectificationInput): Promise<RectificationResultRaw>;
   /** Divisional varga chart detail (D1..D60): houses, dignities, cusp sensitivity, and D60 amsas. */
   computeVargaDetail(input: VargaDetailInput): Promise<VargaDetailResult>;
+  /** Annual Tajaka Varshaphala (Solar Return, Muntha, Varshesha, Mudda Dasha, Tajaka Yogas). */
+  computeVarshaphala?(input: VarshaphalaInput): Promise<VarshaphalaContext>;
   /** Bundle provenance read from the synced `almamesh_meta.json`, if present. */
   meta(): BundleMeta | null;
 }
@@ -405,6 +410,12 @@ export class AlmaMeshRuntime {
             }
             return booted.computeVargaDetail(input);
           },
+          computeVarshaphala: (input) => {
+            if (booted.computeVarshaphala === undefined) {
+              return Promise.reject(new Error("computeVarshaphala not supported by engine port"));
+            }
+            return booted.computeVarshaphala(input);
+          },
           meta: () => meta,
         },
         result.manifestHash,
@@ -421,6 +432,12 @@ export class AlmaMeshRuntime {
         computeMeshEdge: (input) => this.#compute(generation, booted, () => memoized.computeMeshEdge(input)),
         computeRectification: (input) => this.#compute(generation, booted, () => memoized.computeRectification(input)),
         computeVargaDetail: (input) => this.#compute(generation, booted, () => memoized.computeVargaDetail(input)),
+        computeVarshaphala: (input) =>
+          this.#compute(generation, booted, () =>
+            memoized.computeVarshaphala
+              ? memoized.computeVarshaphala(input)
+              : Promise.reject(new Error("computeVarshaphala not supported by engine")),
+          ),
         meta: () => meta,
       };
       this.#ready = engine;

@@ -12,6 +12,7 @@ import tzPlugin from "dayjs/plugin/timezone";
 import utcPlugin from "dayjs/plugin/utc";
 
 import type {
+  AyanamsaType,
   BirthInput,
   DashaPeriod,
   MahaDashaPeriod,
@@ -166,23 +167,23 @@ function effectiveFold(birth: LocalBirthInput): DstFold | undefined {
 export function toBirthInput(
   input: LocalBirthInput,
   referenceInstant: string,
+  ayanamsaType?: AyanamsaType,
 ): BirthInput {
   return {
     datetimeUtc: birthDatetimeUtc(input),
     latitude: input.latitude,
     longitude: input.longitude,
     referenceDate: requireChartReferenceInstant(referenceInstant, "toBirthInput: referenceInstant"),
+    ...(ayanamsaType !== undefined && ayanamsaType !== "LAHIRI" ? { ayanamsaType } : {}),
   };
 }
 
 function toSiderealCtx(chart: SiderealChart): SiderealContext {
-  // The engine emits no julian_day / sidereal_time, and fixes ayanamsa=lahiri,
-  // houses=whole_sign upstream, so those four are deterministic defaults. No UI
-  // renderer reads them (ChartVisualization reads only sidereal_ctx.planets and
-  // sidereal_ctx.lagna.sign), so the defaults are display-safe.
+  // The engine emits no julian_day / sidereal_time, and fixes houses=whole_sign
+  // upstream; ayanamsa comes from the chart snapshot when present (default lahiri).
   return {
     ayanamsa_value: chart.ayanamsa_value,
-    ayanamsa_type: "lahiri",
+    ayanamsa_type: (chart.snapshot?.ayanamsa ?? "lahiri").toLowerCase(),
     house_system: "whole_sign",
     julian_day: 0,
     sidereal_time: 0,

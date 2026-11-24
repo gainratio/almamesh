@@ -12,6 +12,7 @@ from __future__ import annotations
 from datetime import timedelta
 from typing import TYPE_CHECKING, Final
 
+from almamesh.calculations import AyanamsaType, NodeType
 from almamesh.constants.astrology import ZODIAC_SIGNS, PlanetName, ZodiacSign
 from almamesh.schemas.transits import TimelineEvent, TransitEventKind, TransitSeverity
 from almamesh.transits.ingress import find_crossings
@@ -76,10 +77,15 @@ def _changes_in(
 
 
 def sign_change_events(
-    astro: SkyfieldAstronomy, graha: PlanetName, start: datetime, end: datetime
+    astro: SkyfieldAstronomy,
+    graha: PlanetName,
+    start: datetime,
+    end: datetime,
+    ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
+    node_type: NodeType = NodeType.MEAN,
 ) -> list[TimelineEvent]:
     """Every sign change of `graha` in [start, end], chronological."""
-    lon_fn = graha_lon_fn(astro, graha)
+    lon_fn = graha_lon_fn(astro, graha, ayanamsa_type, node_type)
     events: list[TimelineEvent] = []
     for lo, hi in _steps(start, end):
         events += _changes_in(lon_fn, graha, lo, hi)
@@ -97,10 +103,14 @@ def _idx(sign: ZodiacSign | None) -> int:
 
 
 def node_sign_change_events(
-    astro: SkyfieldAstronomy, start: datetime, end: datetime
+    astro: SkyfieldAstronomy,
+    start: datetime,
+    end: datetime,
+    ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
+    node_type: NodeType = NodeType.MEAN,
 ) -> list[TimelineEvent]:
     """Rahu's sign changes, then Ketu's mirror of each (same instant)."""
-    rahu = sign_change_events(astro, PlanetName.RAHU, start, end)
+    rahu = sign_change_events(astro, PlanetName.RAHU, start, end, ayanamsa_type, node_type)
     ketu = [
         _event(PlanetName.KETU, e.date, _opposite(_idx(e.from_sign)), _opposite(_idx(e.to_sign)))
         for e in rahu

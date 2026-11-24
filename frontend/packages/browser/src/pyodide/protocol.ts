@@ -8,6 +8,9 @@ import type { MatchRole, MeshEdgeContext, MeshRelationship } from "./mesh";
 import type { PredictiveContexts } from "./predictive";
 import type { RectificationInput, RectificationResultRaw } from "./rectification";
 
+/** Supported sidereal zero-point conventions (mirrors backend `AyanamsaType`). */
+export type AyanamsaType = "LAHIRI" | "TRUE_CHITRA" | "RAMAN" | "KP" | "FAGAN_BRADLEY";
+
 /**
  * Birth data for a chart. All four fields are REQUIRED: birth data alone does
  * not determine a chart, because `referenceDate` picks which Vimshottari maha
@@ -21,6 +24,8 @@ export interface BirthInput {
   readonly latitude: number;
   readonly longitude: number;
   readonly referenceDate: string; // ISO-8601 — explicit, never wall-clock
+  /** Optional sidereal zero-point convention; omitted means LAHIRI (default). */
+  readonly ayanamsaType?: AyanamsaType;
 }
 
 /**
@@ -61,6 +66,8 @@ export interface PredictiveInput {
    * the reference day or past the window.
    */
   readonly readingEnd?: string;
+  /** Optional sidereal zero-point convention; omitted means LAHIRI (default). */
+  readonly ayanamsaType?: AyanamsaType;
 }
 
 /** One bare birth input of a mesh pair — the worker recomputes its chart on-device. */
@@ -87,6 +94,8 @@ export interface MeshEdgeInput {
   readonly windowStart: string; // ISO-8601 — synchrony window, explicit
   readonly windowEnd: string; // ISO-8601 — synchrony window, explicit
   readonly referenceInstant: string; // ISO-8601 — explicit, never wall-clock
+  /** Optional sidereal zero-point convention; omitted means LAHIRI (default). */
+  readonly ayanamsaType?: AyanamsaType;
 }
 
 /** A binary asset seeded into the Pyodide filesystem (e.g. the ephemeris). */
@@ -270,10 +279,87 @@ export interface ComputeRectificationRequest {
   readonly input: RectificationInput;
 }
 
+export interface VarshaphalaInput {
+  readonly datetimeUtc: string; // ISO-8601 UTC birth instant
+  readonly latitude: number;
+  readonly longitude: number;
+  readonly targetYear: number;
+  readonly referenceDate: string; // ISO-8601 — explicit, never wall-clock
+  readonly ayanamsaType?: AyanamsaType;
+}
+
+export interface MunthaInfo {
+  readonly sign: string;
+  readonly sign_lord: string;
+  readonly house_from_varsha_lagna: number;
+  readonly natal_lagna_sign: string;
+  readonly completed_years: number;
+}
+
+export interface PanchavargiyaBala {
+  readonly kshetra: number;
+  readonly uchcha: number;
+  readonly hadda: number;
+  readonly drekkana: number;
+  readonly navamsa: number;
+  readonly total: number;
+  readonly dignity_band: "strong" | "moderate" | "weak";
+}
+
+export interface VarsheshaCandidate {
+  readonly graha: string;
+  readonly roles: readonly string[];
+  readonly panchavargiya_total: number;
+  readonly aspects_varsha_lagna: boolean;
+}
+
+export interface MuddaDashaPeriod {
+  readonly lord: string;
+  readonly start_utc: string;
+  readonly end_utc: string;
+  readonly duration_days: number;
+  readonly is_current: boolean;
+}
+
+export interface TajakaYoga {
+  readonly name: "Ithasala" | "Easarpha";
+  readonly kind: "applying" | "separating";
+  readonly faster_planet: string;
+  readonly slower_planet: string;
+  readonly aspect_type: "conjunction" | "sextile" | "square" | "trine" | "opposition";
+  readonly orb_degrees: number;
+  readonly deep_orb: boolean;
+}
+
+export interface VarshaphalaContext {
+  readonly target_year: number;
+  readonly completed_years: number;
+  readonly solar_return_utc: string;
+  readonly next_solar_return_utc: string;
+  readonly ayanamsa_type: string;
+  readonly ayanamsa_value: number;
+  readonly natal_sun_longitude: number;
+  readonly return_sun_longitude: number;
+  readonly is_day_chart: boolean;
+  readonly varsha_chart: SiderealChart;
+  readonly muntha: MunthaInfo;
+  readonly varshesha: string;
+  readonly varshesha_candidates: readonly VarsheshaCandidate[];
+  readonly panchavargiya_bala: Readonly<Record<string, PanchavargiyaBala>>;
+  readonly mudda_dasha: readonly MuddaDashaPeriod[];
+  readonly tajaka_yogas: readonly TajakaYoga[];
+}
+
 export interface ComputeVargaDetailRequest {
   readonly kind: "computeVargaDetail";
   readonly id: number;
   readonly input: VargaDetailInput;
+}
+
+export interface ComputeVarshaphalaRequest {
+  readonly kind: "computeVarshaphala";
+  readonly id: number;
+  readonly input: VarshaphalaInput;
 }
 
 export type ChartWorkerRequest =
@@ -284,7 +370,8 @@ export type ChartWorkerRequest =
   | ComputeMoonWindowRequest
   | ComputeMeshEdgeRequest
   | ComputeRectificationRequest
-  | ComputeVargaDetailRequest;
+  | ComputeVargaDetailRequest
+  | ComputeVarshaphalaRequest;
 
 export interface PrewarmOk {
   readonly ok: true;
@@ -364,6 +451,13 @@ export interface VargaDetailOk {
   readonly vargaDetail: VargaDetailResult;
 }
 
+export interface VarshaphalaOk {
+  readonly ok: true;
+  readonly kind: "computeVarshaphala";
+  readonly id: number;
+  readonly varshaphala: VarshaphalaContext;
+}
+
 export interface WorkerErr {
   readonly ok: false;
   readonly id: number;
@@ -382,6 +476,7 @@ export type ChartWorkerResponse =
   | MeshEdgeOk
   | RectificationOk
   | VargaDetailOk
+  | VarshaphalaOk
   | WorkerErr;
 
 /**

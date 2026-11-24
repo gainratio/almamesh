@@ -168,10 +168,12 @@ def test_should_report_backward_ingress_when_graha_retrogrades_across_a_cusp(
     assert backward in changes, changes
 
 
-def test_should_build_timeline_that_takes_no_ayanamsa_or_node_arguments() -> None:
-    # Given the timeline is Lahiri + mean node by construction
+def test_should_build_timeline_with_ayanamsa_and_node_defaults() -> None:
+    # Given the timeline honors the natal chart's sidereal ayanamsa and node convention
     # When its signature is read
     parameters = inspect.signature(build_timeline).parameters
-    # Then it accepts no knobs it would ignore
-    assert "ayanamsa_type" not in parameters
-    assert "node_type" not in parameters
+    # Then ayanamsa_type and node_type are accepted and default to Lahiri + mean node
+    assert "ayanamsa_type" in parameters
+    assert "node_type" in parameters
+    assert parameters["ayanamsa_type"].default.value == "LAHIRI"
+    assert parameters["node_type"].default.value == "mean"

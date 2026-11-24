@@ -55,6 +55,7 @@ export * from './meshReadings';
 export * from './rectification';
 export * from './rectificationRecords';
 export * from './contentMode';
+export * from './ayanamsa';
 export * from './language';
 export {
   checkPortableStorageAgain,

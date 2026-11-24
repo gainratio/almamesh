@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   setPreference: vi.fn().mockResolvedValue(undefined),
   hydrateLlm: vi.fn(),
   hydrateContentMode: vi.fn().mockResolvedValue(undefined),
+  hydrateAyanamsa: vi.fn().mockResolvedValue(undefined),
   hydrateModelSuggestion: vi.fn(),
   rehydrateLanguage: vi.fn().mockResolvedValue(undefined),
   languageHasHydrated: vi.fn(() => false),
@@ -25,6 +26,7 @@ vi.mock('@almamesh/llm', () => ({
 
 vi.mock('@almamesh/store', () => ({
   hydrateContentModePreference: mocks.hydrateContentMode,
+  hydrateAyanamsaPreference: mocks.hydrateAyanamsa,
   portablePreferenceStorage: {
     getItem: mocks.getPreference,
     setItem: mocks.setPreference,
@@ -76,6 +78,7 @@ describe('portable SQLite boot hydration', () => {
 
     expect(mocks.hydrateLlm).toHaveBeenCalledWith('{"apiKey":"secret"}');
     expect(mocks.hydrateContentMode).toHaveBeenCalledOnce();
+    expect(mocks.hydrateAyanamsa).toHaveBeenCalledOnce();
     expect(mocks.hydrateModelSuggestion).toHaveBeenCalledWith('z-ai/glm-5.3-flash');
   });
 

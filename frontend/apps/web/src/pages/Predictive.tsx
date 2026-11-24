@@ -26,13 +26,22 @@ import {
   ShodasavargaPanel,
   StrengthPanel,
   TransitsPanel,
+  VarshaphalaPanel,
 } from '../components/features/predictive';
 import { usePredictiveLayer } from '../hooks/usePredictiveLayer';
-import { formatReferenceDay, selectPrimaryStoredChart } from '../lib/predictive';
+import { formatReferenceDay, predictiveReferenceInstant, selectPrimaryStoredChart } from '../lib/predictive';
+import { storedChartReferenceDay, viewerTimeZone } from '../lib/analysisInstant';
 
-type PredictiveTab = 'timing' | 'periods' | 'vargas' | 'strength' | 'domains';
+type PredictiveTab = 'timing' | 'periods' | 'vargas' | 'strength' | 'domains' | 'varshaphala';
 
-const TAB_VALUES: readonly PredictiveTab[] = ['timing', 'periods', 'vargas', 'strength', 'domains'];
+const TAB_VALUES: readonly PredictiveTab[] = [
+  'timing',
+  'periods',
+  'vargas',
+  'strength',
+  'domains',
+  'varshaphala',
+];
 
 /** Map a raw `?tab=` / tab-change value onto a known tab (default: timing). */
 function resolveTab(raw: string | null): PredictiveTab {
@@ -47,7 +56,12 @@ export default function PredictivePage(): ReactElement {
   const [tab, setTab] = useState<PredictiveTab>(() => resolveTab(searchParams.get('tab')));
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
   const charts = useChartLibraryStore((s) => s.charts);
-  const siderealChart = selectPrimaryStoredChart(charts, activeProfileId)?.sidereal_chart ?? null;
+  const storedChart = selectPrimaryStoredChart(charts, activeProfileId);
+  const siderealChart = storedChart?.sidereal_chart ?? null;
+  const fallbackDay = predictiveReferenceInstant(new Date(), viewerTimeZone());
+  const varshaphalaReference = storedChart
+    ? storedChartReferenceDay(storedChart, fallbackDay)
+    : fallbackDay;
 
   const ready =
     layer.status === 'ready' &&
@@ -91,6 +105,9 @@ export default function PredictivePage(): ReactElement {
             <TabsTrigger value="strength">{t('tabs.strength')}</TabsTrigger>
             <TabsTrigger value="domains" data-testid="domains-tab">
               {t('tabs.domains')}
+            </TabsTrigger>
+            <TabsTrigger value="varshaphala" data-testid="varshaphala-tab">
+              {t('tabs.varshaphala')}
             </TabsTrigger>
           </TabsList>
 
@@ -149,6 +166,10 @@ export default function PredictivePage(): ReactElement {
             ) : (
               <PredictiveStatusCard layer={layer} auto />
             )}
+          </TabsContent>
+
+          <TabsContent value="varshaphala">
+            <VarshaphalaPanel storedChart={storedChart} referenceInstant={varshaphalaReference} />
           </TabsContent>
         </Tabs>
       )}

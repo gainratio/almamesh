@@ -3,7 +3,7 @@
 A station is the instant the engine's own `is_retrograde` flag flips: the
 graha's one-day forward motion in tropical-of-date longitude (the `speed`
 `get_planetary_positions` derives the flag from) crosses zero. The station's
-sign is the Lahiri sidereal sign at that instant. The mean node never stations,
+sign is the sidereal sign under `ayanamsa_type` at that instant. The mean node never stations,
 so Rahu/Ketu have none."""
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ from datetime import timedelta
 from functools import cache
 from typing import TYPE_CHECKING, Final
 
+from almamesh.calculations import AyanamsaType, NodeType
 from almamesh.constants.astrology import ZODIAC_SIGNS, PlanetName, ZodiacSign
 from almamesh.schemas.transits import (
     StationDirection,
@@ -50,10 +51,16 @@ def _direction(motion: Callable[[datetime], float], when: datetime) -> StationDi
 
 
 def _station_event(
-    astro: SkyfieldAstronomy, graha: PlanetName, when: datetime, direction: StationDirection
+    astro: SkyfieldAstronomy,
+    graha: PlanetName,
+    when: datetime,
+    direction: StationDirection,
+    ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
+    node_type: NodeType = NodeType.MEAN,
 ) -> TimelineEvent:
     """One station event with a stable descriptor."""
-    sign = ZodiacSign(ZODIAC_SIGNS[sign_index(transit_longitude(astro, graha, when))])
+    lon = transit_longitude(astro, graha, when, ayanamsa_type, node_type)
+    sign = ZodiacSign(ZODIAC_SIGNS[sign_index(lon)])
     return TimelineEvent(
         date=when,
         kind=TransitEventKind.STATION,
@@ -66,11 +73,16 @@ def _station_event(
 
 
 def station_events(
-    astro: SkyfieldAstronomy, graha: PlanetName, start: datetime, end: datetime
+    astro: SkyfieldAstronomy,
+    graha: PlanetName,
+    start: datetime,
+    end: datetime,
+    ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
+    node_type: NodeType = NodeType.MEAN,
 ) -> list[TimelineEvent]:
     """Every station of `graha` within [start, end], chronological."""
     motion = _motion_fn(astro, graha)
     return [
-        _station_event(astro, graha, when, _direction(motion, when))
+        _station_event(astro, graha, when, _direction(motion, when), ayanamsa_type, node_type)
         for when in find_crossings(motion, start, end, _STEP_DAYS)
     ]

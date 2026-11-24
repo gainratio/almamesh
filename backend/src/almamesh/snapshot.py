@@ -133,13 +133,25 @@ def build_snapshot(
 
 
 def compute_stamped_chart(
-    dt_utc: datetime, latitude: float, longitude: float, *, reference_date: datetime
+    dt_utc: datetime,
+    latitude: float,
+    longitude: float,
+    *,
+    reference_date: datetime,
+    ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
 ) -> StampedChart:
     """The natal chart every entry point hands out: engine output + its snapshot."""
-    context = calculate_sidereal_context(dt_utc, latitude, longitude, reference_date=reference_date)
+    context = calculate_sidereal_context(
+        dt_utc,
+        latitude,
+        longitude,
+        ayanamsa_type=ayanamsa_type,
+        reference_date=reference_date,
+    )
     stamp = build_snapshot(
         birth_utc=dt_utc,
         reference_date=reference_date,
+        ayanamsa_type=ayanamsa_type,
         dasha_year_convention=context.dashas.convention,
     )
     return StampedChart.model_construct(**dict(context), snapshot=stamp)

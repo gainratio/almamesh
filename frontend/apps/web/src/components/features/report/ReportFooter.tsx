@@ -7,17 +7,27 @@
 
 import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
+import { ayanamsaDisplayName } from '../../../lib/reportData';
 
 interface ReportFooterProps {
   readonly personName: string;
+  /** Stamped snapshot ayanamsa convention (defaults to Lahiri when absent). */
+  readonly ayanamsa?: string;
 }
 
 /** Attribution footer: ayanamsa provenance + the subject's name. */
-export function ReportFooter({ personName }: ReportFooterProps): ReactElement {
-  const { t } = useTranslation('report');
+export function ReportFooter({ personName, ayanamsa }: ReportFooterProps): ReactElement {
+  const { t } = useTranslation(['report', 'settings']);
+  const ayanamsaCode = (ayanamsa ?? 'LAHIRI').toUpperCase();
+  const provenance =
+    ayanamsaCode === 'LAHIRI'
+      ? t('report:footer.provenance')
+      : `${t(`settings:ayanamsa.${ayanamsaCode.toLowerCase()}`, {
+          defaultValue: ayanamsaDisplayName(ayanamsaCode),
+        })} · AlmaMesh`;
   return (
     <footer className="report-footer" data-testid="report-footer">
-      <span>{t('footer.provenance')}</span>
+      <span>{provenance}</span>
       <span className="report-footer-name">{personName}</span>
     </footer>
   );

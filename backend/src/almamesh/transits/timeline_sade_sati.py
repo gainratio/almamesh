@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from almamesh.calculations import AyanamsaType, NodeType
 from almamesh.schemas.transits import (
     SadeSatiPhase,
     TimelineEvent,
@@ -33,8 +34,13 @@ def _phase_event(phase: str, when: datetime) -> TimelineEvent:
 
 
 def sade_sati_phase_events(
-    astro: SkyfieldAstronomy, moon_idx: int, start: datetime, end: datetime
+    astro: SkyfieldAstronomy,
+    moon_idx: int,
+    start: datetime,
+    end: datetime,
+    ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
+    node_type: NodeType = NodeType.MEAN,
 ) -> list[TimelineEvent]:
     """Sade Sati phase boundaries (segment starts) inside [start, end]."""
-    ctx = build_sade_sati_context(astro, moon_idx, start)
+    ctx = build_sade_sati_context(astro, moon_idx, start, ayanamsa_type, node_type)
     return [_phase_event(seg.phase, seg.start) for seg in ctx.cycle if start <= seg.start <= end]

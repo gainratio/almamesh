@@ -111,5 +111,11 @@ export async function verifyChartSnapshot(
   const snapshot = await parseChartSnapshot(chart.snapshot);
   requireSameInstant("birth_utc", snapshot.birth_utc, birth.datetimeUtc);
   requireSameInstant("reference_date", snapshot.reference_date, birth.referenceDate);
+  const expectedAyanamsa = birth.ayanamsaType ?? "LAHIRI";
+  if (snapshot.ayanamsa.toUpperCase() !== expectedAyanamsa) {
+    throw new ChartSnapshotError(
+      `ayanamsa ${snapshot.ayanamsa} is not the requested ${expectedAyanamsa}`,
+    );
+  }
   return snapshot;
 }

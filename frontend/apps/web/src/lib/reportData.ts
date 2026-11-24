@@ -20,8 +20,26 @@ import { activeLocale, formatBirthDateForDisplay, formatBirthTimeForDisplay } fr
 
 /** The minimal chart shape the technical-field selector reads (engine-emitted). */
 export interface ReportChartFields {
-  /** Lahiri ayanamsa in degrees, as emitted by the engine. */
+  /** Sidereal ayanamsa in degrees, as emitted by the engine. */
   readonly ayanamsa_value: number;
+  /** Optional engine ayanamsa convention identifier (e.g. 'LAHIRI', 'KP'). */
+  readonly ayanamsa_type?: string;
+  /** Optional chart snapshot carrying the stamped ayanamsa convention. */
+  readonly snapshot?: { readonly ayanamsa?: string };
+}
+
+const AYANAMSA_DISPLAY_NAMES: Readonly<Record<string, string>> = {
+  LAHIRI: 'Lahiri',
+  TRUE_CHITRA: 'True Chitra',
+  KP: 'KP',
+  RAMAN: 'B.V. Raman',
+  FAGAN_BRADLEY: 'Fagan-Bradley',
+};
+
+/** Human-readable display name for an ayanamsa enum code (defaults to Lahiri). */
+export function ayanamsaDisplayName(code?: string): string {
+  const key = (code ?? 'LAHIRI').toUpperCase();
+  return AYANAMSA_DISPLAY_NAMES[key] ?? key;
 }
 
 /** A formatted birth date/time, each part in the BIRTH timezone. */
@@ -150,8 +168,9 @@ export function formatDurationYears(years: number): string {
  * omitted entirely (rather than rendered blank).
  */
 export function selectTechnicalFields(chart: ReportChartFields): ReadonlyArray<TechnicalField> {
+  const ayanamsaName = ayanamsaDisplayName(chart.snapshot?.ayanamsa ?? chart.ayanamsa_type);
   return [
-    { label: 'Ayanamsa', value: `${chart.ayanamsa_value.toFixed(2)}° (Lahiri)` },
+    { label: 'Ayanamsa', value: `${chart.ayanamsa_value.toFixed(2)}° (${ayanamsaName})` },
     { label: 'House System', value: 'Whole Sign' },
   ];
 }

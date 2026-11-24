@@ -13,6 +13,7 @@ import type {
   ProcessedBirthData,
   VargaChartFullData,
 } from '@almamesh/shared-types';
+import type { AyanamsaType } from '@almamesh/browser/types';
 import {
   offsetMinutesAtInstant,
   type EnsurePredictiveInput,
@@ -86,6 +87,7 @@ export function buildEnsurePredictiveInput(
   birth: ProcessedBirthData | undefined,
   referenceInstant: string,
   bounds: PredictiveBounds = {},
+  ayanamsaType?: AyanamsaType,
 ): EnsurePredictiveInput | null {
   const datetimeUtc = birth?.birth_datetime_utc;
   const location = birth?.birth_location_details;
@@ -108,6 +110,7 @@ export function buildEnsurePredictiveInput(
     referenceInstant,
     utcOffsetMinutes,
     ...boundFields(referenceInstant, bounds),
+    ...(ayanamsaType !== undefined && ayanamsaType !== 'LAHIRI' ? { ayanamsaType } : {}),
   };
 }
 

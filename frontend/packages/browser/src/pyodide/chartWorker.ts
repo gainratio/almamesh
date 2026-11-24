@@ -39,6 +39,8 @@ import type {
   PredictiveInput,
   VargaDetailInput,
   VargaDetailResult,
+  VarshaphalaContext,
+  VarshaphalaInput,
 } from "./protocol";
 import type { RectificationInput, RectificationResultRaw } from "./rectification";
 import { observeOrphanedLoadFailures } from "./teardown";
@@ -73,8 +75,12 @@ def _almamesh_generate_chart(birth_json):
     # The stamped chart: engine output + its snapshot (engine version, data
     # hash, conventions, both instants, snapshot_id). The TS boundary re-hashes
     # the snapshot and refuses a chart whose stamp does not match the request.
+    extra = {}
+    if birth.get("ayanamsaType") is not None:
+        from almamesh.calculations import AyanamsaType
+        extra["ayanamsa_type"] = AyanamsaType(str(birth["ayanamsaType"]))
     chart = compute_stamped_chart(
-        dt, birth["latitude"], birth["longitude"], reference_date=reference_date
+        dt, birth["latitude"], birth["longitude"], reference_date=reference_date, **extra
     )
     return json.dumps(chart.model_dump(mode="json"))
 
@@ -94,11 +100,16 @@ def _almamesh_compute_predictive(input_json):
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
     reference = datetime.fromisoformat(data["referenceInstant"])
+    extra = {}
+    if data.get("ayanamsaType") is not None:
+        from almamesh.calculations import AyanamsaType
+        extra["ayanamsa_type"] = AyanamsaType(str(data["ayanamsaType"]))
     ctx = compute_predictive_contexts(
         dt, data["latitude"], data["longitude"], reference,
         civil_offset=civil_offset_from_minutes(data["utcOffsetMinutes"]),
         window_months=window_months_from_wire(data.get("windowMonths")),
         reading_end=reading_end_from_wire(data.get("readingEnd")),
+        **extra,
     )
     return json.dumps(ctx.model_dump(mode="json"))
 
@@ -167,12 +178,16 @@ def _almamesh_compute_mesh(input_json):
     from almamesh.schemas.mesh import MatchRole, Relationship
     data = json.loads(input_json)
     reference = datetime.fromisoformat(data["referenceInstant"])
+    extra = {}
+    if data.get("ayanamsaType") is not None:
+        from almamesh.calculations import AyanamsaType
+        extra["ayanamsa_type"] = AyanamsaType(str(data["ayanamsaType"]))
     def _natal(birth):
         dt = datetime.fromisoformat(birth["datetimeUtc"])
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=UTC)
         return calculate_sidereal_context(
-            dt, birth["latitude"], birth["longitude"], reference_date=reference
+            dt, birth["latitude"], birth["longitude"], reference_date=reference, **extra
         )
     edge = compute_mesh_edge(
         _natal(data["a"]),
@@ -231,6 +246,22 @@ def _almamesh_compute_rectification(input_json):
         **extra_kwargs,
     )
     return json.dumps(result.model_dump(mode="json"))
+
+def _almamesh_compute_varshaphala(input_json):
+    # Annual Tajaka Varshaphala (Solar Return chart, Muntha, Varshesha,
+    # Panchavargiya Bala, Mudda Dasha, and Tajaka Yogas).
+    from almamesh.varshaphala import varshaphala_from_wire
+    data = json.loads(input_json)
+    wire = {
+        "datetime_utc": data["datetimeUtc"],
+        "latitude": data["latitude"],
+        "longitude": data["longitude"],
+        "target_year": data["targetYear"],
+        "reference_date": data["referenceDate"],
+    }
+    if data.get("ayanamsaType") is not None:
+        wire["ayanamsa_type"] = data["ayanamsaType"]
+    return json.dumps(varshaphala_from_wire(wire).model_dump(mode="json"))
 `;
 
 // micropip's install is a Python callable; callKwargs forwards keyword args.
@@ -262,6 +293,10 @@ interface PyRectificationFn {
   destroy(): void;
 }
 interface PyVargaDetailFn {
+  (inputJson: string): string;
+  destroy(): void;
+}
+interface PyVarshaphalaFn {
   (inputJson: string): string;
   destroy(): void;
 }
@@ -568,6 +603,18 @@ function computeVargaDetail(input: VargaDetailInput): VargaDetailResult {
   }
 }
 
+function computeVarshaphala(input: VarshaphalaInput): VarshaphalaContext {
+  if (enginePyodide === undefined) {
+    throw new Error("chart worker not booted");
+  }
+  const fn = enginePyodide.globals.get("_almamesh_compute_varshaphala") as unknown as PyVarshaphalaFn;
+  try {
+    return JSON.parse(fn(JSON.stringify(input))) as VarshaphalaContext;
+  } finally {
+    fn.destroy();
+  }
+}
+
 async function handle(request: ChartWorkerRequest): Promise<ChartWorkerResponse> {
   try {
     if (request.kind === "prewarm") {
@@ -626,6 +673,14 @@ async function handle(request: ChartWorkerRequest): Promise<ChartWorkerResponse>
         kind: "computeVargaDetail",
         id: request.id,
         vargaDetail: computeVargaDetail(request.input),
+      };
+    }
+    if (request.kind === "computeVarshaphala") {
+      return {
+        ok: true,
+        kind: "computeVarshaphala",
+        id: request.id,
+        varshaphala: computeVarshaphala(request.input),
       };
     }
     return { ok: true, kind: "generateChart", id: request.id, chart: generateChart(request.birth) };

@@ -43,6 +43,7 @@ import { buildEvidenceLedger, yogaDependsOnHouses } from '../lib/evidence';
 import { buildEvidenceSection } from '../components/report-pdf/buildEvidenceSection';
 import { buildRectificationPdf } from '../components/report-pdf/buildRectificationPdf';
 import { glyphSafe } from '../components/report-pdf/glyphSafe';
+import { ayanamsaDisplayName } from '../lib/reportData';
 import type { ReportAudience } from '../lib/reportSelectors';
 
 /** A short ISO date (YYYY-MM-DD) for the PDF file/title. */
@@ -71,6 +72,7 @@ export interface UseReportPdfExportResult {
 export function useReportPdfExport(audience: ReportAudience): UseReportPdfExportResult {
   const { t } = useTranslation('report');
   const { t: tp } = useTranslation('predictive');
+  const { t: ts } = useTranslation('settings');
 
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
   const charts = useChartLibraryStore((s) => s.charts);
@@ -117,6 +119,18 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
           .filter((event): event is LifeEvent => event !== undefined)
       : [];
 
+    const snapshotAyanamsa = (sidereal.snapshot?.ayanamsa ?? 'LAHIRI').toUpperCase();
+    const ayanamsaValueLabel =
+      snapshotAyanamsa === 'LAHIRI'
+        ? t('assumptions.ayanamsa_value')
+        : ts(`ayanamsa.${snapshotAyanamsa.toLowerCase()}`, {
+            defaultValue: ayanamsaDisplayName(snapshotAyanamsa),
+          });
+    const technicalNote =
+      snapshotAyanamsa === 'LAHIRI'
+        ? t('pdf.technical_note')
+        : `${ayanamsaValueLabel} · ${t('assumptions.house_system_value')}`;
+
     const cusp = cuspInfo(titleCaseSign(lagna.sign), lagna.sign_degrees, 3, lagna);
     const chrome: ReportPdfChrome = {
       personName,
@@ -158,7 +172,7 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
         birthDetailsTitle: t('pdf.birth_details_title'),
         birthDetailsEyebrow: t('pdf.birth_details_eyebrow'),
         birthDetailsIntro: t('pdf.birth_details_intro'),
-        technicalNote: t('pdf.technical_note'),
+        technicalNote,
         footerNote: t('pdf.footer_note'),
         planetsEyebrow: t('pdf.planets_eyebrow'),
         planetsTitle: t('planets.heading'),
@@ -232,7 +246,7 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
         intro: t('assumptions.intro'),
       },
       rows: [
-        { label: t('assumptions.ayanamsa_label'), value: t('assumptions.ayanamsa_value') },
+        { label: t('assumptions.ayanamsa_label'), value: ayanamsaValueLabel },
         {
           label: t('assumptions.house_system_label'),
           value: t('assumptions.house_system_value'),
@@ -265,7 +279,7 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
       generatedAt: storedChart.astronomical_calculations?.calculation_timestamp ?? null,
       birth,
       lagna,
-      chart: { ayanamsa_value: sidereal.ayanamsa_value },
+      chart: { ayanamsa_value: sidereal.ayanamsa_value, snapshot: sidereal.snapshot },
       sidereal,
       interpretation: reportInterpretation,
       audience,
@@ -328,6 +342,7 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
     storedEvents,
     t,
     tp,
+    ts,
   ]);
 
   return { exportPdf, pdfError, canExport };

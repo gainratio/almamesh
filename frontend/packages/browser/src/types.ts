@@ -22,6 +22,7 @@ export type {
   VargaPlanet,
 } from "./pyodide/chart";
 export type {
+  AyanamsaType,
   BirthInput,
   BootConfig,
   DayPanchangMark,
@@ -34,15 +35,22 @@ export type {
   MoonWindowEvent,
   MoonWindowInput,
   MoonWindowNatalMoonInput,
+  MuddaDashaPeriod,
+  MunthaInfo,
+  PanchavargiyaBala,
   PredictiveCallOptions,
   PredictiveInput,
   PyodideAsset,
   ShashtiamsaAmsa,
+  TajakaYoga,
   VargaDetailInput,
   VargaDetailPlacement,
   VargaDetailPlanetInput,
   VargaDetailResult,
   VargaLagnaSensitivity,
+  VarshaphalaContext,
+  VarshaphalaInput,
+  VarsheshaCandidate,
 } from "./pyodide/protocol";
 // Additive predictive contexts (transits, full vargas, strength, life domains)
 // — the exact serialized shapes of the optional `*_context` keys above.

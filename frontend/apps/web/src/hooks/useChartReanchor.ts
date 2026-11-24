@@ -26,6 +26,7 @@ import { safeWarn } from '@almamesh/shared-types';
 import {
   newChartReferenceInstant,
   reanchorChart,
+  useAyanamsaStore,
   useChartLibraryStore,
   useProfilesStore,
 } from '@almamesh/store';
@@ -82,17 +83,31 @@ export function useChartReanchor(): void {
   const startBootstrap = engineCtx?.startBootstrap;
   const queryClient = useQueryClient();
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
+  const ayanamsa = useAyanamsaStore((s) => s.ayanamsa);
   const charts = useChartLibraryStore((s) => s.charts);
   const chart = selectPrimaryStoredChart(charts, activeProfileId);
   const today = useDailyReferenceInstant(viewerTimeZone());
-  // A chart that records no instant at all (the oldest backups) is behind too.
+  const storedAyanamsa = (chart?.sidereal_chart?.snapshot?.ayanamsa ?? 'LAHIRI').toUpperCase();
+  const ayanamsaChanged = chart !== undefined && storedAyanamsa !== ayanamsa;
+  // A chart that records no instant at all (the oldest backups) or uses a
+  // different ayanamsa than the active preference is behind too.
   const behind = chart !== undefined &&
-    (!storedChartRecordsInstant(chart) || storedChartReferenceDay(chart, today) < today);
-  // Per attempt (`chartId|day`): the active wait, and whether the recompute
-  // started / finished. Refs survive StrictMode's simulated remount.
+    (!storedChartRecordsInstant(chart) || storedChartReferenceDay(chart, today) < today || ayanamsaChanged);
+  // Secondary/family charts whose stored snapshot ayanamsa lags behind the active
+  // preference also need re-anchoring so Mesh/Match PDF plates never mix ayanamsas.
+  const staleSecondaryIds = Object.values(charts)
+    .filter(
+      (c) =>
+        c.chart_id !== chart?.chart_id &&
+        (c.sidereal_chart?.snapshot?.ayanamsa ?? 'LAHIRI').toUpperCase() !== ayanamsa,
+    )
+    .map((c) => c.chart_id);
+  const staleSecondaryKey = staleSecondaryIds.join(',');
+  // Per attempt (`chartId|day|ayanamsa`): active wait, in-flight attempts, and
+  // FAILED attempts (never record successes so toggling LAHIRI->KP->LAHIRI works).
   const waits = useRef<Waits>(new Map());
   const attempted = useRef(new Set<string>());
-  const finished = useRef(new Set<string>());
+  const failed = useRef(new Set<string>());
   useEffect(() => {
     const active = waits.current;
     return () => {
@@ -105,8 +120,8 @@ export function useChartReanchor(): void {
     if (chartId === undefined || !behind) {
       return;
     }
-    const attempt = `${chartId}|${today}`;
-    if (finished.current.has(attempt)) {
+    const attempt = `${chartId}|${today}|${ayanamsa}`;
+    if (failed.current.has(attempt)) {
       return;
     }
     // Chat waits from the moment a re-anchor is DUE, not from when the engine
@@ -126,6 +141,7 @@ export function useChartReanchor(): void {
       engine,
       library: useChartLibraryStore.getState(),
       referenceInstant: newChartReferenceInstant(),
+      ayanamsaType: ayanamsa,
     };
     reanchorChart(chartId, deps)
       .then((saved) => {
@@ -133,10 +149,37 @@ export function useChartReanchor(): void {
           void queryClient.invalidateQueries({ queryKey: ['primary-chart'] });
         }
       })
-      .catch((reason: unknown) => safeWarn('chart.reanchor_failed', reason))
+      .catch((reason: unknown) => {
+        failed.current.add(attempt);
+        safeWarn('chart.reanchor_failed', reason);
+      })
       .finally(() => {
-        finished.current.add(attempt);
+        attempted.current.delete(attempt);
         endWait(waits.current, attempt);
       });
-  }, [engine, engineError, startBootstrap, chartId, behind, today, queryClient]);
+  }, [engine, engineError, startBootstrap, chartId, behind, today, ayanamsa, queryClient]);
+
+  // Re-anchor any secondary/family charts whose stored ayanamsa differs.
+  useEffect(() => {
+    if (!engine || !staleSecondaryKey) return;
+    const ids = staleSecondaryKey.split(',').filter(Boolean);
+    for (const id of ids) {
+      const attempt = `${id}|${today}|${ayanamsa}`;
+      if (attempted.current.has(attempt) || failed.current.has(attempt)) continue;
+      attempted.current.add(attempt);
+      reanchorChart(id, {
+        engine,
+        library: useChartLibraryStore.getState(),
+        referenceInstant: newChartReferenceInstant(),
+        ayanamsaType: ayanamsa,
+      })
+        .catch((reason: unknown) => {
+          failed.current.add(attempt);
+          safeWarn('chart.reanchor_failed', reason);
+        })
+        .finally(() => {
+          attempted.current.delete(attempt);
+        });
+    }
+  }, [engine, staleSecondaryKey, today, ayanamsa]);
 }

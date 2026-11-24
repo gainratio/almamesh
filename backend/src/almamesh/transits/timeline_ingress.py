@@ -1,6 +1,4 @@
-"""Shared longitude helpers for the timeline's sign-change scan.
-
-The timeline is Lahiri + mean node by construction; `graha_lon_fn` pins both."""
+"""Shared longitude helpers for the timeline's sign-change scan."""
 
 from __future__ import annotations
 
@@ -18,12 +16,17 @@ if TYPE_CHECKING:
     from almamesh.constants.astrology import PlanetName
 
 
-def graha_lon_fn(astro: SkyfieldAstronomy, graha: PlanetName) -> Callable[[datetime], float]:
-    """Bound sidereal-longitude function for the graha (Lahiri, mean node)."""
+def graha_lon_fn(
+    astro: SkyfieldAstronomy,
+    graha: PlanetName,
+    ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
+    node_type: NodeType = NodeType.MEAN,
+) -> Callable[[datetime], float]:
+    """Bound sidereal-longitude function for the graha under `ayanamsa_type`."""
 
     @cache
     def lon(when: datetime) -> float:
-        return transit_longitude(astro, graha, when, AyanamsaType.LAHIRI, NodeType.MEAN)
+        return transit_longitude(astro, graha, when, ayanamsa_type, node_type)
 
     return lon
 

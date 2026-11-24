@@ -89,6 +89,7 @@ export type {
   YogaStrengthFactor,
 } from "./pyodide/chart";
 export type {
+  AyanamsaType,
   BirthInput,
   BootConfig,
   BootProgress,
@@ -103,15 +104,22 @@ export type {
   MoonWindowEvent,
   MoonWindowInput,
   MoonWindowNatalMoonInput,
+  MuddaDashaPeriod,
+  MunthaInfo,
+  PanchavargiyaBala,
   PredictiveCallOptions,
   PredictiveInput,
   PyodideAsset,
   ShashtiamsaAmsa,
+  TajakaYoga,
   VargaDetailInput,
   VargaDetailPlacement,
   VargaDetailPlanetInput,
   VargaDetailResult,
   VargaLagnaSensitivity,
+  VarshaphalaContext,
+  VarshaphalaInput,
+  VarsheshaCandidate,
 } from "./pyodide/protocol";
 export type { PredictiveContexts } from "./pyodide/predictive";
 export type { MeshEdgeContext } from "./pyodide/mesh";

@@ -36,15 +36,25 @@ __all__ = ["calculate_transit_context"]
 
 
 def _slow_hits(
-    astro: SkyfieldAstronomy, natal: SiderealContext, instant: datetime
+    astro: SkyfieldAstronomy,
+    natal: SiderealContext,
+    instant: datetime,
+    ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
+    node_type: NodeType = NodeType.MEAN,
 ) -> list[SlowTransitHit]:
     """The headline Jupiter/Saturn hits over Moon/Lagna plus the Saturn return."""
     moon = natal.planets[PlanetName.MOON].longitude
     lagna = natal.lagna.longitude
     candidates = [
-        next_conjunction(astro, PlanetName.JUPITER, moon, "moon", instant),
-        next_conjunction(astro, PlanetName.SATURN, lagna, "lagna", instant),
-        next_saturn_return(astro, natal.planets[PlanetName.SATURN].longitude, instant),
+        next_conjunction(
+            astro, PlanetName.JUPITER, moon, "moon", instant, ayanamsa_type, node_type
+        ),
+        next_conjunction(
+            astro, PlanetName.SATURN, lagna, "lagna", instant, ayanamsa_type, node_type
+        ),
+        next_saturn_return(
+            astro, natal.planets[PlanetName.SATURN].longitude, instant, ayanamsa_type, node_type
+        ),
     ]
     return [hit for hit in candidates if hit is not None]
 
@@ -66,8 +76,10 @@ def calculate_transit_context(
         return TransitContext(
             instant=instant,
             gochara=build_gochara_context(astro, natal, instant, ayanamsa_type, node_type),
-            sade_sati=build_sade_sati_context(astro, moon_idx, instant),
-            slow_hits=_slow_hits(astro, natal, instant),
+            sade_sati=build_sade_sati_context(astro, moon_idx, instant, ayanamsa_type, node_type),
+            slow_hits=_slow_hits(astro, natal, instant, ayanamsa_type, node_type),
             fusion=build_fusion(astro, natal, birth_dt, instant, ayanamsa_type, node_type),
-            timeline=build_timeline(astro, natal, birth_dt, instant, window_months),
+            timeline=build_timeline(
+                astro, natal, birth_dt, instant, window_months, ayanamsa_type, node_type
+            ),
         )

@@ -7,6 +7,15 @@
     "portuguese": "Português",
     "hindi": "हिन्दी"
   },
+  "ayanamsa": {
+    "title": "Ayanamsa (Sidereal Zero-Point)",
+    "description": "Sidereal precession convention used for charts, transits, and Varshaphala. Defaults to official Lahiri (Chitrapaksha).",
+    "lahiri": "Lahiri (Chitrapaksha · Default)",
+    "true_chitra": "True Chitra (Spica 180°)",
+    "kp": "Krishnamurti (KP)",
+    "raman": "B.V. Raman",
+    "fagan_bradley": "Fagan-Bradley"
+  },
   "nav": {
     "profile": "Profile",
     "profile_description": "Birth details and chart profile",

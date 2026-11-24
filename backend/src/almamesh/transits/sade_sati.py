@@ -35,25 +35,37 @@ def sade_sati_phase(saturn_idx: int, moon_idx: int) -> SadeSatiPhase:
     return SadeSatiPhase.NONE
 
 
-def _peak_entry(astro: SkyfieldAstronomy, moon_idx: int, instant: datetime) -> datetime | None:
+def _peak_entry(
+    astro: SkyfieldAstronomy,
+    moon_idx: int,
+    instant: datetime,
+    ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
+    node_type: NodeType = NodeType.MEAN,
+) -> datetime | None:
     """Saturn's sticking entry into the Moon sign — anchor of the whole cycle.
 
     Prefer the sticking entry at/before `instant` (active/just-finished peak);
     otherwise the next sticking entry forward — which, during a retrograde
     excursion, is the LAST crossing of the cusp (the one that sticks).
     """
-    return ingress_before(astro, moon_idx, instant) or ingress_after(astro, moon_idx, instant)
+    return ingress_before(astro, moon_idx, instant, ayanamsa_type, node_type) or ingress_after(
+        astro, moon_idx, instant, ayanamsa_type, node_type
+    )
 
 
 def _boundaries(
-    astro: SkyfieldAstronomy, moon_idx: int, peak_start: datetime
+    astro: SkyfieldAstronomy,
+    moon_idx: int,
+    peak_start: datetime,
+    ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
+    node_type: NodeType = NodeType.MEAN,
 ) -> list[datetime] | None:
     """The four chained ingress instants: into (M-1), M, (M+1), (M+2)."""
-    rising = ingress_before(astro, (moon_idx - 1) % 12, peak_start)
-    setting = ingress_after(astro, (moon_idx + 1) % 12, peak_start)
+    rising = ingress_before(astro, (moon_idx - 1) % 12, peak_start, ayanamsa_type, node_type)
+    setting = ingress_after(astro, (moon_idx + 1) % 12, peak_start, ayanamsa_type, node_type)
     if rising is None or setting is None:
         return None
-    cycle_end = ingress_after(astro, (moon_idx + 2) % 12, setting)
+    cycle_end = ingress_after(astro, (moon_idx + 2) % 12, setting, ayanamsa_type, node_type)
     return None if cycle_end is None else [rising, peak_start, setting, cycle_end]
 
 
@@ -69,29 +81,42 @@ def _segments(moon_idx: int, bounds: list[datetime]) -> list[SadeSatiSegment]:
 
 
 def _build_cycle(
-    astro: SkyfieldAstronomy, moon_idx: int, instant: datetime
+    astro: SkyfieldAstronomy,
+    moon_idx: int,
+    instant: datetime,
+    ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
+    node_type: NodeType = NodeType.MEAN,
 ) -> list[SadeSatiSegment]:
     """The three phase segments (rising, peak, setting) in chronological order."""
-    peak_start = _peak_entry(astro, moon_idx, instant)
+    peak_start = _peak_entry(astro, moon_idx, instant, ayanamsa_type, node_type)
     if peak_start is None:
         return []
-    bounds = _boundaries(astro, moon_idx, peak_start)
+    bounds = _boundaries(astro, moon_idx, peak_start, ayanamsa_type, node_type)
     return _segments(moon_idx, bounds) if bounds else []
 
 
-def _saturn_sign_index(astro: SkyfieldAstronomy, instant: datetime) -> int:
+def _saturn_sign_index(
+    astro: SkyfieldAstronomy,
+    instant: datetime,
+    ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
+    node_type: NodeType = NodeType.MEAN,
+) -> int:
     """The sign index Saturn currently occupies, floored like the natal code."""
-    lon = transit_longitude(astro, PlanetName.SATURN, instant, AyanamsaType.LAHIRI, NodeType.MEAN)
+    lon = transit_longitude(astro, PlanetName.SATURN, instant, ayanamsa_type, node_type)
     return sign_index(lon)
 
 
 def build_sade_sati_context(
-    astro: SkyfieldAstronomy, moon_idx: int, instant: datetime
+    astro: SkyfieldAstronomy,
+    moon_idx: int,
+    instant: datetime,
+    ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
+    node_type: NodeType = NodeType.MEAN,
 ) -> SadeSatiContext:
     """Detect the phase, active flag, and dated 3-phase cycle for a Moon sign."""
-    saturn_idx = _saturn_sign_index(astro, instant)
+    saturn_idx = _saturn_sign_index(astro, instant, ayanamsa_type, node_type)
     phase = sade_sati_phase(saturn_idx, moon_idx)
-    cycle = _build_cycle(astro, moon_idx, instant)
+    cycle = _build_cycle(astro, moon_idx, instant, ayanamsa_type, node_type)
     active = phase is not SadeSatiPhase.NONE
     return SadeSatiContext(
         is_active=active,

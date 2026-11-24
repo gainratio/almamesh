@@ -2,8 +2,18 @@ import { useTranslation } from 'react-i18next'
 import type { AstronomicalCalculations, ChartSnapshot } from '@almamesh/shared-types'
 import { formatDisplayDate } from '../lib/dates'
 
-/** "LAHIRI" -> "Lahiri", "TRUE_CHITRA" -> "True Chitra". */
+/** "LAHIRI" -> "Lahiri", "TRUE_CHITRA" -> "True Chitra", "KP" -> "KP", "FAGAN_BRADLEY" -> "Fagan-Bradley". */
+const AYANAMSA_LABELS: Readonly<Record<string, string>> = {
+  LAHIRI: 'Lahiri',
+  TRUE_CHITRA: 'True Chitra',
+  RAMAN: 'B.V. Raman',
+  KP: 'KP',
+  FAGAN_BRADLEY: 'Fagan-Bradley',
+}
+
 function conventionLabel(value: string): string {
+  const known = AYANAMSA_LABELS[value.toUpperCase()]
+  if (known !== undefined) return known
   return value
     .toLowerCase()
     .split('_')

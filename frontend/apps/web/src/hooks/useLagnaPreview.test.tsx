@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChartEngine } from '@almamesh/browser';
-import type { LocalBirthInput } from '@almamesh/store';
+import { type LocalBirthInput, useAyanamsaStore } from '@almamesh/store';
 
 import { useLagnaPreview } from './useLagnaPreview';
 
@@ -100,5 +100,31 @@ describe('useLagnaPreview', () => {
     act(() => vi.advanceTimersByTime(300));
     await waitFor(() => expect(result.current.status).toBe('ready'));
     expect(generateChart).toHaveBeenCalledTimes(2);
+  });
+
+  it('forwards the active non-Lahiri ayanamsa and recomputes when ayanamsa changes', async () => {
+    useAyanamsaStore.setState({ ayanamsa: 'KP' });
+    try {
+      const { engine, generateChart } = makeEngine();
+      const input = validInput();
+      renderHook(() => useLagnaPreview(engine, null, input));
+
+      act(() => vi.advanceTimersByTime(300));
+      await waitFor(() => expect(generateChart).toHaveBeenCalledTimes(1));
+      expect(generateChart).toHaveBeenLastCalledWith(
+        expect.objectContaining({ ayanamsaType: 'KP' }),
+      );
+
+      act(() => {
+        useAyanamsaStore.setState({ ayanamsa: 'RAMAN' });
+      });
+      act(() => vi.advanceTimersByTime(300));
+      await waitFor(() => expect(generateChart).toHaveBeenCalledTimes(2));
+      expect(generateChart).toHaveBeenLastCalledWith(
+        expect.objectContaining({ ayanamsaType: 'RAMAN' }),
+      );
+    } finally {
+      useAyanamsaStore.setState({ ayanamsa: 'LAHIRI' });
+    }
   });
 });
