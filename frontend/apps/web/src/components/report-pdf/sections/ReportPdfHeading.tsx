@@ -6,25 +6,32 @@
 
 import type { ReactElement } from 'react';
 import { Text, View } from '@react-pdf/renderer';
-import { styles } from '../theme';
+import { useReportStyles } from '../theme';
 
 interface ReportPdfHeadingProps {
   readonly eyebrow: string;
   readonly title: string;
   readonly intro?: string;
+  readonly devanagari?: boolean;
 }
 
-export function ReportPdfHeading({ eyebrow, title, intro }: ReportPdfHeadingProps): ReactElement {
+export function ReportPdfHeading({
+  eyebrow,
+  title,
+  intro,
+  devanagari,
+}: ReportPdfHeadingProps): ReactElement {
+  const s = useReportStyles(devanagari);
   return (
     // Widow control: keep the eyebrow + title + rule + intro together (they never
     // split), and reserve ~120pt of space AHEAD so a section header is never the
     // last thing on a page, orphaned from the body it introduces. If less than
     // that remains, the whole header moves to the next page with its content.
-    <View style={styles.sectionHead} wrap={false} minPresenceAhead={120}>
-      <Text style={styles.sectionEyebrow}>{eyebrow}</Text>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.sectionRule} />
-      {intro ? <Text style={styles.sectionIntro}>{intro}</Text> : null}
+    <View style={s.sectionHead} wrap={false} minPresenceAhead={120}>
+      <Text style={s.sectionEyebrow}>{eyebrow}</Text>
+      <Text style={s.sectionTitle}>{title}</Text>
+      <View style={s.sectionRule} />
+      {intro ? <Text style={s.sectionIntro}>{intro}</Text> : null}
     </View>
   );
 }

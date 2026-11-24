@@ -56,9 +56,9 @@ describe('MatchReportDocument and Hindi Devanagari PDF support', () => {
     expect(glyphSafe(hindi)).toBe(hindi);
   });
 
-  it('renders a deterministic English Match PDF to valid PDF bytes', async () => {
-    registerReportFonts(FONT_DIR, { devanagari: false });
-    const data = buildMatchPdfData({
+  it('renders a deterministic English Match PDF and preserves byte-identity after a Hindi render', async () => {
+    registerReportFonts(FONT_DIR);
+    const englishData = buildMatchPdfData({
       anchorName: 'Asha Rao',
       memberName: 'Dev Rao',
       relationship: 'spouse',
@@ -66,24 +66,16 @@ describe('MatchReportDocument and Hindi Devanagari PDF support', () => {
       ayanamsaLabel: 'Lahiri',
       generatedAt: '2026-06-01T00:00:00Z',
       edge: MESH_EDGE_SPOUSE,
+      locale: 'en',
       labels: LABELS_EN,
     });
+    expect(englishData.devanagari).toBe(false);
 
     const first = canonicalizeFontSubsetTags(
-      new Uint8Array(await renderToBuffer(<MatchReportDocument data={data} />)),
-    );
-    const second = canonicalizeFontSubsetTags(
-      new Uint8Array(await renderToBuffer(<MatchReportDocument data={data} />)),
+      new Uint8Array(await renderToBuffer(<MatchReportDocument data={englishData} />)),
     );
 
-    expect(new TextDecoder('ascii').decode(first.slice(0, 5))).toBe('%PDF-');
-    expect(first.byteLength).toBeGreaterThan(5_000);
-    expect(Buffer.compare(Buffer.from(first), Buffer.from(second))).toBe(0);
-  });
-
-  it('renders a Hindi Devanagari Match PDF using self-hosted Noto Sans Devanagari TTFs', async () => {
-    registerReportFonts(FONT_DIR, { devanagari: true });
-    const data = buildMatchPdfData({
+    const hindiData = buildMatchPdfData({
       anchorName: 'आशा राव',
       memberName: 'देव राव',
       relationship: 'spouse',
@@ -91,6 +83,7 @@ describe('MatchReportDocument and Hindi Devanagari PDF support', () => {
       ayanamsaLabel: 'लाहिड़ी',
       generatedAt: '2026-06-01T00:00:00Z',
       edge: MESH_EDGE_SPOUSE,
+      locale: 'hi',
       labels: {
         ...LABELS_EN,
         kicker: 'कुंडली मिलान',
@@ -99,9 +92,42 @@ describe('MatchReportDocument and Hindi Devanagari PDF support', () => {
         footerNote: 'AlmaMesh · स्थानीय गणना',
       },
     });
+    expect(hindiData.devanagari).toBe(true);
 
-    const buf = new Uint8Array(await renderToBuffer(<MatchReportDocument data={data} />));
-    expect(new TextDecoder('ascii').decode(buf.slice(0, 5))).toBe('%PDF-');
-    expect(buf.byteLength).toBeGreaterThan(5_000);
+    const hindiBytes = new Uint8Array(
+      await renderToBuffer(<MatchReportDocument data={hindiData} />),
+    );
+    expect(new TextDecoder('ascii').decode(hindiBytes.slice(0, 5))).toBe('%PDF-');
+    expect(hindiBytes.byteLength).toBeGreaterThan(5_000);
+
+    // Re-rendering English in the SAME process must remain byte-identical
+    // (proves zero global @react-pdf/font singleton leakage from Hindi).
+    const second = canonicalizeFontSubsetTags(
+      new Uint8Array(await renderToBuffer(<MatchReportDocument data={englishData} />)),
+    );
+    expect(new TextDecoder('ascii').decode(first.slice(0, 5))).toBe('%PDF-');
+    expect(first.byteLength).toBeGreaterThan(5_000);
+    expect(Buffer.compare(Buffer.from(first), Buffer.from(second))).toBe(0);
+  });
+
+  it('assigns anchor and member Moons according to edge.role_a when brideSide is swapped', () => {
+    const swappedEdge = {
+      ...MESH_EDGE_SPOUSE,
+      role_a: 'groom' as const,
+      role_b: 'bride' as const,
+    };
+    const data = buildMatchPdfData({
+      anchorName: 'Dev Rao',
+      memberName: 'Asha Rao',
+      relationship: 'spouse',
+      relationshipLabel: 'Spouse',
+      ayanamsaLabel: 'Lahiri',
+      generatedAt: '2026-06-01T00:00:00Z',
+      edge: swappedEdge,
+      labels: LABELS_EN,
+    });
+    const ak = MESH_EDGE_SPOUSE.ashtakoota!;
+    expect(data.moonPairLine).toContain(`Dev Rao: ${ak.groom_moon.nakshatra}`);
+    expect(data.moonPairLine).toContain(`Asha Rao: ${ak.bride_moon.nakshatra}`);
   });
 });

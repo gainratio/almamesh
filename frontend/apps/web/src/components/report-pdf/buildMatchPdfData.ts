@@ -11,7 +11,7 @@ import type { SiderealChart } from '@almamesh/browser/types';
 import type { MemberRelationship, MeshEdgeCtx } from '@almamesh/shared-types';
 import { buildChartGeometry, type ChartGeometry } from '@almamesh/store';
 import type { ReportPdfTable } from './types';
-import { glyphSafe } from './glyphSafe';
+import { containsDevanagari, glyphSafe } from './glyphSafe';
 
 export interface MatchPdfLabels {
   readonly kicker: string;
@@ -60,10 +60,12 @@ export interface BuildMatchPdfInput {
   readonly edge: MeshEdgeCtx;
   readonly anchorChart?: SiderealChart | null;
   readonly memberChart?: SiderealChart | null;
+  readonly locale?: string;
   readonly labels: MatchPdfLabels;
 }
 
 export interface MatchPdfData {
+  readonly devanagari: boolean;
   readonly title: string;
   readonly kicker: string;
   readonly subtitle: string;
@@ -224,7 +226,10 @@ export function buildMatchPdfData(input: BuildMatchPdfInput): MatchPdfData {
         }
       : null;
 
-  return {
+  const anchorMoon = ak ? (edge.role_a === 'bride' ? ak.bride_moon : ak.groom_moon) : null;
+  const memberMoon = ak ? (edge.role_a === 'bride' ? ak.groom_moon : ak.bride_moon) : null;
+
+  const baseData: Omit<MatchPdfData, 'devanagari'> = {
     title: glyphSafe(`${anchorName} & ${memberName}`),
     kicker: glyphSafe(`${labels.kicker} · ${input.relationshipLabel}`),
     subtitle: glyphSafe(labels.subtitle),
@@ -240,12 +245,13 @@ export function buildMatchPdfData(input: BuildMatchPdfInput): MatchPdfData {
       isMarriage && ak
         ? glyphSafe(`${ak.total} / ${ak.maximum} · ${labels.bandLabel(ak.band)}`)
         : null,
-    moonPairLine: ak
-      ? glyphSafe(
-          `${anchorName}: ${ak.bride_moon.nakshatra} (P${ak.bride_moon.nakshatra_pada}, ${ak.bride_moon.sign}) · ` +
-            `${memberName}: ${ak.groom_moon.nakshatra} (P${ak.groom_moon.nakshatra_pada}, ${ak.groom_moon.sign})`,
-        )
-      : null,
+    moonPairLine:
+      anchorMoon && memberMoon
+        ? glyphSafe(
+            `${anchorName}: ${anchorMoon.nakshatra} (P${anchorMoon.nakshatra_pada}, ${anchorMoon.sign}) · ` +
+              `${memberName}: ${memberMoon.nakshatra} (P${memberMoon.nakshatra_pada}, ${memberMoon.sign})`,
+          )
+        : null,
     kootaTable,
     doshaLines,
     mangalTable,
@@ -256,4 +262,28 @@ export function buildMatchPdfData(input: BuildMatchPdfInput): MatchPdfData {
     integrityNote: glyphSafe(edge.integrity_note),
     labels,
   };
+
+  const devanagari =
+    Boolean(input.locale?.toLowerCase().startsWith('hi')) ||
+    containsDevanagari(
+      JSON.stringify({
+        title: baseData.title,
+        kicker: baseData.kicker,
+        subtitle: baseData.subtitle,
+        ayanamsaLabel: baseData.ayanamsaLabel,
+        totalScoreLine: baseData.totalScoreLine,
+        moonPairLine: baseData.moonPairLine,
+        kootaTable: baseData.kootaTable,
+        doshaLines: baseData.doshaLines,
+        mangalTable: baseData.mangalTable,
+        mangalMutualNote: baseData.mangalMutualNote,
+        grahaMaitriLine: baseData.grahaMaitriLine,
+        overlayTable: baseData.overlayTable,
+        synchronyTable: baseData.synchronyTable,
+        integrityNote: baseData.integrityNote,
+        footerNote: labels.footerNote,
+      }),
+    );
+
+  return { devanagari, ...baseData };
 }

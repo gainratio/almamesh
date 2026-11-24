@@ -174,12 +174,7 @@ export async function downloadReportPdf(input: DownloadReportPdfInput): Promise<
     '../components/report-pdf'
   );
 
-  const devanagari =
-    input.locale === 'hi' ||
-    containsDevanagari(
-      `${input.chrome.personName}${input.chrome.subtitle}${input.chrome.kicker}${input.chrome.chromeLabels.footerNote}`,
-    );
-  registerReportFonts(undefined, { devanagari });
+  registerReportFonts();
 
   const provenance = await resolveStrengthProvenance(input.comprehensive);
 
@@ -221,7 +216,10 @@ export async function downloadReportPdf(input: DownloadReportPdfInput): Promise<
     evidence: input.evidence,
   });
 
-  const rendered = await pdf(<ReportDocument data={data} />).toBlob();
+  const devanagari =
+    Boolean(input.locale?.toLowerCase().startsWith('hi')) ||
+    containsDevanagari(JSON.stringify(data));
+  const rendered = await pdf(<ReportDocument data={data} devanagari={devanagari} />).toBlob();
   // The last step before the file leaves: pin the font subset tags @react-pdf
   // draws from Math.random, so the same chart downloads as the same bytes.
   const bytes = canonicalizeFontSubsetTags(new Uint8Array(await rendered.arrayBuffer()));

@@ -43,6 +43,21 @@
     "export_pdf_failed": "मिलान PDF तैयार नहीं किया जा सका। कृपया पुनः प्रयास करें।",
     "integrity_label": "केवल-पठन वचन"
   },
+  "pdf": {
+    "footer_note": "AlmaMesh · स्थानीय गणना",
+    "charts_eyebrow": "D1 · राशि",
+    "col_koota": "कूट",
+    "col_score": "अंक",
+    "col_basis": "आधार",
+    "col_person": "कुंडली",
+    "col_reference": "संदर्भ",
+    "col_status": "स्थिति",
+    "col_contact": "संपर्क",
+    "col_kind": "दृष्टि/योग",
+    "col_orb": "अंतर",
+    "col_window": "अवधि",
+    "col_shared": "साझा"
+  },
   "compat": {
     "heading": "कुंडली मिलान",
     "badge": "अष्टकूट गुण मिलान · विवाह सारणियाँ",

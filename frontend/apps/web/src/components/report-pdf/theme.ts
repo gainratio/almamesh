@@ -16,6 +16,7 @@
  * (`chartTheme.ts` PAPER_THEME) plus the canonical brass accent.
  */
 
+import { createContext, useContext } from 'react';
 import { Font, StyleSheet } from '@react-pdf/renderer';
 
 /* ── Font families ─────────────────────────────────────────────────────────
@@ -33,25 +34,39 @@ export const FONT_DEVANAGARI = 'Noto Sans Devanagari Report';
 /** Absolute, same-origin font URLs (served from `public/fonts/`). */
 const FONT_BASE = '/fonts';
 
-export interface RegisterReportFontsOptions {
-  /**
-   * Bind display and body faces to the self-hosted Noto Sans Devanagari TTFs
-   * (full Devanagari + Basic Latin coverage) so Hindi PDF exports never emit tofu.
-   */
-  readonly devanagari?: boolean;
-}
-
 /**
- * Register all report faces. Idempotent-safe to call before rendering.
+ * Register all report faces ONCE with immutable family names (Latin + Devanagari).
+ * Distinct families prevent @react-pdf/font's global singleton from leaking font
+ * bindings across sequential or concurrent English/Hindi PDF exports.
  * `fontBase` lets the Node harness rewrite the same URLs onto local files.
  */
-export function registerReportFonts(
-  fontBase: string = FONT_BASE,
-  options: RegisterReportFontsOptions = {},
-): void {
+export function registerReportFonts(fontBase: string = FONT_BASE): void {
   const devanagariRegular = `${fontBase}/NotoSansDevanagari-Regular.ttf`;
   const devanagariSemiBold = `${fontBase}/NotoSansDevanagari-SemiBold.ttf`;
 
+  Font.register({
+    family: FONT_DISPLAY,
+    fonts: [
+      { src: `${fontBase}/Fraunces-Regular.ttf`, fontWeight: 400 },
+      { src: `${fontBase}/Fraunces-SemiBold.ttf`, fontWeight: 600 },
+      { src: `${fontBase}/Fraunces-Italic.ttf`, fontWeight: 400, fontStyle: 'italic' },
+    ],
+  });
+  Font.register({
+    family: FONT_BODY,
+    fonts: [
+      { src: `${fontBase}/HankenGrotesk-Report-Regular.ttf`, fontWeight: 400 },
+      { src: `${fontBase}/HankenGrotesk-Report-Medium.ttf`, fontWeight: 500 },
+      { src: `${fontBase}/HankenGrotesk-Report-SemiBold.ttf`, fontWeight: 600 },
+    ],
+  });
+  Font.register({
+    family: FONT_MONO,
+    fonts: [
+      { src: `${fontBase}/SplineSansMono-Regular.ttf`, fontWeight: 400 },
+      { src: `${fontBase}/SplineSansMono-SemiBold.ttf`, fontWeight: 600 },
+    ],
+  });
   Font.register({
     family: FONT_DEVANAGARI,
     fonts: [
@@ -61,56 +76,6 @@ export function registerReportFonts(
       { src: devanagariSemiBold, fontWeight: 600 },
     ],
   });
-
-  if (options.devanagari) {
-    Font.register({
-      family: FONT_DISPLAY,
-      fonts: [
-        { src: devanagariRegular, fontWeight: 400 },
-        { src: devanagariSemiBold, fontWeight: 600 },
-        { src: devanagariRegular, fontWeight: 400, fontStyle: 'italic' },
-      ],
-    });
-    Font.register({
-      family: FONT_BODY,
-      fonts: [
-        { src: devanagariRegular, fontWeight: 400 },
-        { src: devanagariSemiBold, fontWeight: 500 },
-        { src: devanagariSemiBold, fontWeight: 600 },
-      ],
-    });
-    Font.register({
-      family: FONT_MONO,
-      fonts: [
-        { src: devanagariRegular, fontWeight: 400 },
-        { src: devanagariSemiBold, fontWeight: 600 },
-      ],
-    });
-  } else {
-    Font.register({
-      family: FONT_DISPLAY,
-      fonts: [
-        { src: `${fontBase}/Fraunces-Regular.ttf`, fontWeight: 400 },
-        { src: `${fontBase}/Fraunces-SemiBold.ttf`, fontWeight: 600 },
-        { src: `${fontBase}/Fraunces-Italic.ttf`, fontWeight: 400, fontStyle: 'italic' },
-      ],
-    });
-    Font.register({
-      family: FONT_BODY,
-      fonts: [
-        { src: `${fontBase}/HankenGrotesk-Report-Regular.ttf`, fontWeight: 400 },
-        { src: `${fontBase}/HankenGrotesk-Report-Medium.ttf`, fontWeight: 500 },
-        { src: `${fontBase}/HankenGrotesk-Report-SemiBold.ttf`, fontWeight: 600 },
-      ],
-    });
-    Font.register({
-      family: FONT_MONO,
-      fonts: [
-        { src: `${fontBase}/SplineSansMono-Regular.ttf`, fontWeight: 400 },
-        { src: `${fontBase}/SplineSansMono-SemiBold.ttf`, fontWeight: 600 },
-      ],
-    });
-  }
 
   // Never hyphenate — Sanskrit/Devanagari words and proper nouns must stay whole.
   Font.registerHyphenationCallback((word) => [word]);
@@ -963,3 +928,24 @@ export const styles = StyleSheet.create({
     lineHeight: 1.55,
   },
 });
+
+/**
+ * Per-document Devanagari typography context so English and Hindi PDFs can
+ * render sequentially or concurrently without mutating global font bindings.
+ */
+export const DevanagariContext = createContext(false);
+
+const devanagariStyles = StyleSheet.create(
+  Object.fromEntries(
+    Object.entries(styles).map(([key, rule]) => [
+      key,
+      'fontFamily' in rule ? { ...rule, fontFamily: FONT_DEVANAGARI } : rule,
+    ]),
+  ) as typeof styles,
+);
+
+/** Return the standard Latin styles or the Noto Sans Devanagari style variant. */
+export function useReportStyles(devanagari?: boolean): typeof styles {
+  const fromContext = useContext(DevanagariContext);
+  return (devanagari ?? fromContext) ? devanagariStyles : styles;
+}

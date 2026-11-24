@@ -311,23 +311,33 @@ function MeshEdgeContent({
     setPdfError(null);
     try {
       const { downloadMatchPdf } = await import('../lib/downloadMatchPdf');
+      const safeFilePart = (raw: string): string =>
+        raw.replace(/[/\\:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim() || 'chart';
+      const matchChartIfCurrentAyanamsa = (c: typeof anchorChart) => {
+        const s = c?.sidereal_chart;
+        if (!s) return null;
+        return (s.snapshot?.ayanamsa ?? 'LAHIRI').toUpperCase() === ayanamsa ? s : null;
+      };
+      const ayanamsaLabel = t(`settings:ayanamsa.${ayanamsa.toLowerCase()}`, {
+        defaultValue: ayanamsa,
+      });
       await downloadMatchPdf({
         anchorName: anchor.name,
         memberName: member.name,
         relationship,
         relationshipLabel: t(`settings:people.relationships.${relationship}`),
-        ayanamsaLabel: ayanamsa,
+        ayanamsaLabel,
         generatedAt: referenceInstant,
         edge: entry.edge,
-        anchorChart: anchorChart?.sidereal_chart ?? null,
-        memberChart: memberChart?.sidereal_chart ?? null,
+        anchorChart: matchChartIfCurrentAyanamsa(anchorChart),
+        memberChart: matchChartIfCurrentAyanamsa(memberChart),
         locale: i18n.language,
-        fileBaseName: `AlmaMesh Match — ${anchor.name} & ${member.name} (${referenceInstant.slice(0, 10)})`,
+        fileBaseName: `AlmaMesh Match — ${safeFilePart(anchor.name)} & ${safeFilePart(member.name)} (${referenceInstant.slice(0, 10)})`,
         labels: {
           kicker: t('mesh:page.kicker'),
           subtitle: t('mesh:edge.frame'),
-          footerNote: 'AlmaMesh · Local-only',
-          chartsEyebrow: 'D1 · Rasi',
+          footerNote: t('mesh:pdf.footer_note'),
+          chartsEyebrow: t('mesh:pdf.charts_eyebrow'),
           chartsTitle: `${anchor.name} & ${member.name}`,
           compatEyebrow: t('mesh:compat.badge'),
           compatTitle: t('mesh:compat.heading'),
@@ -340,19 +350,19 @@ function MeshEdgeContent({
           synchronyEyebrow: t('mesh:synchrony.badge'),
           synchronyTitle: t('mesh:synchrony.heading'),
           integrityLabel: t('mesh:edge.integrity_label'),
-          colKoota: 'Koota',
-          colScore: 'Score',
-          colBasis: 'Basis',
-          colPerson: 'Chart',
-          colReference: 'Reference',
-          colStatus: 'Status',
-          colContact: 'Contact',
-          colKind: 'Aspect',
-          colOrb: 'Orb',
-          colWindow: 'Window',
+          colKoota: t('mesh:pdf.col_koota'),
+          colScore: t('mesh:pdf.col_score'),
+          colBasis: t('mesh:pdf.col_basis'),
+          colPerson: t('mesh:pdf.col_person'),
+          colReference: t('mesh:pdf.col_reference'),
+          colStatus: t('mesh:pdf.col_status'),
+          colContact: t('mesh:pdf.col_contact'),
+          colKind: t('mesh:pdf.col_kind'),
+          colOrb: t('mesh:pdf.col_orb'),
+          colWindow: t('mesh:pdf.col_window'),
           colAnchorDasha: anchor.name,
           colMemberDasha: member.name,
-          colShared: 'Shared',
+          colShared: t('mesh:pdf.col_shared'),
           kootaLabel: (koota) => t(`mesh:compat.koota.${koota}`, { defaultValue: koota }),
           bandLabel: (band) => t(`mesh:compat.bands.${band}`, { defaultValue: band }),
           doshaStatus: (present, cancelled) =>

@@ -8,9 +8,16 @@
  * Pure presentation over a pre-formatted `ReportPdfTable` — no data logic.
  */
 
-import type { ReactElement } from 'react';
+import { useContext, type ReactElement } from 'react';
 import { StyleSheet, Text, View } from '@react-pdf/renderer';
-import { palette, styles, type as typeScale, FONT_BODY } from '../theme';
+import {
+  DevanagariContext,
+  FONT_BODY,
+  FONT_DEVANAGARI,
+  palette,
+  type as typeScale,
+  useReportStyles,
+} from '../theme';
 import type { ReportPdfTable as ReportPdfTableData } from '../types';
 
 const local = StyleSheet.create({
@@ -53,6 +60,8 @@ interface ReportPdfTableProps {
   readonly repeatHeader?: boolean;
   /** Tight but legible typography for high-column-count reference tables. */
   readonly dense?: boolean;
+  /** Use Noto Sans Devanagari family on headers & emphasized cells for Hindi exports. */
+  readonly devanagari?: boolean;
 }
 
 /** Flex weight for column `index` (equal columns unless widths are given). */
@@ -65,16 +74,21 @@ export function ReportPdfTable({
   table,
   repeatHeader = true,
   dense = false,
+  devanagari,
 }: ReportPdfTableProps): ReactElement {
+  const fromContext = useContext(DevanagariContext);
+  const isDevanagari = devanagari ?? fromContext;
+  const s = useReportStyles(isDevanagari);
   const lastIndex = table.rows.length - 1;
+  const fontOverride = isDevanagari ? [{ fontFamily: FONT_DEVANAGARI }] : [];
   return (
-    <View style={styles.table}>
-      <View style={styles.tableHead} fixed={repeatHeader}>
+    <View style={s.table}>
+      <View style={s.tableHead} fixed={repeatHeader}>
         {table.headers.map((header, index) => (
           <Text
             key={`${header}-${index}`}
             style={[
-              styles.tableHeadCell,
+              s.tableHeadCell,
               dense ? local.denseHeadCell : local.headCell,
               { flex: flexOf(table, index) },
             ]}
@@ -88,8 +102,8 @@ export function ReportPdfTable({
           key={rowIndex}
           wrap={false}
           style={[
-            rowIndex === lastIndex ? styles.tableRowLast : styles.tableRow,
-            ...(rowIndex % 2 === 1 && !row.emphasis ? [styles.tableRowAlt] : []),
+            rowIndex === lastIndex ? s.tableRowLast : s.tableRow,
+            ...(rowIndex % 2 === 1 && !row.emphasis ? [s.tableRowAlt] : []),
             ...(row.emphasis ? [local.rowEmphasis] : []),
           ]}
         >
@@ -99,6 +113,7 @@ export function ReportPdfTable({
               style={[
                 row.emphasis ? local.cellEmphasis : local.cell,
                 ...(dense ? [local.denseCell] : []),
+                ...fontOverride,
                 { flex: flexOf(table, cellIndex) },
               ]}
             >

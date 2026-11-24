@@ -8,7 +8,7 @@
 
 import type { ReactElement } from 'react';
 import { Text, View } from '@react-pdf/renderer';
-import { styles } from '../theme';
+import { useReportStyles } from '../theme';
 import type { ReportPdfData } from '../types';
 import { ReportPdfHeading } from './ReportPdfHeading';
 
@@ -17,6 +17,7 @@ export function ReportPdfAssumptions({
 }: {
   readonly data: ReportPdfData;
 }): ReactElement | null {
+  const s = useReportStyles();
   const { assumptions } = data;
   if (!assumptions) {
     return null;
@@ -29,11 +30,11 @@ export function ReportPdfAssumptions({
         title={assumptions.chrome.title}
         intro={assumptions.chrome.intro}
       />
-      <View style={styles.detailPanel}>
+      <View style={s.detailPanel}>
         {assumptions.rows.map((row, index) => (
-          <View key={row.label} style={index === lastIndex ? styles.detailRowLast : styles.detailRow}>
-            <Text style={styles.detailLabel}>{row.label}</Text>
-            <Text style={styles.detailValue}>{row.value}</Text>
+          <View key={row.label} style={index === lastIndex ? s.detailRowLast : s.detailRow}>
+            <Text style={s.detailLabel}>{row.label}</Text>
+            <Text style={s.detailValue}>{row.value}</Text>
           </View>
         ))}
       </View>

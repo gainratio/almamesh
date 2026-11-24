@@ -44,6 +44,21 @@
     "export_pdf_failed": "Não foi possível gerar o PDF de afinidade. Tente novamente.",
     "integrity_label": "Promessa de somente leitura"
   },
+  "pdf": {
+    "footer_note": "AlmaMesh · Apenas local",
+    "charts_eyebrow": "D1 · Rāśi",
+    "col_koota": "Koota",
+    "col_score": "Pontuação",
+    "col_basis": "Base",
+    "col_person": "Mapa",
+    "col_reference": "Referência",
+    "col_status": "Estado",
+    "col_contact": "Contato",
+    "col_kind": "Aspecto",
+    "col_orb": "Orbe",
+    "col_window": "Janela",
+    "col_shared": "Compartilhado"
+  },
   "compat": {
     "heading": "Compatibilidade",
     "badge": "Guna Milan · tabelas matrimoniais",
