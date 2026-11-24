@@ -160,9 +160,11 @@ LAHIRI_J2000_ANCHOR_DEG = 23.85306
 # with IAU 2006 general precession in longitude.
 AYANAMSA_J2000_ANCHORS_DEG: dict[AyanamsaType, float] = {
     AyanamsaType.LAHIRI: LAHIRI_J2000_ANCHOR_DEG,
-    AyanamsaType.RAMAN: 22.4108,  # 22°24'39" (SE_SIDM_RAMAN at J2000.0)
-    AyanamsaType.KP: 23.7602,  # 23°45'37" (SE_SIDM_KRISHNAMURTI at J2000.0)
-    AyanamsaType.FAGAN_BRADLEY: 24.7403,  # 24°44'25" (SE_SIDM_FAGAN_BRADLEY at J2000.0)
+    AyanamsaType.RAMAN: 22.0 + 24.0 / 60.0 + 39.0 / 3600.0,  # 22°24'39" (SE_SIDM_RAMAN at J2000.0)
+    AyanamsaType.KP: 23.0 + 45.0 / 60.0 + 37.0 / 3600.0,  # 23°45'37" (SE_SIDM_KRISHNAMURTI)
+    AyanamsaType.FAGAN_BRADLEY: 24.0
+    + 44.0 / 60.0
+    + 25.0 / 3600.0,  # 24°44'25" (SE_SIDM_FAGAN_BRADLEY)
 }
 _J2000_JD = 2451545.0
 _ARCSEC_TO_DEG = 1.0 / 3600.0

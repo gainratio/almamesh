@@ -76,7 +76,7 @@ def _almamesh_generate_chart(birth_json):
     # hash, conventions, both instants, snapshot_id). The TS boundary re-hashes
     # the snapshot and refuses a chart whose stamp does not match the request.
     extra = {}
-    if birth.get("ayanamsaType"):
+    if birth.get("ayanamsaType") is not None:
         from almamesh.calculations import AyanamsaType
         extra["ayanamsa_type"] = AyanamsaType(str(birth["ayanamsaType"]))
     chart = compute_stamped_chart(
@@ -101,7 +101,7 @@ def _almamesh_compute_predictive(input_json):
         dt = dt.replace(tzinfo=UTC)
     reference = datetime.fromisoformat(data["referenceInstant"])
     extra = {}
-    if data.get("ayanamsaType"):
+    if data.get("ayanamsaType") is not None:
         from almamesh.calculations import AyanamsaType
         extra["ayanamsa_type"] = AyanamsaType(str(data["ayanamsaType"]))
     ctx = compute_predictive_contexts(
@@ -179,7 +179,7 @@ def _almamesh_compute_mesh(input_json):
     data = json.loads(input_json)
     reference = datetime.fromisoformat(data["referenceInstant"])
     extra = {}
-    if data.get("ayanamsaType"):
+    if data.get("ayanamsaType") is not None:
         from almamesh.calculations import AyanamsaType
         extra["ayanamsa_type"] = AyanamsaType(str(data["ayanamsaType"]))
     def _natal(birth):
@@ -259,7 +259,7 @@ def _almamesh_compute_varshaphala(input_json):
         "target_year": data["targetYear"],
         "reference_date": data["referenceDate"],
     }
-    if data.get("ayanamsaType"):
+    if data.get("ayanamsaType") is not None:
         wire["ayanamsa_type"] = data["ayanamsaType"]
     return json.dumps(varshaphala_from_wire(wire).model_dump(mode="json"))
 `;

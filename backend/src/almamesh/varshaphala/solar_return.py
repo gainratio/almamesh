@@ -9,7 +9,8 @@ from almamesh.constants.astrology import PlanetName
 
 SIDEREAL_YEAR_DAYS = 365.256363
 _BRACKET_HALF_DAYS = 3.0
-_BISECT_ITERATIONS = 52
+# 6 days / 2^38 < 2 milliseconds (~8e-8 deg Sun motion), avoiding zero-timedelta stalls.
+_BISECT_ITERATIONS = 38
 _MIN_EPHEMERIS_YEAR = 1900
 _MAX_EPHEMERIS_YEAR = 2052
 
@@ -47,6 +48,22 @@ def _same_sign(a: float, b: float) -> bool:
     return (a <= 0.0) == (b <= 0.0)
 
 
+def _bracket(
+    astro: SkyfieldAstronomy,
+    estimate: datetime,
+    natal_sun_lon: float,
+    ayanamsa_type: AyanamsaType,
+) -> tuple[datetime, datetime, float]:
+    """Build and verify an opposite-sign solar-return bracket around `estimate`."""
+    lo = estimate - timedelta(days=_BRACKET_HALF_DAYS)
+    hi = estimate + timedelta(days=_BRACKET_HALF_DAYS)
+    f_lo = _sun_delta(astro, lo, natal_sun_lon, ayanamsa_type)
+    f_hi = _sun_delta(astro, hi, natal_sun_lon, ayanamsa_type)
+    if _same_sign(f_lo, f_hi):
+        raise ValueError("solar return root is not bracketed within +/- 3 days of estimate")
+    return lo, hi, f_lo
+
+
 def find_solar_return_utc(
     astro: SkyfieldAstronomy,
     birth_dt: datetime,
@@ -61,9 +78,7 @@ def find_solar_return_utc(
         return birth_utc
 
     estimate = birth_utc + timedelta(days=completed * SIDEREAL_YEAR_DAYS)
-    lo = estimate - timedelta(days=_BRACKET_HALF_DAYS)
-    hi = estimate + timedelta(days=_BRACKET_HALF_DAYS)
-    f_lo = _sun_delta(astro, lo, natal_sun_lon, ayanamsa_type)
+    lo, hi, f_lo = _bracket(astro, estimate, natal_sun_lon, ayanamsa_type)
 
     for _ in range(_BISECT_ITERATIONS):
         mid = lo + (hi - lo) / 2

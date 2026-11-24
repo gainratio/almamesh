@@ -23,7 +23,8 @@ import { Badge, Card, Select, Spinner } from '../../ui';
 import { useOptionalChartEngine } from '../../../providers/chartEngineContext';
 import { formatDisplayDate } from '../../../lib/dates';
 
-const MAX_EPHEMERIS_YEAR = 2052;
+// Capped at 2051 so next_solar_return_utc (targetYear + 1 = 2052) stays inside DE421.
+const MAX_EPHEMERIS_YEAR = 2051;
 
 export interface VarshaphalaPanelProps {
   readonly storedChart: StoredChart | undefined;
@@ -37,10 +38,18 @@ function birthYearFrom(birth: ProcessedBirthData | undefined): number {
   return Number.isFinite(parsed) ? parsed : 2000;
 }
 
-function defaultSolarYear(birthYear: number, referenceInstant: string): number {
+function defaultSolarYear(
+  birth: ProcessedBirthData | undefined,
+  birthYear: number,
+  referenceInstant: string,
+): number {
   const refYear = Number.parseInt(referenceInstant.slice(0, 4), 10);
-  const candidate = Number.isFinite(refYear) ? refYear : new Date().getUTCFullYear();
-  return Math.min(MAX_EPHEMERIS_YEAR, Math.max(birthYear, candidate));
+  const currentYear = Number.isFinite(refYear) ? refYear : new Date().getUTCFullYear();
+  const birthMmDd = birth?.birth_datetime_utc?.slice(5, 10) ?? '01-01';
+  const refMmDd = referenceInstant.slice(5, 10);
+  // Before the user's birthday in calendar year Y, their active solar year began in Y - 1.
+  const activeYear = refMmDd && refMmDd < birthMmDd ? currentYear - 1 : currentYear;
+  return Math.min(MAX_EPHEMERIS_YEAR, Math.max(birthYear, activeYear));
 }
 
 function yearOptions(birthYear: number): readonly number[] {
@@ -77,7 +86,7 @@ export function VarshaphalaPanel({
   const location = birth?.birth_location_details;
   const birthYear = birthYearFrom(birth);
   const [targetYear, setTargetYear] = useState<number>(() =>
-    defaultSolarYear(birthYear, referenceInstant),
+    defaultSolarYear(birth, birthYear, referenceInstant),
   );
   const [result, setResult] = useState<VarshaphalaContext | null>(null);
   const [loading, setLoading] = useState(false);
@@ -86,10 +95,10 @@ export function VarshaphalaPanel({
   useEffect(() => {
     setTargetYear((prev) =>
       prev < birthYear || prev > MAX_EPHEMERIS_YEAR
-        ? defaultSolarYear(birthYear, referenceInstant)
+        ? defaultSolarYear(birth, birthYear, referenceInstant)
         : prev,
     );
-  }, [birthYear, referenceInstant]);
+  }, [birth, birthYear, referenceInstant]);
 
   useEffect(() => {
     if (!engine?.computeVarshaphala || !birth?.birth_datetime_utc || !location) {
@@ -113,16 +122,17 @@ export function VarshaphalaPanel({
           setLoading(false);
         }
       })
-      .catch((cause: unknown) => {
+      .catch(() => {
         if (!cancelled) {
-          setError(cause instanceof Error ? cause.message : String(cause));
+          setResult(null);
+          setError(t('gate.error_title'));
           setLoading(false);
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [engine, birth?.birth_datetime_utc, location, targetYear, referenceInstant, ayanamsa]);
+  }, [engine, birth?.birth_datetime_utc, location, targetYear, referenceInstant, ayanamsa, t]);
 
   const varshaGeometry = useMemo(
     () => (result ? buildChartGeometry(result.varsha_chart) : null),

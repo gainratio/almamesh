@@ -136,12 +136,21 @@ _HADDA_TERMS: tuple[tuple[tuple[float, PlanetName], ...], ...] = (
     ),
 )
 
-# Tri-Rashi Pati by sign element (sign_idx % 4): (day_lord, night_lord).
+# Classical 12-sign Tajaka Nilakanthi Tri-Rashi Pati table (Aries..Pisces):
+# (day_lord, night_lord).
 _TRI_RASHI_LORDS: tuple[tuple[PlanetName, PlanetName], ...] = (
-    (PlanetName.SUN, PlanetName.JUPITER),  # Fire: Aries, Leo, Sagittarius
-    (PlanetName.VENUS, PlanetName.MOON),  # Earth: Taurus, Virgo, Capricorn
-    (PlanetName.SATURN, PlanetName.MERCURY),  # Air: Gemini, Libra, Aquarius
-    (PlanetName.VENUS, PlanetName.MARS),  # Water: Cancer, Scorpio, Pisces
+    (PlanetName.SUN, PlanetName.JUPITER),  # Aries
+    (PlanetName.VENUS, PlanetName.MOON),  # Taurus
+    (PlanetName.SATURN, PlanetName.MERCURY),  # Gemini
+    (PlanetName.VENUS, PlanetName.MARS),  # Cancer
+    (PlanetName.JUPITER, PlanetName.SUN),  # Leo
+    (PlanetName.MOON, PlanetName.VENUS),  # Virgo
+    (PlanetName.MERCURY, PlanetName.SATURN),  # Libra
+    (PlanetName.MARS, PlanetName.VENUS),  # Scorpio
+    (PlanetName.SATURN, PlanetName.SATURN),  # Sagittarius
+    (PlanetName.MARS, PlanetName.MARS),  # Capricorn
+    (PlanetName.JUPITER, PlanetName.JUPITER),  # Aquarius
+    (PlanetName.MOON, PlanetName.MOON),  # Pisces
 )
 
 _TAJAKA_ASPECT_HOUSES: frozenset[int] = frozenset({1, 3, 4, 5, 7, 9, 10, 11})
@@ -232,7 +241,7 @@ def compute_panchavargiya_bala(
 def tri_rashi_lord(varsha_lagna_sign: ZodiacSign, is_day_chart: bool) -> PlanetName:
     """Tri-Rashi Pati for the Varsha Lagna sign and day/night polarity."""
     sign_idx = ZODIAC_SIGNS.index(varsha_lagna_sign.value)
-    day_lord, night_lord = _TRI_RASHI_LORDS[sign_idx % 4]
+    day_lord, night_lord = _TRI_RASHI_LORDS[sign_idx]
     return day_lord if is_day_chart else night_lord
 
 

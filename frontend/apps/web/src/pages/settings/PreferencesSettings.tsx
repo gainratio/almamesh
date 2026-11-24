@@ -11,7 +11,13 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import type { AyanamsaType } from '@almamesh/browser/types';
-import { useAyanamsaStore, useLanguageStore, usePredictiveStore, type Language } from '@almamesh/store';
+import {
+  useAyanamsaStore,
+  useLanguageStore,
+  useMeshStore,
+  usePredictiveStore,
+  type Language,
+} from '@almamesh/store';
 import { useContentModeStore } from '../../stores/contentMode';
 import { Select } from '../../components/ui/Select';
 import { Dialog } from '../../components/ui/Dialog';
@@ -29,6 +35,7 @@ export default function PreferencesSettings() {
   const handleAyanamsaChange = (next: AyanamsaType): void => {
     setAyanamsa(next);
     usePredictiveStore.getState().reset();
+    useMeshStore.getState().reset();
   };
 
   // Danger zone: a confirmed "start fresh" that erases the chart + everything

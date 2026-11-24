@@ -22,6 +22,16 @@ from almamesh.varshaphala.panchavargiya import compute_panchavargiya_bala, deter
 from almamesh.varshaphala.solar_return import find_solar_return_utc
 from almamesh.varshaphala.yogas import detect_tajaka_yogas
 
+# DE421 covers through 2053-10-09; capping Varshaphala target_year at 2051 ensures
+# next_solar_return_utc (target_year + 1 = 2052) stays safely within ephemeris bounds
+# for every birthday (including Dec 31 + 3d bracket).
+MAX_VARSHAPHALA_YEAR = 2051
+
+
+def is_day_varsha_chart(lagna_longitude: float, sun_longitude: float) -> bool:
+    """True when the Sun is above the eastern-western horizon arc (0 < lagna - sun < 180)."""
+    return 0.0 < ((lagna_longitude - sun_longitude) % 360.0) < 180.0
+
 
 def _compute_muntha(
     natal: SiderealContext, varsha_chart: SiderealContext, completed_years: int
@@ -54,6 +64,10 @@ def compute_varshaphala(
     validate_coordinates(latitude, longitude)
     birth_utc = _to_utc(birth_dt)
     ref_utc = _to_utc(reference_date)
+    if target_year > MAX_VARSHAPHALA_YEAR:
+        raise ValueError(
+            f"target_year must be <= {MAX_VARSHAPHALA_YEAR} for full solar year bounds"
+        )
     completed_years = target_year - birth_utc.year
 
     with astronomy_scope(astronomy) as astro:
@@ -79,7 +93,9 @@ def compute_varshaphala(
             astronomy=astro,
         )
 
-    is_day = varsha_chart.planets[PlanetName.SUN].house >= 7
+    is_day = is_day_varsha_chart(
+        varsha_chart.lagna.longitude, varsha_chart.planets[PlanetName.SUN].longitude
+    )
     muntha = _compute_muntha(natal, varsha_chart, completed_years)
     strengths = compute_panchavargiya_bala(varsha_chart)
     varshesha, candidates = determine_varshesha(
