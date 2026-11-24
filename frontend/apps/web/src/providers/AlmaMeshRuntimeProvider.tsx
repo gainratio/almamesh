@@ -90,7 +90,6 @@ const WHEEL_PATHS = [
 
 const SKYFIELD_DATA_PATHS = [
   'skyfield-data/de421.bsp',
-  'skyfield-data/finals2000A.all',
 ] as const
 
 /** Build the RuntimeConfig from Vite env, with same-origin dev defaults. */

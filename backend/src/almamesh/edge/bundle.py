@@ -38,7 +38,9 @@ _META_NAME = "almamesh_meta.json"
 _OFFLINE_WHEELS_DIR = Path(__file__).resolve().parents[3] / "offline_wheels"
 _WHEELS_PREFIX = "wheels"
 _SKYFIELD_DATA_PREFIX = "skyfield-data"
-_SKYFIELD_DATA_FILES = ("de421.bsp", "finals2000A.all")
+# Skyfield 1.55 bundles its built-in timescale tables inside the skyfield wheel
+# (`loader.timescale(builtin=True)`), so only `de421.bsp` needs to ship here.
+_SKYFIELD_DATA_FILES = ("de421.bsp",)
 
 
 class BundleMeta(BaseModel):
@@ -186,12 +188,15 @@ def publish_offline_bundle(
     skyfield_data_dir: Path | None = None,
     sequence: int = 1,
 ) -> VersionPointer:
-    """Publish the full OFFLINE asset set: constructs + wheels + ephemeris + meta."""
+    """Publish the full OFFLINE asset set: wheels + de421 ephemeris + meta.
+
+    `lahiri_ayanamsa.txt` already travels compressed inside the `almamesh` wheel
+    (read via `importlib.resources`), so offline bundles omit the duplicate 2.6 MB
+    uncompressed standalone construct to shrink browser cold-start transfers.
+    """
     almamesh_wheel = almamesh_wheel or _default_almamesh_wheel()
     skyfield_data_dir = skyfield_data_dir or _default_skyfield_data_dir()
-    files = gather_construct_files()
-    assets = gather_offline_assets(almamesh_wheel, skyfield_data_dir)
-    files = _merge_constructs(files, assets)
+    files = gather_offline_assets(almamesh_wheel, skyfield_data_dir)
     meta = build_meta(version, constructs=list(files), ephemeris_file="de421.bsp")
     files[_META_NAME] = meta.model_dump_json(indent=2).encode()
     return publish_constructs(files, origin_dir, signer, version=version, sequence=sequence)
