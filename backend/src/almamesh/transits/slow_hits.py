@@ -46,19 +46,29 @@ def _clamp(when: datetime) -> datetime:
 
 
 def _gap_fn(
-    astro: SkyfieldAstronomy, graha: PlanetName, target: float
+    astro: SkyfieldAstronomy,
+    graha: PlanetName,
+    target: float,
+    ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
+    node_type: NodeType = NodeType.MEAN,
 ) -> Callable[[datetime], float]:
     """Circular gap in [-180, 180), discontinuous at opposition, not conjunction."""
 
     def f(when: datetime) -> float:
-        lon = transit_longitude(astro, graha, when, AyanamsaType.LAHIRI, NodeType.MEAN)
+        lon = transit_longitude(astro, graha, when, ayanamsa_type, node_type)
         return (lon - target + 180.0) % 360.0 - 180.0
 
     return f
 
 
 def _first_crossing(
-    astro: SkyfieldAstronomy, graha: PlanetName, target: float, start: datetime, end: datetime
+    astro: SkyfieldAstronomy,
+    graha: PlanetName,
+    target: float,
+    start: datetime,
+    end: datetime,
+    ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
+    node_type: NodeType = NodeType.MEAN,
 ) -> datetime | None:
     """The earliest true contact; a circular gap's opposition jump is not a root.
 
@@ -68,7 +78,7 @@ def _first_crossing(
     validate their angular residual before publishing a conjunction or return.
     Keep scanning after a rejected bracket rather than losing a later contact.
     """
-    gap = _gap_fn(astro, graha, target)
+    gap = _gap_fn(astro, graha, target, ayanamsa_type, node_type)
     lo = start
     gap_lo = gap(lo)
     if abs(gap_lo) <= _CONTACT_TOLERANCE_DEG:
@@ -116,6 +126,8 @@ def next_conjunction(
     target: float,
     natal_point: str,
     after: datetime,
+    ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
+    node_type: NodeType = NodeType.MEAN,
 ) -> SlowTransitHit | None:
     """Next exact conjunction of `graha` over a natal `target` longitude.
 
@@ -123,16 +135,22 @@ def next_conjunction(
     enum's SIGN_INGRESS is the closest "graha reaches a longitude" semantics.
     """
     end = _clamp(after + timedelta(days=_CONJ_WINDOW_DAYS))
-    exact = _first_crossing(astro, graha, target, after, end)
+    exact = _first_crossing(astro, graha, target, after, end, ayanamsa_type, node_type)
     return None if exact is None else _hit(graha, natal_point, exact, TransitEventKind.SIGN_INGRESS)
 
 
 def next_saturn_return(
-    astro: SkyfieldAstronomy, natal_saturn: float, after: datetime
+    astro: SkyfieldAstronomy,
+    natal_saturn: float,
+    after: datetime,
+    ayanamsa_type: AyanamsaType = AyanamsaType.LAHIRI,
+    node_type: NodeType = NodeType.MEAN,
 ) -> SlowTransitHit | None:
     """Next exact Saturn return (transit Saturn over natal Saturn) after `after`."""
     end = _clamp(after + timedelta(days=_RETURN_WINDOW_DAYS))
-    exact = _first_crossing(astro, PlanetName.SATURN, natal_saturn, after, end)
+    exact = _first_crossing(
+        astro, PlanetName.SATURN, natal_saturn, after, end, ayanamsa_type, node_type
+    )
     return (
         None
         if exact is None

@@ -11,8 +11,13 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-import type { ChartEngine } from '@almamesh/browser';
-import { type LocalBirthInput, newChartReferenceInstant, toBirthInput } from '@almamesh/store';
+import type { AyanamsaType, ChartEngine } from '@almamesh/browser';
+import {
+  type LocalBirthInput,
+  newChartReferenceInstant,
+  toBirthInput,
+  useAyanamsaStore,
+} from '@almamesh/store';
 
 /** The minimal lagna read-out the preview renders. */
 export interface LagnaPreview {
@@ -34,12 +39,16 @@ export type LagnaPreviewState =
 const DEBOUNCE_MS = 300;
 
 /** Stable key over the inputs that change the lagna; re-runs only when it moves. */
-function previewKey(input: LocalBirthInput | null, retryAttempt: number): string {
+function previewKey(
+  input: LocalBirthInput | null,
+  retryAttempt: number,
+  ayanamsa: AyanamsaType,
+): string {
   if (input === null) {
     return '';
   }
   const clock = input.rectifiedTime ?? input.time;
-  return `${input.date}T${clock}|${input.timezone}|${input.dstFold ?? ''}|${input.latitude}|${input.longitude}|${retryAttempt}`;
+  return `${input.date}T${clock}|${input.timezone}|${input.dstFold ?? ''}|${input.latitude}|${input.longitude}|${ayanamsa}|${retryAttempt}`;
 }
 
 interface KeyedPreviewState {
@@ -66,7 +75,8 @@ export function useLagnaPreview(
     engineError: null,
     value: { status: 'idle' },
   });
-  const key = previewKey(input, retryAttempt);
+  const ayanamsa = useAyanamsaStore((s) => s.ayanamsa);
+  const key = previewKey(input, retryAttempt, ayanamsa);
   const keyedInputRef = useRef({ key, input });
   if (keyedInputRef.current.key !== key) {
     keyedInputRef.current = { key, input };
@@ -105,7 +115,7 @@ export function useLagnaPreview(
           // reads only `chart.lagna`, which is pure birth data, so the instant
           // it happens to be given does not move anything on screen.
           const chart = await engine.generateChart(
-            toBirthInput(keyedInput, newChartReferenceInstant()),
+            toBirthInput(keyedInput, newChartReferenceInstant(), ayanamsa),
           );
           if (cancelled) {
             return;
@@ -130,7 +140,7 @@ export function useLagnaPreview(
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [engine, engineError, key, keyedInput]);
+  }, [engine, engineError, key, keyedInput, ayanamsa]);
 
   return state;
 }

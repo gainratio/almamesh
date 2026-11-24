@@ -84,3 +84,39 @@ def test_compute_stamped_chart_records_requested_ayanamsa() -> None:
     assert kp.snapshot.ayanamsa == "KP"
     assert lahiri.snapshot.snapshot_id != raman.snapshot.snapshot_id
     assert raman.ayanamsa_value < kp.ayanamsa_value < lahiri.ayanamsa_value
+
+
+def test_transit_context_keeps_consistent_ayanamsa_frame_for_slow_hits_and_sade_sati() -> None:
+    """Saturn Return & Sade Sati under RAMAN use RAMAN transit longitudes (no mixed-frame shift)."""
+    from almamesh.constants.astrology import PlanetName
+    from almamesh.transits import calculate_transit_context
+
+    birth = datetime(1990, 5, 15, 6, 30, tzinfo=UTC)
+    ref = datetime(2019, 1, 1, 0, 0, tzinfo=UTC)
+    lahiri_natal = compute_stamped_chart(
+        birth, 28.6139, 77.2090, reference_date=ref, ayanamsa_type=AyanamsaType.LAHIRI
+    )
+    raman_natal = compute_stamped_chart(
+        birth, 28.6139, 77.2090, reference_date=ref, ayanamsa_type=AyanamsaType.RAMAN
+    )
+
+    lahiri_tx = calculate_transit_context(
+        lahiri_natal, birth, transit_instant=ref, ayanamsa_type=AyanamsaType.LAHIRI
+    )
+    raman_tx = calculate_transit_context(
+        raman_natal, birth, transit_instant=ref, ayanamsa_type=AyanamsaType.RAMAN
+    )
+
+    lahiri_sr = next(h for h in lahiri_tx.slow_hits if h.natal_point == "natal_saturn")
+    raman_sr = next(h for h in raman_tx.slow_hits if h.natal_point == "natal_saturn")
+    # Same-frame Saturn Return depends only on differential precession (~0.0001 deg over 30y),
+    # so Raman and Lahiri returns agree within 1 day (mixed frames drifted 42-150+ days).
+    assert abs((raman_sr.exact - lahiri_sr.exact).total_seconds()) < 86_400
+
+    # Gochara Saturn sign and Sade Sati active/phase must agree in the RAMAN frame.
+    raman_saturn_sign = raman_tx.gochara.placements[PlanetName.SATURN].sign
+    if raman_tx.sade_sati.is_active:
+        assert any(
+            seg.phase == raman_tx.sade_sati.current_phase and seg.saturn_sign == raman_saturn_sign
+            for seg in raman_tx.sade_sati.cycle
+        )

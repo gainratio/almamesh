@@ -335,8 +335,9 @@ export default function ReportView(): ReactElement {
         <ReportAssumptions
           lagna={lagna}
           rectification={birth ? rectificationDelta(birth) : null}
+          ayanamsa={sidereal.snapshot?.ayanamsa}
         />
-        <ReportFooter personName={personName} />
+        <ReportFooter personName={personName} ayanamsa={sidereal.snapshot?.ayanamsa} />
       </article>
     </div>
   );
