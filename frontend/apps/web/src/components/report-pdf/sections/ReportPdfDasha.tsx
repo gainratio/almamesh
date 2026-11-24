@@ -13,7 +13,7 @@
 
 import type { ReactElement } from 'react';
 import { Text, View } from '@react-pdf/renderer';
-import { styles } from '../theme';
+import { useReportStyles } from '../theme';
 import type {
   ReportPdfAntarTable,
   ReportPdfData,
@@ -65,18 +65,19 @@ function PeriodRow({
   period: ReportPdfDashaPeriod;
   currentMarker: string;
 }): ReactElement {
+  const s = useReportStyles();
   return (
-    <View style={styles.dashaRow} wrap={false}>
-      <View style={period.isCurrent ? styles.dashaTickCurrent : styles.dashaTick} />
-      <Text style={period.isCurrent ? styles.dashaLordCurrent : styles.dashaLord}>
+    <View style={s.dashaRow} wrap={false}>
+      <View style={period.isCurrent ? s.dashaTickCurrent : s.dashaTick} />
+      <Text style={period.isCurrent ? s.dashaLordCurrent : s.dashaLord}>
         {period.lord}
       </Text>
-      <Text style={styles.dashaSpan}>
+      <Text style={s.dashaSpan}>
         {period.start} — {period.end}
       </Text>
-      <Text style={styles.dashaYears}>{period.span}</Text>
+      <Text style={s.dashaYears}>{period.span}</Text>
       {/* Always rendered so the column keeps its width; empty rows print nothing. */}
-      <Text style={styles.dashaCurrentMark}>{period.isCurrent ? currentMarker : ''}</Text>
+      <Text style={s.dashaCurrentMark}>{period.isCurrent ? currentMarker : ''}</Text>
     </View>
   );
 }
@@ -90,11 +91,12 @@ function PeriodTable({
   periods: readonly ReportPdfDashaPeriod[];
   currentMarker: string;
 }): ReactElement {
+  const s = useReportStyles();
   const [first, ...remaining] = periods;
   return (
     <View>
       <View wrap={false}>
-        <Text style={styles.subLabel}>{heading}</Text>
+        <Text style={s.subLabel}>{heading}</Text>
         {first ? <PeriodRow period={first} currentMarker={currentMarker} /> : null}
       </View>
       {remaining.map((period) => (
@@ -109,6 +111,7 @@ function PeriodTable({
 }
 
 export function ReportPdfDashaOverview({ data }: ReportPdfDashaProps): ReactElement {
+  const s = useReportStyles();
   const { dasha, labels } = data;
   return (
     <View>
@@ -119,13 +122,13 @@ export function ReportPdfDashaOverview({ data }: ReportPdfDashaProps): ReactElem
       />
 
       {dasha.currentFocus ? (
-        <View style={styles.dashaCurrent} wrap={false}>
-          <Text style={styles.dashaCurrentLabel}>{labels.dashaCurrentLabel}</Text>
-          <Text style={styles.dashaCurrentValue}>{dasha.currentFocus}</Text>
+        <View style={s.dashaCurrent} wrap={false}>
+          <Text style={s.dashaCurrentLabel}>{labels.dashaCurrentLabel}</Text>
+          <Text style={s.dashaCurrentValue}>{dasha.currentFocus}</Text>
         </View>
       ) : null}
 
-      <Text style={styles.subLabel}>{labels.dashaSequenceLabel}</Text>
+      <Text style={s.subLabel}>{labels.dashaSequenceLabel}</Text>
       <View>
         {dasha.mahaSequence.map((period) => (
           <PeriodRow

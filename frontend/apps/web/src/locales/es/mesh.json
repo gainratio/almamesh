@@ -39,7 +39,25 @@
     "generate_for": "Generar la carta de {{name}}",
     "generate_yours": "Generar tu carta",
     "discuss": "Conversar en el chat",
+    "export_pdf": "Descargar PDF de afinidad",
+    "export_pdf_title": "Descargar un PDF generado localmente de este informe de afinidad",
+    "export_pdf_failed": "No se pudo generar el PDF de afinidad. Inténtalo de nuevo.",
     "integrity_label": "Promesa de solo lectura"
+  },
+  "pdf": {
+    "footer_note": "AlmaMesh · Solo local",
+    "charts_eyebrow": "D1 · Rāśi",
+    "col_koota": "Koota",
+    "col_score": "Puntuación",
+    "col_basis": "Base",
+    "col_person": "Carta",
+    "col_reference": "Referencia",
+    "col_status": "Estado",
+    "col_contact": "Contacto",
+    "col_kind": "Aspecto",
+    "col_orb": "Orbe",
+    "col_window": "Ventana",
+    "col_shared": "Compartido"
   },
   "compat": {
     "heading": "Compatibilidad",

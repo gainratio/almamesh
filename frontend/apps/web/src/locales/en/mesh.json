@@ -38,7 +38,25 @@
     "generate_for": "Generate {{name}}'s chart",
     "generate_yours": "Generate your chart",
     "discuss": "Discuss in chat",
+    "export_pdf": "Download Match PDF",
+    "export_pdf_title": "Download a locally-generated PDF of this match report",
+    "export_pdf_failed": "Could not generate the Match PDF. Please try again.",
     "integrity_label": "Read-only promise"
+  },
+  "pdf": {
+    "footer_note": "AlmaMesh · Local-only",
+    "charts_eyebrow": "D1 · Rāśi",
+    "col_koota": "Koota",
+    "col_score": "Score",
+    "col_basis": "Basis",
+    "col_person": "Chart",
+    "col_reference": "Reference",
+    "col_status": "Status",
+    "col_contact": "Contact",
+    "col_kind": "Aspect",
+    "col_orb": "Orb",
+    "col_window": "Window",
+    "col_shared": "Shared"
   },
   "compat": {
     "heading": "Compatibility",

@@ -14,7 +14,14 @@
 
 import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from '@react-pdf/renderer';
-import { palette, styles, type as typeScale, FONT_MONO } from '../theme';
+import {
+  createDevanagariStyles,
+  FONT_MONO,
+  palette,
+  type as typeScale,
+  useFontSheet,
+  useReportStyles,
+} from '../theme';
 import type { ReportPdfData } from '../types';
 import { ReportPdfHeading } from './ReportPdfHeading';
 import { ReportPdfTable } from './ReportPdfTable';
@@ -35,6 +42,8 @@ const local = StyleSheet.create({
   },
 });
 
+const localDevanagari = createDevanagariStyles(local);
+
 interface ReportPdfRectificationProps {
   readonly data: ReportPdfData;
 }
@@ -49,9 +58,10 @@ function RectificationSubsectionHeading({
   breakBefore = false,
   heading,
 }: RectificationSubsectionHeadingProps): ReactElement {
+  const s = useReportStyles();
   return (
     <View wrap={false} break={breakBefore}>
-      <Text style={styles.subLabel} minPresenceAhead={180}>
+      <Text style={s.subLabel} minPresenceAhead={180}>
         {heading}
       </Text>
     </View>
@@ -59,6 +69,8 @@ function RectificationSubsectionHeading({
 }
 
 export function ReportPdfRectification({ data }: ReportPdfRectificationProps): ReactElement | null {
+  const s = useReportStyles();
+  const loc = useFontSheet(local, localDevanagari);
   const rectification = data.rectification;
   if (!rectification) {
     return null;
@@ -71,21 +83,21 @@ export function ReportPdfRectification({ data }: ReportPdfRectificationProps): R
         intro={rectification.chrome.intro}
       />
 
-      <View style={styles.detailPanel} wrap={false}>
+      <View style={s.detailPanel} wrap={false}>
         {rectification.facts.map((fact, index) => (
           <View
             key={fact.label}
-            style={index === rectification.facts.length - 1 ? styles.detailRowLast : styles.detailRow}
+            style={index === rectification.facts.length - 1 ? s.detailRowLast : s.detailRow}
           >
-            <Text style={local.factLabel}>{fact.label}</Text>
-            <Text style={local.factValue}>{fact.value}</Text>
+            <Text style={loc.factLabel}>{fact.label}</Text>
+            <Text style={loc.factValue}>{fact.value}</Text>
           </View>
         ))}
       </View>
 
       <RectificationSubsectionHeading heading={rectification.eventsHeading} />
       {rectification.events.rows.length === 0 ? (
-        <Text style={styles.detailNote}>{rectification.eventsEmpty}</Text>
+        <Text style={s.detailNote}>{rectification.eventsEmpty}</Text>
       ) : (
         <ReportPdfTable table={rectification.events} />
       )}
@@ -110,17 +122,17 @@ export function ReportPdfRectification({ data }: ReportPdfRectificationProps): R
         <>
           <RectificationSubsectionHeading heading={rectification.missesHeading} />
           {rectification.missNotes.map((note) => (
-            <Text key={note} style={styles.detailNote}>
+            <Text key={note} style={s.detailNote}>
               {note}
             </Text>
           ))}
         </>
       )}
       {rectification.priorNote !== undefined && (
-        <Text style={styles.detailNote}>{rectification.priorNote}</Text>
+        <Text style={s.detailNote}>{rectification.priorNote}</Text>
       )}
 
-      <Text style={styles.detailNote}>{rectification.caveat}</Text>
+      <Text style={s.detailNote}>{rectification.caveat}</Text>
     </View>
   );
 }

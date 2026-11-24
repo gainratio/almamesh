@@ -16,7 +16,7 @@
 
 import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from '@react-pdf/renderer';
-import { styles } from '../theme';
+import { useReportStyles } from '../theme';
 import type { ReportPdfData, ReportPdfPlanetRow } from '../types';
 import { ReportPdfHeading } from './ReportPdfHeading';
 
@@ -34,16 +34,17 @@ interface ReportPdfPlanetsProps {
 }
 
 function HeaderRow({ data }: { data: ReportPdfData }): ReactElement {
+  const s = useReportStyles();
   const { labels } = data;
   return (
-    <View style={styles.tableHead}>
-      <Text style={[styles.tableHeadCell, styles.colPlanet]}>{labels.colPlanet}</Text>
-      <Text style={[styles.tableHeadCell, styles.colSign]}>{labels.colSign}</Text>
-      <Text style={[styles.tableHeadCell, styles.colDegree]}>{labels.colDegree}</Text>
-      <Text style={[styles.tableHeadCell, styles.colNakshatra]}>{labels.colNakshatra}</Text>
-      <Text style={[styles.tableHeadCell, styles.colHouse]}>{labels.colHouse}</Text>
-      <Text style={[styles.tableHeadCell, styles.colDignity]}>{labels.colDignity}</Text>
-      <Text style={[styles.tableHeadCell, styles.colState]}>{labels.colState}</Text>
+    <View style={s.tableHead}>
+      <Text style={[s.tableHeadCell, s.colPlanet]}>{labels.colPlanet}</Text>
+      <Text style={[s.tableHeadCell, s.colSign]}>{labels.colSign}</Text>
+      <Text style={[s.tableHeadCell, s.colDegree]}>{labels.colDegree}</Text>
+      <Text style={[s.tableHeadCell, s.colNakshatra]}>{labels.colNakshatra}</Text>
+      <Text style={[s.tableHeadCell, s.colHouse]}>{labels.colHouse}</Text>
+      <Text style={[s.tableHeadCell, s.colDignity]}>{labels.colDignity}</Text>
+      <Text style={[s.tableHeadCell, s.colState]}>{labels.colState}</Text>
     </View>
   );
 }
@@ -60,10 +61,11 @@ function StateCell({
   row: ReportPdfPlanetRow;
   labels: ReportPdfData['labels'];
 }): ReactElement {
+  const s = useReportStyles();
   return (
-    <View style={[styles.colState, row.isCombust ? styles.rowDim : empty]}>
-      {row.combustion ? <Text style={styles.cellState}>{row.combustion}</Text> : null}
-      {row.isRetrograde ? <Text style={styles.cellState}>{labels.stateRetrograde}</Text> : null}
+    <View style={[s.colState, row.isCombust ? s.rowDim : empty]}>
+      {row.combustion ? <Text style={s.cellState}>{row.combustion}</Text> : null}
+      {row.isRetrograde ? <Text style={s.cellState}>{labels.stateRetrograde}</Text> : null}
     </View>
   );
 }
@@ -79,39 +81,41 @@ function PlanetRow({
   alt: boolean;
   last: boolean;
 }): ReactElement {
+  const s = useReportStyles();
   const isLagna = row.glyph === '';
-  const base = last ? styles.tableRowLast : styles.tableRow;
+  const base = last ? s.tableRowLast : s.tableRow;
   const rowStyle = [
     base,
-    ...(alt && !isLagna ? [styles.tableRowAlt] : []),
-    ...(isLagna ? [styles.tableRowLagna] : []),
+    ...(alt && !isLagna ? [s.tableRowAlt] : []),
+    ...(isLagna ? [s.tableRowLagna] : []),
   ];
-  const dim = row.isCombust ? styles.rowDim : empty;
+  const dim = row.isCombust ? s.rowDim : empty;
 
   return (
     <View style={rowStyle} wrap={false}>
-      <View style={[styles.colPlanet, dim]}>
+      <View style={[s.colPlanet, dim]}>
         {row.glyph ? (
-          <View style={[styles.glyphChip, { backgroundColor: row.color }]}>
-            <Text style={styles.glyphChipText}>{row.glyph}</Text>
+          <View style={[s.glyphChip, { backgroundColor: row.color }]}>
+            <Text style={s.glyphChipText}>{row.glyph}</Text>
           </View>
         ) : null}
-        <Text style={styles.cellName}>{row.name}</Text>
+        <Text style={s.cellName}>{row.name}</Text>
       </View>
-      <Text style={[styles.cellSign, styles.colSign, dim]}>{row.sign}</Text>
-      <View style={[styles.colDegree, degreeCellLayout, dim]}>
-        <Text style={styles.cellMono}>{row.degree}</Text>
-        {row.isRetrograde ? <Text style={styles.cellRetro}> (R)</Text> : null}
+      <Text style={[s.cellSign, s.colSign, dim]}>{row.sign}</Text>
+      <View style={[s.colDegree, degreeCellLayout, dim]}>
+        <Text style={s.cellMono}>{row.degree}</Text>
+        {row.isRetrograde ? <Text style={s.cellRetro}> (R)</Text> : null}
       </View>
-      <Text style={[styles.cellNak, styles.colNakshatra, dim]}>{row.nakshatra}</Text>
-      <Text style={[styles.cellMonoCenter, styles.colHouse, dim]}>{row.house}</Text>
-      <Text style={[styles.cellDignity, styles.colDignity, dim]}>{row.dignity}</Text>
+      <Text style={[s.cellNak, s.colNakshatra, dim]}>{row.nakshatra}</Text>
+      <Text style={[s.cellMonoCenter, s.colHouse, dim]}>{row.house}</Text>
+      <Text style={[s.cellDignity, s.colDignity, dim]}>{row.dignity}</Text>
       <StateCell row={row} labels={labels} />
     </View>
   );
 }
 
 export function ReportPdfPlanets({ data }: ReportPdfPlanetsProps): ReactElement {
+  const s = useReportStyles();
   const { planets, labels, combustionNotes } = data;
   return (
     <View>
@@ -120,7 +124,7 @@ export function ReportPdfPlanets({ data }: ReportPdfPlanetsProps): ReactElement 
         title={labels.planetsTitle}
         intro={labels.planetsIntro}
       />
-      <View style={styles.table}>
+      <View style={s.table}>
         <HeaderRow data={data} />
         {planets.map((row, index) => (
           <PlanetRow
@@ -136,7 +140,7 @@ export function ReportPdfPlanets({ data }: ReportPdfPlanetsProps): ReactElement 
           from the Sun AND the classical orb it was tested against. One line per
           graha, full width, so a figure never wraps away from its planet. */}
       {(combustionNotes ?? []).map((note) => (
-        <Text key={note} style={styles.combustionNote}>
+        <Text key={note} style={s.combustionNote}>
           {note}
         </Text>
       ))}

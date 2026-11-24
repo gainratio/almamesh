@@ -31,6 +31,7 @@ import type { ReportChartFields } from './reportData';
 import type { RectificationDelta } from './rectification';
 import { verifyStrengthProvenance, type StrengthProvenance } from './strengthProvenance';
 import { canonicalizeFontSubsetTags } from './reportPdfDeterminism';
+import { containsDevanagari } from '../components/report-pdf/glyphSafe';
 
 /** All localized chrome strings the document needs (passed from React/i18n). */
 export interface ReportPdfChrome {
@@ -128,6 +129,8 @@ export interface DownloadReportPdfInput {
   readonly evidence?: ReportPdfEvidence;
   /** The download file name (without extension). */
   readonly fileBaseName: string;
+  /** Optional UI locale (e.g. 'hi'); enables self-hosted Devanagari PDF typography. */
+  readonly locale?: string;
 }
 
 /**
@@ -213,7 +216,10 @@ export async function downloadReportPdf(input: DownloadReportPdfInput): Promise<
     evidence: input.evidence,
   });
 
-  const rendered = await pdf(<ReportDocument data={data} />).toBlob();
+  const devanagari =
+    Boolean(input.locale?.toLowerCase().startsWith('hi')) ||
+    containsDevanagari(JSON.stringify(data));
+  const rendered = await pdf(<ReportDocument data={data} devanagari={devanagari} />).toBlob();
   // The last step before the file leaves: pin the font subset tags @react-pdf
   // draws from Math.random, so the same chart downloads as the same bytes.
   const bytes = canonicalizeFontSubsetTags(new Uint8Array(await rendered.arrayBuffer()));

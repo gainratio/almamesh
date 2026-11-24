@@ -13,7 +13,7 @@
 
 import type { ReactElement } from 'react';
 import { Text, View } from '@react-pdf/renderer';
-import { styles } from '../theme';
+import { useReportStyles } from '../theme';
 import type { ReportPdfData, ReportPdfNarrativeSection } from '../types';
 import { ReportPdfHeading } from './ReportPdfHeading';
 
@@ -22,10 +22,11 @@ interface ReportPdfNarrativeProps {
 }
 
 function SummaryBlock({ section }: { section: ReportPdfNarrativeSection }): ReactElement {
+  const s = useReportStyles();
   return (
-    <View style={styles.narrativeSummary}>
+    <View style={s.narrativeSummary}>
       {section.paragraphs.map((para, index) => (
-        <Text key={index} style={styles.narrativeSummaryText}>
+        <Text key={index} style={s.narrativeSummaryText}>
           {para}
         </Text>
       ))}
@@ -34,20 +35,21 @@ function SummaryBlock({ section }: { section: ReportPdfNarrativeSection }): Reac
 }
 
 function NarrativeBlock({ section }: { section: ReportPdfNarrativeSection }): ReactElement {
+  const s = useReportStyles();
   const [firstPara, ...restParas] = section.paragraphs;
   return (
-    <View style={styles.narrativeBlock} wrap>
+    <View style={s.narrativeBlock} wrap>
       {/* Widow control: glue the sub-heading to its FIRST paragraph in a
           non-wrapping group so a sub-heading never strands alone at the foot of
           a page. Remaining paragraphs flow (and may break) normally. */}
       <View wrap={false}>
-        {section.title ? <Text style={styles.narrativeHeading}>{section.title}</Text> : null}
+        {section.title ? <Text style={s.narrativeHeading}>{section.title}</Text> : null}
         {firstPara !== undefined ? (
-          <Text style={styles.narrativePara}>{firstPara}</Text>
+          <Text style={s.narrativePara}>{firstPara}</Text>
         ) : null}
       </View>
       {restParas.map((para, index) => (
-        <Text key={index} style={styles.narrativePara}>
+        <Text key={index} style={s.narrativePara}>
           {para}
         </Text>
       ))}
@@ -66,6 +68,7 @@ const ABSENT_NOTE_FALLBACK =
   'everything else in this report is complete and unaffected.';
 
 export function ReportPdfNarrative({ data }: ReportPdfNarrativeProps): ReactElement {
+  const s = useReportStyles();
   const { narrative, labels } = data;
   const sections = narrative ?? [];
   return (
@@ -76,7 +79,7 @@ export function ReportPdfNarrative({ data }: ReportPdfNarrativeProps): ReactElem
         intro={labels.narrativeIntro}
       />
       {sections.length === 0 ? (
-        <Text style={styles.narrativePara}>
+        <Text style={s.narrativePara}>
           {labels.narrativeAbsentNote || ABSENT_NOTE_FALLBACK}
         </Text>
       ) : null}

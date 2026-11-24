@@ -70,7 +70,7 @@ export interface UseReportPdfExportResult {
 }
 
 export function useReportPdfExport(audience: ReportAudience): UseReportPdfExportResult {
-  const { t } = useTranslation('report');
+  const { t, i18n } = useTranslation('report');
   const { t: tp } = useTranslation('predictive');
   const { t: ts } = useTranslation('settings');
 
@@ -326,6 +326,7 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
       // and the durable artifact cannot phrase a single cell differently.
       evidence: buildEvidenceSection(buildEvidenceLedger(sidereal, evidenceAnnotations), t, glyphSafe),
       fileBaseName: t('pdf_title', { name: personName, date: isoDate(new Date()) }),
+      locale: i18n.language,
     }).catch((err) => {
       safeError('report.pdf_generation_failed', err);
       setPdfError(t('pdf_error'));
@@ -341,6 +342,7 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
     rectificationRecord,
     storedEvents,
     t,
+    i18n.language,
     tp,
     ts,
   ]);

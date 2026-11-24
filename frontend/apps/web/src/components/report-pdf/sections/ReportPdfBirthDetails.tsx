@@ -10,7 +10,7 @@
 
 import type { ReactElement } from 'react';
 import { Text, View } from '@react-pdf/renderer';
-import { styles } from '../theme';
+import { useReportStyles } from '../theme';
 import type { ReportPdfData, ReportPdfDetail, ReportPdfTechnical } from '../types';
 
 interface ReportPdfBirthDetailsProps {
@@ -19,37 +19,40 @@ interface ReportPdfBirthDetailsProps {
 
 /** One row of the birth data list; mono value for technical readouts. */
 function DetailRow({ detail, last }: { detail: ReportPdfDetail; last: boolean }): ReactElement {
+  const s = useReportStyles();
   return (
-    <View style={last ? styles.detailRowLast : styles.detailRow}>
-      <Text style={styles.detailLabel}>{detail.label}</Text>
-      <Text style={detail.mono ? styles.detailValueMono : styles.detailValue}>{detail.value}</Text>
+    <View style={last ? s.detailRowLast : s.detailRow}>
+      <Text style={s.detailLabel}>{detail.label}</Text>
+      <Text style={detail.mono ? s.detailValueMono : s.detailValue}>{detail.value}</Text>
     </View>
   );
 }
 
 /** One technical readout cell (engine-emitted value). */
 function TechCell({ field }: { field: ReportPdfTechnical }): ReactElement {
+  const s = useReportStyles();
   return (
-    <View style={styles.techCell}>
-      <Text style={styles.techLabel}>{field.label}</Text>
-      <Text style={styles.techValue}>{field.value}</Text>
+    <View style={s.techCell}>
+      <Text style={s.techLabel}>{field.label}</Text>
+      <Text style={s.techValue}>{field.value}</Text>
     </View>
   );
 }
 
 export function ReportPdfBirthDetails({ data }: ReportPdfBirthDetailsProps): ReactElement {
+  const s = useReportStyles();
   const { birthDetails, technical, labels } = data;
 
   return (
     <View>
-      <View style={styles.sectionHead}>
-        <Text style={styles.sectionEyebrow}>{labels.birthDetailsEyebrow}</Text>
-        <Text style={styles.sectionTitle}>{labels.birthDetailsTitle}</Text>
-        <View style={styles.sectionRule} />
-        <Text style={styles.sectionIntro}>{labels.birthDetailsIntro}</Text>
+      <View style={s.sectionHead}>
+        <Text style={s.sectionEyebrow}>{labels.birthDetailsEyebrow}</Text>
+        <Text style={s.sectionTitle}>{labels.birthDetailsTitle}</Text>
+        <View style={s.sectionRule} />
+        <Text style={s.sectionIntro}>{labels.birthDetailsIntro}</Text>
       </View>
 
-      <View style={styles.detailPanel}>
+      <View style={s.detailPanel}>
         {birthDetails.map((detail, index) => (
           <DetailRow
             key={detail.label}
@@ -57,17 +60,17 @@ export function ReportPdfBirthDetails({ data }: ReportPdfBirthDetailsProps): Rea
             last={index === birthDetails.length - 1 && !data.ascendantNote}
           />
         ))}
-        {data.ascendantNote ? <Text style={styles.detailNote}>{data.ascendantNote}</Text> : null}
+        {data.ascendantNote ? <Text style={s.detailNote}>{data.ascendantNote}</Text> : null}
       </View>
 
       {technical.length > 0 ? (
         <>
-          <View style={styles.techRow}>
+          <View style={s.techRow}>
             {technical.map((field) => (
               <TechCell key={field.label} field={field} />
             ))}
           </View>
-          <Text style={[styles.detailNote, { marginTop: 18 }]}>{labels.technicalNote}</Text>
+          <Text style={[s.detailNote, { marginTop: 18 }]}>{labels.technicalNote}</Text>
         </>
       ) : null}
     </View>

@@ -12,7 +12,7 @@
 
 import type { ReactElement } from 'react';
 import { Circle, Line, Svg, Text, View } from '@react-pdf/renderer';
-import { palette, styles } from '../theme';
+import { palette, useReportStyles } from '../theme';
 import type { ReportPdfData } from '../types';
 
 interface ReportPdfCoverProps {
@@ -81,45 +81,47 @@ function ObservatoryMotif(): ReactElement {
  * Drawn as a rotated square (pure vector) so it is FONT-INDEPENDENT.
  */
 function StarOrnament(): ReactElement {
+  const s = useReportStyles();
   return (
-    <View style={styles.ornamentRow}>
-      <View style={styles.ornamentLine} />
-      <View style={styles.ornamentDiamondOuter}>
-        <View style={styles.ornamentDiamondInner} />
+    <View style={s.ornamentRow}>
+      <View style={s.ornamentLine} />
+      <View style={s.ornamentDiamondOuter}>
+        <View style={s.ornamentDiamondInner} />
       </View>
-      <View style={styles.ornamentLine} />
+      <View style={s.ornamentLine} />
     </View>
   );
 }
 
 export function ReportPdfCover({ data }: ReportPdfCoverProps): ReactElement {
+  const s = useReportStyles();
   return (
-    <View style={styles.cover}>
-      <View style={styles.coverTopRow}>
-        <Text style={styles.wordmark}>AlmaMesh</Text>
-        <Text style={styles.coverKicker}>{data.kicker}</Text>
+    <View style={s.cover}>
+      <View style={s.coverTopRow}>
+        <Text style={s.wordmark}>AlmaMesh</Text>
+        <Text style={s.coverKicker}>{data.kicker}</Text>
       </View>
 
-      <View style={styles.coverMotifWrap}>
+      <View style={s.coverMotifWrap}>
         <ObservatoryMotif />
       </View>
 
-      <View style={styles.coverCenter}>
-        <Text style={styles.badge}>{data.audienceLabel}</Text>
+      <View style={s.coverCenter}>
+        <Text style={s.badge}>{data.audienceLabel}</Text>
         <View style={{ height: 22 }} />
-        <Text style={styles.coverEyebrow}>{data.labels.preparedFor}</Text>
-        <Text style={styles.coverName}>{data.personName}</Text>
+        <Text style={s.coverEyebrow}>{data.labels.preparedFor}</Text>
+        <Text style={s.coverName}>{data.personName}</Text>
         <StarOrnament />
-        <Text style={styles.coverSubtitle}>{data.subtitle}</Text>
+        <Text style={s.coverSubtitle}>{data.subtitle}</Text>
         {data.rectifiedNote ? (
-          <Text style={styles.coverRectifiedNote}>{data.rectifiedNote}</Text>
+          <Text style={s.coverRectifiedNote}>{data.rectifiedNote}</Text>
         ) : null}
       </View>
 
-      <View style={styles.coverMeta}>
-        <Text style={styles.coverMetaValue}>{data.labels.footerNote}</Text>
+      <View style={s.coverMeta}>
+        <Text style={s.coverMetaValue}>{data.labels.footerNote}</Text>
         {data.generatedOn ? (
-          <Text style={styles.coverGenerated}>{data.generatedOn}</Text>
+          <Text style={s.coverGenerated}>{data.generatedOn}</Text>
         ) : null}
       </View>
     </View>

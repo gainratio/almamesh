@@ -17,7 +17,7 @@
 
 import type { ReactElement } from 'react';
 import { Document, Page, Text, View } from '@react-pdf/renderer';
-import { styles } from './theme';
+import { DevanagariContext, useReportStyles } from './theme';
 import type { ReportPdfData } from './types';
 import { ReportPdfCover } from './sections/ReportPdfCover';
 import { ReportPdfBirthDetails } from './sections/ReportPdfBirthDetails';
@@ -49,19 +49,22 @@ import { ReportPdfAssumptions } from './sections/ReportPdfAssumptions';
 
 interface ReportDocumentProps {
   readonly data: ReportPdfData;
+  /** Select Noto Sans Devanagari on page root when rendering Hindi/Devanagari copy. */
+  readonly devanagari?: boolean;
 }
 
 /** The running footer pinned to the bottom of every content page. */
 function PageFooter({ note }: { note: string }): ReactElement {
+  const s = useReportStyles();
   return (
     <>
-      <View fixed style={styles.pageFooterRule} />
-      <Text fixed style={styles.pageFooterNote}>
+      <View fixed style={s.pageFooterRule} />
+      <Text fixed style={s.pageFooterNote}>
         {note}
       </Text>
       <Text
         fixed
-        style={styles.pageFooterCounter}
+        style={s.pageFooterCounter}
         render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`}
       />
     </>
@@ -69,10 +72,130 @@ function PageFooter({ note }: { note: string }): ReactElement {
 }
 
 /** The full report document. */
-export function ReportDocument({ data }: ReportDocumentProps): ReactElement {
+export function ReportDocument({ data, devanagari = false }: ReportDocumentProps): ReactElement {
+  const s = useReportStyles(devanagari);
+  const pageStyle = s.page;
   const footer = (): ReactElement => <PageFooter note={data.labels.footerNote} />;
   const vargas = data.vargas;
   const dashaTablePages = planDashaTablePages(data.dasha.antarTables);
+  const pages = [
+    <Page key="cover" size="A4" style={pageStyle}>
+      <ReportPdfCover data={data} />
+    </Page>,
+
+    <Page key="birth" size="A4" style={pageStyle}>
+      <ReportPdfBirthDetails data={data} />
+      {footer()}
+    </Page>,
+
+    <Page key="planets" size="A4" style={pageStyle}>
+      <ReportPdfPlanets data={data} />
+      {footer()}
+    </Page>,
+
+    <Page key="houses" size="A4" style={pageStyle}>
+      <ReportPdfHouses data={data} />
+      {footer()}
+    </Page>,
+
+    <Page key="charts" size="A4" style={pageStyle}>
+      <ReportPdfCharts data={data} />
+      {footer()}
+    </Page>,
+
+    <Page key="dasha-overview" size="A4" style={pageStyle}>
+      <ReportPdfDashaOverview data={data} />
+      {footer()}
+    </Page>,
+
+    ...dashaTablePages.map((tables, pageIndex) => (
+      <Page key={`dasha-${pageIndex}`} size="A4" style={pageStyle}>
+        <ReportPdfDashaTables
+          tables={tables}
+          currentMarker={data.labels.dashaCurrentMarker}
+        />
+        {footer()}
+      </Page>
+    )),
+
+    <Page key="yogas" size="A4" style={pageStyle}>
+      <ReportPdfYogas data={data} />
+      {footer()}
+    </Page>,
+
+    /* The Interpretation page ALWAYS renders. With a narrative it carries the
+       reading; without one it carries a short, honest note saying the written
+       interpretation appears once an AI reading is generated. */
+    <Page key="narrative" size="A4" style={pageStyle}>
+      <ReportPdfNarrative data={data} />
+      {footer()}
+    </Page>,
+
+    /* Section VIII — Evidence & Confidence: the audit of everything above. */
+    data.evidence ? (
+      <Page key="evidence" size="A4" style={pageStyle}>
+        <ReportPdfEvidence data={data} />
+        {footer()}
+      </Page>
+    ) : null,
+    hasEvidenceEpilogue(data.evidence) ? (
+      <Page key="evidence-guidance" size="A4" style={pageStyle}>
+        <ReportPdfEvidenceGuidance data={data} />
+        {footer()}
+      </Page>
+    ) : null,
+
+    /* Comprehensive sections — mirrors of web report IX–XII. */
+    data.transits ? (
+      <Page key="transits" size="A4" style={pageStyle}>
+        <ReportPdfTransits data={data} />
+        {footer()}
+      </Page>
+    ) : null,
+
+    ...(vargas
+      ? chunkVargaPlates(vargas.plates).map((plates, pageIndex) => (
+          <Page key={`vargas-${pageIndex}`} size="A4" style={pageStyle}>
+            <ReportPdfVargaPlates vargas={vargas} plates={plates} first={pageIndex === 0} />
+            {footer()}
+          </Page>
+        ))
+      : []),
+    vargas ? (
+      <Page key="varga-tallies" size="A4" style={pageStyle}>
+        <ReportPdfVargaTallies vargas={vargas} />
+        {footer()}
+      </Page>
+    ) : null,
+
+    data.strength ? (
+      <Page key="strength" size="A4" style={pageStyle}>
+        <ReportPdfStrength data={data} />
+        {footer()}
+      </Page>
+    ) : null,
+
+    data.domains ? (
+      <Page key="domains" size="A4" style={pageStyle}>
+        <ReportPdfDomains data={data} />
+        {footer()}
+      </Page>
+    ) : null,
+
+    data.rectification ? (
+      <Page key="rectification" size="A4" style={pageStyle}>
+        <ReportPdfRectification data={data} />
+        {footer()}
+      </Page>
+    ) : null,
+
+    data.assumptions ? (
+      <Page key="assumptions" size="A4" style={pageStyle}>
+        <ReportPdfAssumptions data={data} />
+        {footer()}
+      </Page>
+    ) : null,
+  ];
   return (
     <Document
       title={`AlmaMesh — ${data.personName}`}
@@ -85,130 +208,11 @@ export function ReportDocument({ data }: ReportDocumentProps): ReactElement {
       // dictionary to build it) — two exports of one chart then differ.
       creationDate={data.creationDate}
     >
-      <Page size="A4" style={styles.page}>
-        <ReportPdfCover data={data} />
-      </Page>
-
-      <Page size="A4" style={styles.page}>
-        <ReportPdfBirthDetails data={data} />
-        {footer()}
-      </Page>
-
-      <Page size="A4" style={styles.page}>
-        <ReportPdfPlanets data={data} />
-        {footer()}
-      </Page>
-
-      <Page size="A4" style={styles.page}>
-        <ReportPdfHouses data={data} />
-        {footer()}
-      </Page>
-
-      <Page size="A4" style={styles.page}>
-        <ReportPdfCharts data={data} />
-        {footer()}
-      </Page>
-
-      <Page size="A4" style={styles.page}>
-        <ReportPdfDashaOverview data={data} />
-        {footer()}
-      </Page>
-
-      {dashaTablePages.map((tables, pageIndex) => (
-        <Page key={`dasha-${pageIndex}`} size="A4" style={styles.page}>
-          <ReportPdfDashaTables
-            tables={tables}
-            currentMarker={data.labels.dashaCurrentMarker}
-          />
-          {footer()}
-        </Page>
-      ))}
-
-      <Page size="A4" style={styles.page}>
-        <ReportPdfYogas data={data} />
-        {footer()}
-      </Page>
-
-      {/* The Interpretation page ALWAYS renders. With a narrative it carries the
-          reading; without one it carries a short, honest note saying the written
-          interpretation appears once an AI reading is generated. Deleting the
-          section silently was the bug: a reader could not tell whether the
-          report was complete. (Contrast the sections below, whose absence is
-          self-evident from the data they would have shown.) */}
-      <Page size="A4" style={styles.page}>
-        <ReportPdfNarrative data={data} />
-        {footer()}
-      </Page>
-
-      {/* Section VIII — Evidence & Confidence: the audit of everything above.
-          Deterministic (engine chart only), so it prints with or without a
-          model reading. The general-guidance epilogue gets its OWN page: those
-          statements rest on nothing computed, and the physical separation is
-          the point — no ledger cell may appear beside them. */}
-      {data.evidence ? (
-        <Page size="A4" style={styles.page}>
-          <ReportPdfEvidence data={data} />
-          {footer()}
-        </Page>
-      ) : null}
-      {hasEvidenceEpilogue(data.evidence) ? (
-        <Page size="A4" style={styles.page}>
-          <ReportPdfEvidenceGuidance data={data} />
-          {footer()}
-        </Page>
-      ) : null}
-
-      {/* Comprehensive sections — mirrors of web report IX–XII; each present
-          only when its on-device context was computed. */}
-      {data.transits ? (
-        <Page size="A4" style={styles.page}>
-          <ReportPdfTransits data={data} />
-          {footer()}
-        </Page>
-      ) : null}
-
-      {vargas
-        ? chunkVargaPlates(vargas.plates).map((plates, pageIndex) => (
-            <Page key={`vargas-${pageIndex}`} size="A4" style={styles.page}>
-              <ReportPdfVargaPlates vargas={vargas} plates={plates} first={pageIndex === 0} />
-              {footer()}
-            </Page>
-          ))
-        : null}
-      {vargas ? (
-        <Page size="A4" style={styles.page}>
-          <ReportPdfVargaTallies vargas={vargas} />
-          {footer()}
-        </Page>
-      ) : null}
-
-      {data.strength ? (
-        <Page size="A4" style={styles.page}>
-          <ReportPdfStrength data={data} />
-          {footer()}
-        </Page>
-      ) : null}
-
-      {data.domains ? (
-        <Page size="A4" style={styles.page}>
-          <ReportPdfDomains data={data} />
-          {footer()}
-        </Page>
-      ) : null}
-
-      {data.rectification ? (
-        <Page size="A4" style={styles.page}>
-          <ReportPdfRectification data={data} />
-          {footer()}
-        </Page>
-      ) : null}
-
-      {data.assumptions ? (
-        <Page size="A4" style={styles.page}>
-          <ReportPdfAssumptions data={data} />
-          {footer()}
-        </Page>
-      ) : null}
+      {devanagari ? (
+        <DevanagariContext.Provider value>{pages}</DevanagariContext.Provider>
+      ) : (
+        pages
+      )}
     </Document>
   );
 }

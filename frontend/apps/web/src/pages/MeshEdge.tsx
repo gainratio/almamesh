@@ -245,7 +245,7 @@ function MeshEdgeContent({
   member: Profile;
   relationship: MemberRelationship;
 }): ReactElement {
-  const { t } = useTranslation(['mesh', 'settings', 'dashboard', 'errors']);
+  const { t, i18n } = useTranslation(['mesh', 'settings', 'dashboard', 'errors']);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const setActiveProfile = useProfilesStore((s) => s.setActiveProfile);
@@ -300,7 +300,104 @@ function MeshEdgeContent({
     () => searchParams.get('chat') === 'open' || Boolean(chatAskDraft),
   );
   const anchorChart = profileChartOf(charts, anchor.id);
+  const memberChart = profileChartOf(charts, member.id);
   const siderealChart = anchorChart?.sidereal_chart;
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
+  const handleDownloadMatchPdf = useCallback(async () => {
+    if (entry.status !== 'ready' || !entry.edge) return;
+    setPdfBusy(true);
+    setPdfError(null);
+    try {
+      const { downloadMatchPdf } = await import('../lib/downloadMatchPdf');
+      const safeFilePart = (raw: string): string =>
+        raw.replace(/[/\\:*?"<>|]/g, '-').replace(/\s+/g, ' ').trim() || 'chart';
+      const matchChartIfCurrentAyanamsa = (c: typeof anchorChart) => {
+        const s = c?.sidereal_chart;
+        if (!s) return null;
+        return (s.snapshot?.ayanamsa ?? 'LAHIRI').toUpperCase() === ayanamsa ? s : null;
+      };
+      const ayanamsaLabel = t(`settings:ayanamsa.${ayanamsa.toLowerCase()}`, {
+        defaultValue: ayanamsa,
+      });
+      await downloadMatchPdf({
+        anchorName: anchor.name,
+        memberName: member.name,
+        relationship,
+        relationshipLabel: t(`settings:people.relationships.${relationship}`),
+        ayanamsaLabel,
+        generatedAt: referenceInstant,
+        edge: entry.edge,
+        anchorChart: matchChartIfCurrentAyanamsa(anchorChart),
+        memberChart: matchChartIfCurrentAyanamsa(memberChart),
+        locale: i18n.language,
+        fileBaseName: `AlmaMesh Match — ${safeFilePart(anchor.name)} & ${safeFilePart(member.name)} (${referenceInstant.slice(0, 10)})`,
+        labels: {
+          kicker: t('mesh:page.kicker'),
+          subtitle: t('mesh:edge.frame'),
+          footerNote: t('mesh:pdf.footer_note'),
+          chartsEyebrow: t('mesh:pdf.charts_eyebrow'),
+          chartsTitle: `${anchor.name} & ${member.name}`,
+          compatEyebrow: t('mesh:compat.badge'),
+          compatTitle: t('mesh:compat.heading'),
+          maitriTitle: t('mesh:maitri.heading'),
+          doshasTitle: t('mesh:compat.doshas_heading'),
+          mangalTitle: t('mesh:compat.mangal_heading'),
+          mangalMutual: t('mesh:compat.mangal_mutual'),
+          overlayEyebrow: t('mesh:connection.badge'),
+          overlayTitle: t('mesh:connection.heading'),
+          synchronyEyebrow: t('mesh:synchrony.badge'),
+          synchronyTitle: t('mesh:synchrony.heading'),
+          integrityLabel: t('mesh:edge.integrity_label'),
+          colKoota: t('mesh:pdf.col_koota'),
+          colScore: t('mesh:pdf.col_score'),
+          colBasis: t('mesh:pdf.col_basis'),
+          colPerson: t('mesh:pdf.col_person'),
+          colReference: t('mesh:pdf.col_reference'),
+          colStatus: t('mesh:pdf.col_status'),
+          colContact: t('mesh:pdf.col_contact'),
+          colKind: t('mesh:pdf.col_kind'),
+          colOrb: t('mesh:pdf.col_orb'),
+          colWindow: t('mesh:pdf.col_window'),
+          colAnchorDasha: anchor.name,
+          colMemberDasha: member.name,
+          colShared: t('mesh:pdf.col_shared'),
+          kootaLabel: (koota) => t(`mesh:compat.koota.${koota}`, { defaultValue: koota }),
+          bandLabel: (band) => t(`mesh:compat.bands.${band}`, { defaultValue: band }),
+          doshaStatus: (present, cancelled) =>
+            !present
+              ? t('mesh:compat.dosha_clear')
+              : cancelled
+                ? t('mesh:compat.dosha_cancelled')
+                : t('mesh:compat.dosha_present'),
+          mangalRefLabel: (ref) => t(`mesh:compat.mangal_ref.${ref}`, { defaultValue: ref }),
+          mangalStatus: (inHouse, netDosha) =>
+            !inHouse
+              ? t('mesh:compat.mangal_clear')
+              : netDosha
+                ? t('mesh:compat.mangal_net')
+                : t('mesh:compat.mangal_cancelled'),
+        },
+      });
+    } catch {
+      setPdfError(t('mesh:edge.export_pdf_failed'));
+    } finally {
+      setPdfBusy(false);
+    }
+  }, [
+    entry.status,
+    entry.edge,
+    anchor.name,
+    member.name,
+    relationship,
+    ayanamsa,
+    referenceInstant,
+    anchorChart,
+    memberChart,
+    i18n.language,
+    t,
+  ]);
   const handleAsk = async (ask: ChatAskInput): Promise<string> => {
     try {
       if (!anchorChart || !siderealChart) {
@@ -442,8 +539,31 @@ function MeshEdgeContent({
             {t('mesh:edge.frame')}
           </p>
         </div>
-        <ContentModeToggle />
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={() => void handleDownloadMatchPdf()}
+            disabled={entry.status !== 'ready' || !entry.edge || pdfBusy}
+            data-testid="download-match-pdf"
+            title={t('mesh:edge.export_pdf_title')}
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-md border border-ui-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-accent-gold/40 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {pdfBusy ? <Spinner size="sm" /> : null}
+            <span>{t('mesh:edge.export_pdf')}</span>
+          </button>
+          <ContentModeToggle />
+        </div>
       </header>
+
+      {pdfError && (
+        <div
+          className="rounded-lg border border-ui-border bg-background-secondary px-4 py-3 text-sm text-status-error"
+          role="alert"
+          data-testid="match-pdf-error"
+        >
+          {pdfError}
+        </div>
+      )}
 
       {body}
 

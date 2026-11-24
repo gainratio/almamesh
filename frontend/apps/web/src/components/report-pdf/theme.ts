@@ -16,6 +16,7 @@
  * (`chartTheme.ts` PAPER_THEME) plus the canonical brass accent.
  */
 
+import { createContext, useContext } from 'react';
 import { Font, StyleSheet } from '@react-pdf/renderer';
 
 /* ── Font families ─────────────────────────────────────────────────────────
@@ -28,15 +29,21 @@ import { Font, StyleSheet } from '@react-pdf/renderer';
 export const FONT_DISPLAY = 'Fraunces Report';
 export const FONT_BODY = 'Hanken Grotesk Report';
 export const FONT_MONO = 'Spline Sans Mono Report';
+export const FONT_DEVANAGARI = 'Noto Sans Devanagari Report';
 
 /** Absolute, same-origin font URLs (served from `public/fonts/`). */
 const FONT_BASE = '/fonts';
 
 /**
- * Register all report faces. Idempotent-safe to call once at module load.
+ * Register all report faces ONCE with immutable family names (Latin + Devanagari).
+ * Distinct families prevent @react-pdf/font's global singleton from leaking font
+ * bindings across sequential or concurrent English/Hindi PDF exports.
  * `fontBase` lets the Node harness rewrite the same URLs onto local files.
  */
 export function registerReportFonts(fontBase: string = FONT_BASE): void {
+  const devanagariRegular = `${fontBase}/NotoSansDevanagari-Regular.ttf`;
+  const devanagariSemiBold = `${fontBase}/NotoSansDevanagari-SemiBold.ttf`;
+
   Font.register({
     family: FONT_DISPLAY,
     fonts: [
@@ -60,8 +67,17 @@ export function registerReportFonts(fontBase: string = FONT_BASE): void {
       { src: `${fontBase}/SplineSansMono-SemiBold.ttf`, fontWeight: 600 },
     ],
   });
+  Font.register({
+    family: FONT_DEVANAGARI,
+    fonts: [
+      { src: devanagariRegular, fontWeight: 400 },
+      { src: devanagariRegular, fontWeight: 400, fontStyle: 'italic' },
+      { src: devanagariSemiBold, fontWeight: 500 },
+      { src: devanagariSemiBold, fontWeight: 600 },
+    ],
+  });
 
-  // Never hyphenate — Sanskrit transliteration and proper nouns must stay whole.
+  // Never hyphenate — Sanskrit/Devanagari words and proper nouns must stay whole.
   Font.registerHyphenationCallback((word) => [word]);
 }
 
@@ -912,3 +928,44 @@ export const styles = StyleSheet.create({
     lineHeight: 1.55,
   },
 });
+
+/**
+ * Per-document Devanagari typography context so English and Hindi PDFs can
+ * render sequentially or concurrently without mutating global font bindings.
+ */
+export const DevanagariContext = createContext(false);
+
+/** Derive a StyleSheet mirror whose explicit `fontFamily` rules use Noto Sans Devanagari. */
+export function createDevanagariStyles<T extends Parameters<typeof StyleSheet.create>[0]>(
+  sheet: T,
+): T {
+  const mapped = Object.fromEntries(
+    Object.entries(sheet).map(([key, rule]) => [
+      key,
+      'fontFamily' in rule ? { ...rule, fontFamily: FONT_DEVANAGARI } : rule,
+    ]),
+  ) as T;
+  return StyleSheet.create(mapped) as T;
+}
+
+const devanagariStyles = createDevanagariStyles(styles);
+
+/** Read DevanagariContext safely (falls back to false in non-reconciler test walkers). */
+export function useDevanagari(): boolean {
+  try {
+    return useContext(DevanagariContext);
+  } catch {
+    return false;
+  }
+}
+
+/** Select between a Latin StyleSheet and its pre-derived Devanagari mirror. */
+export function useFontSheet<T>(latin: T, devanagariSheet: T, devanagari?: boolean): T {
+  const fromContext = useDevanagari();
+  return (devanagari ?? fromContext) ? devanagariSheet : latin;
+}
+
+/** Return the standard Latin styles or the Noto Sans Devanagari style variant. */
+export function useReportStyles(devanagari?: boolean): typeof styles {
+  return useFontSheet(styles, devanagariStyles, devanagari);
+}
