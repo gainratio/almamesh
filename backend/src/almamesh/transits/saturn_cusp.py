@@ -112,8 +112,6 @@ def ingress_after(
     """
     end = min(anchor + timedelta(days=_INGRESS_WINDOW_DAYS), EPHEMERIS_LAST_INSTANT)
     entries = [
-        c
-        for c in _entries_in(astro, sign_idx, anchor, end, ayanamsa_type, node_type)
-        if c > anchor
+        c for c in _entries_in(astro, sign_idx, anchor, end, ayanamsa_type, node_type) if c > anchor
     ]
     return entries[-1] if entries else None
