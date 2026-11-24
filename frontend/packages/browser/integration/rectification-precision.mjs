@@ -47,7 +47,7 @@ const SKYFIELD_STACK = [
   "avow-0.1.0-py3-none-any.whl",
 ];
 // pynacl (avow's Ed25519 backend) loads from the lock with cffi/pycparser.
-const LOAD_PACKAGES = ["micropip", "numpy", "pydantic", "pynacl", "pyyaml", "python-dateutil", "pytz", "certifi"];
+const LOAD_PACKAGES = ["micropip", "numpy", "pydantic", "pynacl", "certifi"];
 
 // --- Extract the REAL chart-Worker glue (no `${}` interpolation in it) --------
 function extractPyBootstrap() {
@@ -100,10 +100,6 @@ pyodide.FS.writeFile(`/${ALMAWHEEL}`, readFileSync(ALMAMESH_WHEEL));
 await micropip.install.callKwargs(`emfs:/${ALMAWHEEL}`, { deps: false });
 pyodide.FS.mkdirTree("/home/pyodide/.skyfield-data");
 pyodide.FS.writeFile("/home/pyodide/.skyfield-data/de421.bsp", readFileSync(`${SKYFIELD_DATA}/de421.bsp`));
-pyodide.FS.writeFile(
-  "/home/pyodide/.skyfield-data/finals2000A.all",
-  readFileSync(`${SKYFIELD_DATA}/finals2000A.all`),
-);
 console.error(`[rectify-precision] booted in ${Date.now() - t0}ms`);
 
 // Run the EXACT production glue.

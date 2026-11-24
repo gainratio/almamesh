@@ -16,8 +16,5 @@ export const LOAD_PACKAGES = [
   "micropip",
   "numpy",
   "pydantic",
-  "pyyaml",
-  "python-dateutil",
-  "pytz",
   "certifi",
 ] as const;

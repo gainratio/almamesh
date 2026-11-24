@@ -49,14 +49,10 @@ PYODIDE_FILES=(
   numpy-2.4.6-cp314-cp314-pyemscripten_2026_0_wasm32.whl
   pydantic-2.12.5-py3-none-any.whl
   pydantic_core-2.41.5-cp314-cp314-pyemscripten_2026_0_wasm32.whl
-  pyyaml-6.0.3-cp314-cp314-pyemscripten_2026_0_wasm32.whl
   annotated_types-0.7.0-py3-none-any.whl
   typing_extensions-4.15.0-py3-none-any.whl
   typing_inspection-0.4.2-py3-none-any.whl
-  python_dateutil-2.9.0.post0-py2.py3-none-any.whl
-  pytz-2026.1.post1-py2.py3-none-any.whl
   certifi-2026.4.22-py3-none-any.whl
-  six-1.17.0-py2.py3-none-any.whl
 )
 
 # Copy core files from node_modules ONLY when it holds this exact release; a
@@ -105,33 +101,38 @@ else
       fi
     fi
   done
+  # Prune any stale wheels left behind when LOAD_PACKAGES shrinks (Pages ships all of public/).
+  for existing in "${PYODIDE_OUT}"/*.whl; do
+    [[ -e "${existing}" ]] || continue
+    base="$(basename "${existing}")"
+    keep=0
+    for wanted in "${PYODIDE_FILES[@]}"; do
+      if [[ "${wanted}" == "${base}" ]]; then keep=1; break; fi
+    done
+    if [[ "${keep}" -eq 0 ]]; then rm -f "${existing}"; fi
+  done
 fi
 
-# Ephemeris + IERS earth-orientation data the publisher bundles into ~/.skyfield-data
-# (the publisher's --offline default). VENDORED-FIRST / OFFLINE: seed the Loader's data
-# home from the tracked backend/de421.bsp + backend/finals2000A.all (same dir convention
-# and same bytes the golden fixtures use) so a clean machine / CI deploy runner performs
-# ZERO network fetches. Without this, Skyfield downloads de421.bsp (NASA) and
-# finals2000A.all (iers.org) on demand — and the iers.org fetch TIMES OUT on GitHub
-# Actions runners, which is what broke the Cloudflare deploy. (de421.bsp ~16MB,
-# finals2000A.all ~3.5MB; both are git-tracked under backend/, like the vendored DE421.)
+# Ephemeris data the publisher bundles into ~/.skyfield-data (the publisher's
+# --offline default). Skyfield 1.55 uses built-in timescale tables inside the
+# skyfield wheel (`loader.timescale(builtin=True)`), so only `de421.bsp` (~16 MB)
+# is seeded from the vendored backend/de421.bsp (zero network fetches).
 SKYFIELD_DATA_DIR="${HOME}/.skyfield-data"
 echo "==> Seeding ${SKYFIELD_DATA_DIR} from vendored backend assets (offline, zero-download)"
 mkdir -p "${SKYFIELD_DATA_DIR}"
-for asset in de421.bsp finals2000A.all; do
+for asset in de421.bsp; do
   if [[ ! -f "${SKYFIELD_DATA_DIR}/${asset}" ]]; then
     echo "    - ${asset} (from vendored backend/${asset})"
     cp "${BACKEND_DIR}/${asset}" "${SKYFIELD_DATA_DIR}/${asset}"
   fi
 done
-# Safety net only: with both files now seeded this is a pure no-op and makes NO network
-# request; it would fetch solely if a vendored copy were somehow missing.
+# Safety net only: with de421.bsp seeded this is a pure no-op and makes NO network request.
 ( cd "${BACKEND_DIR}" && uv run python -c "
 from pathlib import Path
 from skyfield.api import Loader
 L = Loader(str(Path.home() / '.skyfield-data'))
 L('de421.bsp')
-L.timescale(builtin=False)  # no-op when finals2000A.all is already seeded
+L.timescale(builtin=True)
 " )
 
 # The self-hosted RAG embedding model: Transformers.js loads it same-origin from

@@ -154,9 +154,6 @@ const LOAD_PACKAGES = [
   "micropip",
   "numpy",
   "pydantic",
-  "pyyaml",
-  "python-dateutil",
-  "pytz",
   "certifi",
 ];
 
@@ -258,10 +255,6 @@ pyodide.FS.mkdirTree("/home/pyodide/.skyfield-data");
 pyodide.FS.writeFile(
   "/home/pyodide/.skyfield-data/de421.bsp",
   readFileSync(`${SKYFIELD_DATA}/de421.bsp`),
-);
-pyodide.FS.writeFile(
-  "/home/pyodide/.skyfield-data/finals2000A.all",
-  readFileSync(`${SKYFIELD_DATA}/finals2000A.all`),
 );
 
 const bootMs = Date.now() - t0;

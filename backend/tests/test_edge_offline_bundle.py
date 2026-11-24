@@ -44,8 +44,7 @@ def _stub_skyfield_data(tmp_path) -> tuple:
     data_dir = tmp_path / "skyfield-data"
     data_dir.mkdir()
     (data_dir / "de421.bsp").write_bytes(b"DE421-STUB-EPHEMERIS")
-    (data_dir / "finals2000A.all").write_bytes(b"FINALS2000A-STUB")
-    return data_dir, b"DE421-STUB-EPHEMERIS", b"FINALS2000A-STUB"
+    return data_dir, b"DE421-STUB-EPHEMERIS"
 
 
 def test_publish_offline_bundle_round_trips_every_asset(tmp_path) -> None:
@@ -53,7 +52,7 @@ def test_publish_offline_bundle_round_trips_every_asset(tmp_path) -> None:
     origin, cache = tmp_path / "origin", tmp_path / "cache"
     almamesh_wheel = tmp_path / "almamesh-0.1.0-py3-none-any.whl"
     almamesh_wheel.write_bytes(b"ALMAMESH-WHEEL-BYTES")
-    data_dir, de421, finals = _stub_skyfield_data(tmp_path)
+    data_dir, de421 = _stub_skyfield_data(tmp_path)
 
     publish_offline_bundle(
         origin,
@@ -68,18 +67,19 @@ def test_publish_offline_bundle_round_trips_every_asset(tmp_path) -> None:
     vendored = gather_offline_wheels()
     for path, blob in vendored.items():
         assert read_synced_file(cache, result, path) == blob
-    # almamesh wheel + skyfield data arrive byte-identical
+    # almamesh wheel + skyfield ephemeris arrive byte-identical
     assert read_synced_file(cache, result, "wheels/almamesh-0.1.0-py3-none-any.whl") == (
         b"ALMAMESH-WHEEL-BYTES"
     )
     assert read_synced_file(cache, result, "skyfield-data/de421.bsp") == de421
-    assert read_synced_file(cache, result, "skyfield-data/finals2000A.all") == finals
-    # engine construct still ships
-    assert read_synced_file(cache, result, "lahiri_ayanamsa.txt")
 
     meta = json.loads(read_synced_file(cache, result, "almamesh_meta.json"))
     for path in (*vendored, "wheels/almamesh-0.1.0-py3-none-any.whl"):
         assert path in meta["constructs"]
     assert "skyfield-data/de421.bsp" in meta["constructs"]
-    assert "skyfield-data/finals2000A.all" in meta["constructs"]
+    # Cold-start budget: neither duplicate lahiri_ayanamsa.txt (already compressed
+    # inside the almamesh wheel) nor unused finals2000A.all (Skyfield uses builtin=True)
+    # should bloat the offline browser bundle.
+    assert "skyfield-data/finals2000A.all" not in meta["constructs"]
+    assert "lahiri_ayanamsa.txt" not in meta["constructs"]
     assert meta["ephemeris_file"] == "de421.bsp"

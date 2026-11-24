@@ -314,7 +314,10 @@ class SkyfieldAstronomy:
         self.eph = load_file(str(path)) if path.exists() else self.loader(ephemeris_file)
         self._closed = False
         try:
-            self.ts = self.loader.timescale()
+            # Built-in Skyfield timescale data ships compressed inside the
+            # skyfield wheel; explicit builtin=True guarantees zero runtime
+            # dependency on an external 3.7 MB finals2000A.all file.
+            self.ts = self.loader.timescale(builtin=True)
         except BaseException as error:
             self._close_after_error(error)
             raise
