@@ -10,7 +10,7 @@
 
 import type { ReactElement } from 'react';
 import { Text, View } from '@react-pdf/renderer';
-import { styles } from '../theme';
+import { useReportStyles } from '../theme';
 import type { ReportPdfData } from '../types';
 import { ReportPdfHeading } from './ReportPdfHeading';
 import { ReportPdfTable } from './ReportPdfTable';
@@ -20,6 +20,7 @@ interface ReportPdfHousesProps {
 }
 
 export function ReportPdfHouses({ data }: ReportPdfHousesProps): ReactElement {
+  const s = useReportStyles();
   const { houses, labels } = data;
   return (
     <View>
@@ -42,7 +43,7 @@ export function ReportPdfHouses({ data }: ReportPdfHousesProps): ReactElement {
           widths: [0.7, 1.2, 1.2, 2.4],
         }}
       />
-      <Text style={styles.detailNote}>{labels.housesNote}</Text>
+      <Text style={s.detailNote}>{labels.housesNote}</Text>
     </View>
   );
 }

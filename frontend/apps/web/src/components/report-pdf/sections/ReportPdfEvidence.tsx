@@ -21,16 +21,17 @@
 
 import type { ReactElement } from 'react';
 import { Text, View } from '@react-pdf/renderer';
-import { styles } from '../theme';
+import { useReportStyles } from '../theme';
 import type { ReportPdfData, ReportPdfEvidenceRow, ReportPdfEvidence as EvidenceSlice } from '../types';
 import { ReportPdfHeading } from './ReportPdfHeading';
 
 /** One stacked cell: a small-caps label, then its value at full measure. */
 function Cell({ label, value }: { readonly label: string; readonly value: string }): ReactElement {
+  const s = useReportStyles();
   return (
-    <View style={styles.evidenceCell} wrap={false}>
-      <Text style={styles.evidenceCellLabel}>{label}</Text>
-      <Text style={styles.evidenceCellValue}>{value}</Text>
+    <View style={s.evidenceCell} wrap={false}>
+      <Text style={s.evidenceCellLabel}>{label}</Text>
+      <Text style={s.evidenceCellValue}>{value}</Text>
     </View>
   );
 }
@@ -43,11 +44,12 @@ function EvidenceCell({
   readonly label: string;
   readonly factors: ReadonlyArray<string>;
 }): ReactElement {
+  const s = useReportStyles();
   return (
-    <View style={styles.evidenceCell} wrap={false}>
-      <Text style={styles.evidenceCellLabel}>{label}</Text>
+    <View style={s.evidenceCell} wrap={false}>
+      <Text style={s.evidenceCellLabel}>{label}</Text>
       {factors.map((factor) => (
-        <Text key={factor} style={styles.evidenceFactor}>
+        <Text key={factor} style={s.evidenceFactor}>
           {factor}
         </Text>
       ))}
@@ -62,8 +64,9 @@ function Row({
   readonly row: ReportPdfEvidenceRow;
   readonly labels: EvidenceSlice['cellLabels'];
 }): ReactElement {
+  const s = useReportStyles();
   return (
-    <View style={styles.evidenceRow} minPresenceAhead={60}>
+    <View style={s.evidenceRow} minPresenceAhead={60}>
       <Cell label={labels.observation} value={row.observation} />
       <EvidenceCell label={labels.evidence} factors={row.evidence} />
       <Cell label={labels.interpretation} value={row.interpretation} />
@@ -75,43 +78,45 @@ function Row({
 
 /** The reproducible method: ceiling table, deduction rules, the formula. */
 function Method({ evidence }: { readonly evidence: EvidenceSlice }): ReactElement {
+  const s = useReportStyles();
   return (
-    <View style={styles.evidenceMethod}>
-      <Text style={styles.evidenceSubheading}>{evidence.methodHeading}</Text>
-      <Text style={styles.evidenceStep}>{evidence.ceilingHeading}</Text>
+    <View style={s.evidenceMethod}>
+      <Text style={s.evidenceSubheading}>{evidence.methodHeading}</Text>
+      <Text style={s.evidenceStep}>{evidence.ceilingHeading}</Text>
       {evidence.ceilings.map((ceiling) => (
-        <View key={ceiling.label} style={styles.evidenceCeiling} wrap={false}>
-          <Text style={styles.evidenceCeilingLabel}>{ceiling.label}</Text>
-          <Text style={styles.evidenceCellValue}>{ceiling.value}</Text>
+        <View key={ceiling.label} style={s.evidenceCeiling} wrap={false}>
+          <Text style={s.evidenceCeilingLabel}>{ceiling.label}</Text>
+          <Text style={s.evidenceCellValue}>{ceiling.value}</Text>
         </View>
       ))}
-      <Text style={styles.evidenceNote}>{evidence.ceilingNote}</Text>
-      <Text style={styles.evidenceStep}>{evidence.deductionHeading}</Text>
+      <Text style={s.evidenceNote}>{evidence.ceilingNote}</Text>
+      <Text style={s.evidenceStep}>{evidence.deductionHeading}</Text>
       {evidence.deductionRules.map((rule) => (
-        <Text key={rule} style={styles.evidenceCellValue}>
+        <Text key={rule} style={s.evidenceCellValue}>
           {rule}
         </Text>
       ))}
-      <Text style={styles.evidenceFormula}>{evidence.formula}</Text>
+      <Text style={s.evidenceFormula}>{evidence.formula}</Text>
     </View>
   );
 }
 
 /** The second chart a near-cusp birth time could have, projected in full. */
 function Alternate({ evidence }: { readonly evidence: EvidenceSlice }): ReactElement | null {
+  const s = useReportStyles();
   if (!evidence.alternateHeading || !evidence.alternateShifts) {
     return null;
   }
   return (
-    <View style={styles.evidenceAlternate}>
-      <Text style={styles.evidenceSubheading}>{evidence.alternateHeading}</Text>
-      <Text style={styles.evidenceCellValue}>{evidence.alternateLead}</Text>
+    <View style={s.evidenceAlternate}>
+      <Text style={s.evidenceSubheading}>{evidence.alternateHeading}</Text>
+      <Text style={s.evidenceCellValue}>{evidence.alternateLead}</Text>
       {evidence.alternateShifts.map((shift) => (
-        <Text key={shift} style={styles.evidenceFactor}>
+        <Text key={shift} style={s.evidenceFactor}>
           {shift}
         </Text>
       ))}
-      <Text style={styles.evidenceNote}>{evidence.alternateMinutesNote}</Text>
+      <Text style={s.evidenceNote}>{evidence.alternateMinutesNote}</Text>
     </View>
   );
 }
@@ -153,6 +158,7 @@ export function ReportPdfEvidenceGuidance({
 }: {
   readonly data: ReportPdfData;
 }): ReactElement | null {
+  const s = useReportStyles();
   const { evidence } = data;
   if (!evidence || !hasEvidenceEpilogue(evidence)) {
     return null;
@@ -160,18 +166,18 @@ export function ReportPdfEvidenceGuidance({
   return (
     <View>
       {evidence.guidance && evidence.guidance.length > 0 ? (
-        <View style={styles.evidenceGuidance}>
-          <Text style={styles.evidenceGuidanceHeading}>{evidence.guidanceHeading}</Text>
-          <Text style={styles.evidenceNote}>{evidence.guidanceNote}</Text>
+        <View style={s.evidenceGuidance}>
+          <Text style={s.evidenceGuidanceHeading}>{evidence.guidanceHeading}</Text>
+          <Text style={s.evidenceNote}>{evidence.guidanceNote}</Text>
           {evidence.guidance.map((statement) => (
-            <Text key={statement} style={styles.evidenceGuidanceText}>
+            <Text key={statement} style={s.evidenceGuidanceText}>
               {statement}
             </Text>
           ))}
         </View>
       ) : null}
       {evidence.rejectedNote ? (
-        <Text style={styles.evidenceRejected}>{evidence.rejectedNote}</Text>
+        <Text style={s.evidenceRejected}>{evidence.rejectedNote}</Text>
       ) : null}
     </View>
   );

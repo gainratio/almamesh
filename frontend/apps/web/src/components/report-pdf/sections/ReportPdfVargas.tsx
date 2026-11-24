@@ -11,7 +11,7 @@
 
 import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from '@react-pdf/renderer';
-import { palette, styles, type as typeScale } from '../theme';
+import { palette, type as typeScale, useReportStyles } from '../theme';
 import type { ReportPdfVargaPlate, ReportPdfVargas } from '../types';
 import { ReportPdfHeading } from './ReportPdfHeading';
 import { ReportPdfKundli } from './ReportPdfKundli';
@@ -70,6 +70,7 @@ export function ReportPdfVargaPlates({
   plates,
   first,
 }: ReportPdfVargaPlatesProps): ReactElement {
+  const s = useReportStyles();
   return (
     <View>
       {first ? (
@@ -85,8 +86,8 @@ export function ReportPdfVargaPlates({
       <View style={local.grid}>
         {plates.map((plate) => (
           <View key={plate.id} style={local.plate} wrap={false}>
-            <Text style={styles.chartCaption}>{plate.caption}</Text>
-            <View style={styles.chartFrame}>
+            <Text style={s.chartCaption}>{plate.caption}</Text>
+            <View style={s.chartFrame}>
               <ReportPdfKundli geometry={plate.geometry} size={PLATE_SIZE} />
             </View>
           </View>
@@ -102,14 +103,15 @@ interface ReportPdfVargaTalliesProps {
 
 /** The closing tallies page: vargottama flags + the Viṁśopaka Bala table. */
 export function ReportPdfVargaTallies({ vargas }: ReportPdfVargaTalliesProps): ReactElement {
+  const s = useReportStyles();
   return (
     <View>
-      <Text style={styles.subLabel}>{vargas.vargottamaHeading}</Text>
+      <Text style={s.subLabel}>{vargas.vargottamaHeading}</Text>
       <Text style={local.vargottamaLine}>{vargas.vargottamaLine}</Text>
 
-      <Text style={styles.subLabel}>{vargas.vimshopakaHeading}</Text>
+      <Text style={s.subLabel}>{vargas.vimshopakaHeading}</Text>
       <ReportPdfTable table={vargas.vimshopaka} />
-      {vargas.approxNote ? <Text style={styles.detailNote}>{vargas.approxNote}</Text> : null}
+      {vargas.approxNote ? <Text style={s.detailNote}>{vargas.approxNote}</Text> : null}
     </View>
   );
 }

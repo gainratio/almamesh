@@ -7,7 +7,7 @@
 
 import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from '@react-pdf/renderer';
-import { palette, styles, type as typeScale } from '../theme';
+import { palette, type as typeScale, useReportStyles } from '../theme';
 import type { ReportPdfData, ReportPdfLabeledValue } from '../types';
 import { ReportPdfHeading } from './ReportPdfHeading';
 import { ReportPdfTable } from './ReportPdfTable';
@@ -33,13 +33,14 @@ const local = StyleSheet.create({
 
 /** A label → value panel (Sade Sati / fusion readouts), detail-row styled. */
 function LabeledPanel({ rows }: { rows: ReadonlyArray<ReportPdfLabeledValue> }): ReactElement {
+  const s = useReportStyles();
   return (
-    <View style={styles.detailPanel}>
+    <View style={s.detailPanel}>
       {rows.map((row, index) => (
         <View
           key={`${row.label}-${index}`}
           wrap={false}
-          style={index === rows.length - 1 ? styles.detailRowLast : styles.detailRow}
+          style={index === rows.length - 1 ? s.detailRowLast : s.detailRow}
         >
           <Text style={local.panelLabel}>{row.label}</Text>
           <Text style={local.panelValue}>{row.value}</Text>
@@ -54,6 +55,7 @@ interface ReportPdfTransitsProps {
 }
 
 export function ReportPdfTransits({ data }: ReportPdfTransitsProps): ReactElement | null {
+  const s = useReportStyles();
   const transits = data.transits;
   if (!transits) {
     return null;
@@ -68,22 +70,22 @@ export function ReportPdfTransits({ data }: ReportPdfTransitsProps): ReactElemen
       <Text style={local.asOf}>{transits.asOf}</Text>
       <ReportPdfTable table={transits.gochara} />
 
-      <Text style={styles.subLabel}>{transits.sadeSatiHeading}</Text>
+      <Text style={s.subLabel}>{transits.sadeSatiHeading}</Text>
       <LabeledPanel rows={transits.sadeSati} />
 
-      <Text style={styles.subLabel}>{transits.slowHitsHeading}</Text>
+      <Text style={s.subLabel}>{transits.slowHitsHeading}</Text>
       {transits.slowHits.rows.length === 0 ? (
-        <Text style={styles.detailNote}>{transits.slowHitsEmpty}</Text>
+        <Text style={s.detailNote}>{transits.slowHitsEmpty}</Text>
       ) : (
         <ReportPdfTable table={transits.slowHits} />
       )}
 
-      <Text style={styles.subLabel}>{transits.fusionHeading}</Text>
+      <Text style={s.subLabel}>{transits.fusionHeading}</Text>
       <LabeledPanel rows={transits.fusion} />
 
-      <Text style={styles.subLabel}>{transits.timelineHeading}</Text>
+      <Text style={s.subLabel}>{transits.timelineHeading}</Text>
       {transits.timeline.rows.length === 0 ? (
-        <Text style={styles.detailNote}>{transits.timelineEmpty}</Text>
+        <Text style={s.detailNote}>{transits.timelineEmpty}</Text>
       ) : (
         <ReportPdfTable table={transits.timeline} />
       )}

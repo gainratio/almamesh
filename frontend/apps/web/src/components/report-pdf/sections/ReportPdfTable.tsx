@@ -8,14 +8,14 @@
  * Pure presentation over a pre-formatted `ReportPdfTable` — no data logic.
  */
 
-import { useContext, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from '@react-pdf/renderer';
 import {
-  DevanagariContext,
   FONT_BODY,
   FONT_DEVANAGARI,
   palette,
   type as typeScale,
+  useDevanagari,
   useReportStyles,
 } from '../theme';
 import type { ReportPdfTable as ReportPdfTableData } from '../types';
@@ -76,7 +76,7 @@ export function ReportPdfTable({
   dense = false,
   devanagari,
 }: ReportPdfTableProps): ReactElement {
-  const fromContext = useContext(DevanagariContext);
+  const fromContext = useDevanagari();
   const isDevanagari = devanagari ?? fromContext;
   const s = useReportStyles(isDevanagari);
   const lastIndex = table.rows.length - 1;

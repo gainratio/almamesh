@@ -393,8 +393,8 @@ function MeshEdgeContent({
     relationship,
     ayanamsa,
     referenceInstant,
-    anchorChart?.sidereal_chart,
-    memberChart?.sidereal_chart,
+    anchorChart,
+    memberChart,
     i18n.language,
     t,
   ]);

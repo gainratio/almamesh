@@ -7,7 +7,7 @@
 
 import type { ReactElement } from 'react';
 import { Text, View } from '@react-pdf/renderer';
-import { styles } from '../theme';
+import { useReportStyles } from '../theme';
 import type { ReportPdfData } from '../types';
 import { ReportPdfHeading } from './ReportPdfHeading';
 import { ReportPdfKundli } from './ReportPdfKundli';
@@ -20,14 +20,15 @@ const PLATE_SIZE = 200;
 
 /** The legend keys the in-cell two-letter abbreviations to planet names. */
 function PlanetLegend({ data }: { data: ReportPdfData }): ReactElement {
+  const s = useReportStyles();
   return (
-    <View style={styles.chartLegend}>
+    <View style={s.chartLegend}>
       {data.planets
         .filter((row) => row.glyph !== '')
         .map((row) => (
-          <View key={row.name} style={styles.legendItem}>
-            <Text style={[styles.legendSwatchText, { color: row.color }]}>{row.glyph}</Text>
-            <Text style={styles.legendName}>{row.name}</Text>
+          <View key={row.name} style={s.legendItem}>
+            <Text style={[s.legendSwatchText, { color: row.color }]}>{row.glyph}</Text>
+            <Text style={s.legendName}>{row.name}</Text>
           </View>
         ))}
     </View>
@@ -35,6 +36,7 @@ function PlanetLegend({ data }: { data: ReportPdfData }): ReactElement {
 }
 
 export function ReportPdfCharts({ data }: ReportPdfChartsProps): ReactElement {
+  const s = useReportStyles();
   const { charts, labels } = data;
   return (
     <View>
@@ -43,17 +45,17 @@ export function ReportPdfCharts({ data }: ReportPdfChartsProps): ReactElement {
         title={labels.chartsTitle}
         intro={labels.chartsIntro}
       />
-      <View style={styles.chartsRow}>
-        <View style={styles.chartPlate}>
-          <Text style={styles.chartCaption}>{charts.rasiCaption}</Text>
-          <View style={styles.chartFrame}>
+      <View style={s.chartsRow}>
+        <View style={s.chartPlate}>
+          <Text style={s.chartCaption}>{charts.rasiCaption}</Text>
+          <View style={s.chartFrame}>
             <ReportPdfKundli geometry={charts.rasi} size={PLATE_SIZE} />
           </View>
         </View>
         {charts.navamsa ? (
-          <View style={styles.chartPlate}>
-            <Text style={styles.chartCaption}>{charts.navamsaCaption}</Text>
-            <View style={styles.chartFrame}>
+          <View style={s.chartPlate}>
+            <Text style={s.chartCaption}>{charts.navamsaCaption}</Text>
+            <View style={s.chartFrame}>
               <ReportPdfKundli geometry={charts.navamsa} size={PLATE_SIZE} />
             </View>
           </View>

@@ -935,17 +935,37 @@ export const styles = StyleSheet.create({
  */
 export const DevanagariContext = createContext(false);
 
-const devanagariStyles = StyleSheet.create(
-  Object.fromEntries(
-    Object.entries(styles).map(([key, rule]) => [
+/** Derive a StyleSheet mirror whose explicit `fontFamily` rules use Noto Sans Devanagari. */
+export function createDevanagariStyles<T extends Parameters<typeof StyleSheet.create>[0]>(
+  sheet: T,
+): T {
+  const mapped = Object.fromEntries(
+    Object.entries(sheet).map(([key, rule]) => [
       key,
       'fontFamily' in rule ? { ...rule, fontFamily: FONT_DEVANAGARI } : rule,
     ]),
-  ) as typeof styles,
-);
+  ) as T;
+  return StyleSheet.create(mapped) as T;
+}
+
+const devanagariStyles = createDevanagariStyles(styles);
+
+/** Read DevanagariContext safely (falls back to false in non-reconciler test walkers). */
+export function useDevanagari(): boolean {
+  try {
+    return useContext(DevanagariContext);
+  } catch {
+    return false;
+  }
+}
+
+/** Select between a Latin StyleSheet and its pre-derived Devanagari mirror. */
+export function useFontSheet<T>(latin: T, devanagariSheet: T, devanagari?: boolean): T {
+  const fromContext = useDevanagari();
+  return (devanagari ?? fromContext) ? devanagariSheet : latin;
+}
 
 /** Return the standard Latin styles or the Noto Sans Devanagari style variant. */
 export function useReportStyles(devanagari?: boolean): typeof styles {
-  const fromContext = useContext(DevanagariContext);
-  return (devanagari ?? fromContext) ? devanagariStyles : styles;
+  return useFontSheet(styles, devanagariStyles, devanagari);
 }

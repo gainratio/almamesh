@@ -8,7 +8,14 @@
 
 import type { ReactElement } from 'react';
 import { StyleSheet, Text, View } from '@react-pdf/renderer';
-import { palette, styles, type as typeScale, FONT_MONO } from '../theme';
+import {
+  createDevanagariStyles,
+  FONT_MONO,
+  palette,
+  type as typeScale,
+  useFontSheet,
+  useReportStyles,
+} from '../theme';
 import type { ReportPdfData } from '../types';
 import { ReportPdfHeading } from './ReportPdfHeading';
 import { ReportPdfTable } from './ReportPdfTable';
@@ -49,11 +56,15 @@ const local = StyleSheet.create({
   },
 });
 
+const localDevanagari = createDevanagariStyles(local);
+
 interface ReportPdfStrengthProps {
   readonly data: ReportPdfData;
 }
 
 export function ReportPdfStrength({ data }: ReportPdfStrengthProps): ReactElement | null {
+  const s = useReportStyles();
+  const loc = useFontSheet(local, localDevanagari);
   const strength = data.strength;
   if (!strength) {
     return null;
@@ -66,24 +77,24 @@ export function ReportPdfStrength({ data }: ReportPdfStrengthProps): ReactElemen
         intro={strength.chrome.intro}
       />
 
-      <Text style={styles.subLabel}>{strength.savHeading}</Text>
-      <View style={local.savGrid} wrap={false}>
+      <Text style={s.subLabel}>{strength.savHeading}</Text>
+      <View style={loc.savGrid} wrap={false}>
         {strength.savCells.map((cell) => (
-          <View key={cell.label} style={local.savCell}>
-            <Text style={local.savSign}>{cell.label}</Text>
-            <Text style={local.savValue}>{cell.value}</Text>
+          <View key={cell.label} style={loc.savCell}>
+            <Text style={loc.savSign}>{cell.label}</Text>
+            <Text style={loc.savValue}>{cell.value}</Text>
           </View>
         ))}
       </View>
 
-      <Text style={styles.subLabel}>{strength.bavHeading}</Text>
+      <Text style={s.subLabel}>{strength.bavHeading}</Text>
       <ReportPdfTable table={strength.bav} />
 
-      <Text style={styles.subLabel}>{strength.shadbalaHeading}</Text>
+      <Text style={s.subLabel}>{strength.shadbalaHeading}</Text>
       <ReportPdfTable table={strength.shadbala} dense />
-      <Text style={styles.detailNote}>{strength.componentsNote}</Text>
-      {strength.approxNote ? <Text style={styles.detailNote}>{strength.approxNote}</Text> : null}
-      <Text style={styles.detailNote}>{strength.sunriseNote}</Text>
+      <Text style={s.detailNote}>{strength.componentsNote}</Text>
+      {strength.approxNote ? <Text style={s.detailNote}>{strength.approxNote}</Text> : null}
+      <Text style={s.detailNote}>{strength.sunriseNote}</Text>
     </View>
   );
 }
