@@ -58,6 +58,7 @@ import { buildOmittedSectionsValue, sectionNumeral } from '../lib/reportSections
 import { domainClaimId, reportStabilityMarkers, yogaClaimId } from '../lib/stability';
 import { downloadReportPdf, type ReportPdfChrome } from '../lib/downloadReportPdf';
 import { buildEvidenceLedger, yogaDependsOnHouses } from '../lib/evidence';
+import { formatYogaBasisLine, formatYogaMeaningLine } from '../lib/yogaGlossary';
 import { buildEvidenceSection } from '../components/report-pdf/buildEvidenceSection';
 import { buildRectificationPdf } from '../components/report-pdf/buildRectificationPdf';
 import { glyphSafe } from '../components/report-pdf/glyphSafe';
@@ -370,6 +371,8 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
               t('pdf.combustion_note', { planet, separation, orb }),
           },
           formatYogaActivation: (yoga) => formatYogaActivation(yoga, t, tp),
+          formatYogaMeaning: (yoga) => formatYogaMeaningLine(yoga, t),
+          formatYogaBasis: (yoga) => formatYogaBasisLine(yoga, t),
           chartCaptions: {
             rasi: t('charts.rasi_caption'),
             navamsa: t('charts.navamsa_caption'),

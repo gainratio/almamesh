@@ -20,6 +20,7 @@ import {
 } from '../../../lib/reportSelectors';
 import { hasStrength, signedMark, yogaStrength } from '../../../lib/yogaStrength';
 import { formatYogaActivation } from '../../../lib/yogaActivation';
+import { formatYogaFormation, formatYogaMeaning } from '../../../lib/yogaGlossary';
 import { yogaClaimId, type StabilityMarker } from '../../../lib/stability';
 import { ReportProse } from './ReportProse';
 import { ReportSectionHeading } from './ReportSectionHeading';
@@ -116,6 +117,12 @@ export function ReportYogas({
     <section className="report-section" data-testid="report-yogas">
       <ReportSectionHeading index={sectionNumeral('yogas')} title={t('yogas.heading')} />
 
+      {yogas.length > 0 ? (
+        <p className="report-assumptions-intro" data-testid="report-yogas-primer">
+          {t('yogas.primer')}
+        </p>
+      ) : null}
+
       {narrative ? (
         <ReportProse
           text={narrative}
@@ -125,11 +132,10 @@ export function ReportYogas({
       ) : null}
 
       {yogas.length > 0 ? (
-        <ul className="report-yoga-list">
+        <ul className="report-yoga-list" role="list">
           {yogas.map((yoga) => {
-            // The first formation rule is the engine's own one-line basis;
-            // min-length-1 by schema, guarded for older stored payloads.
-            const basis = yoga.formation_rules[0];
+            const meaning = formatYogaMeaning(yoga, t);
+            const formation = formatYogaFormation(yoga);
             return (
               <li
                 key={`${yoga.name}-${yoga.planetary_signature}`}
@@ -155,14 +161,25 @@ export function ReportYogas({
                     {formatYogaActivation(yoga, t, tp)}
                   </p>
                 ) : null}
+                {meaning ? (
+                  <p className="report-yoga-meaning" data-testid="report-yoga-meaning">
+                    <span className="report-yoga-label">{t('yogas.meaning_label')}:</span>{' '}
+                    {meaning}
+                  </p>
+                ) : null}
                 {yoga.description ? (
                   <p className="report-yoga-desc">{yoga.description}</p>
                 ) : null}
-                {basis ? (
-                  <p className="report-yoga-basis">
-                    {basis.description}
-                    {' — '}
-                    <cite className="report-yoga-source">{basis.source}</cite>
+                {formation.basis ? (
+                  <p className="report-yoga-basis" data-testid="report-yoga-basis">
+                    <span className="report-yoga-label">{t('yogas.formation_label')}:</span>{' '}
+                    {formation.basis}
+                    {formation.sources ? (
+                      <>
+                        {' — '}
+                        <cite className="report-yoga-source">{formation.sources}</cite>
+                      </>
+                    ) : null}
                   </p>
                 ) : null}
               </li>

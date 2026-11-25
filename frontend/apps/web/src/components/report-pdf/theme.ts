@@ -763,10 +763,23 @@ export const styles = StyleSheet.create({
     textTransform: 'uppercase',
     color: palette.faint,
   },
-  yogaDesc: {
+  yogaMeaning: {
+    marginTop: 2,
+    marginBottom: 3,
     fontSize: type.small,
     color: palette.ink,
     lineHeight: 1.55,
+  },
+  yogaDesc: {
+    fontSize: type.small,
+    color: palette.inkSoft,
+    lineHeight: 1.5,
+  },
+  yogaBasis: {
+    marginTop: 2,
+    fontSize: type.micro,
+    color: palette.inkSoft,
+    lineHeight: 1.45,
   },
   yogaSignature: {
     marginTop: space.xs,

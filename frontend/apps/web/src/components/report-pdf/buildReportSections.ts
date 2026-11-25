@@ -28,6 +28,7 @@ import {
 } from '../../lib/reportSelectors';
 import { hasStrength, yogaStrength } from '../../lib/yogaStrength';
 import { formatYogaActivation } from '../../lib/yogaActivation';
+import { formatYogaBasisLine, formatYogaMeaningLine } from '../../lib/yogaGlossary';
 import { glyphSafe } from './glyphSafe';
 import { yogaClaimId } from '../../lib/stability';
 import type {
@@ -458,6 +459,8 @@ export function buildYogas(
   chart: SiderealChart,
   stabilityFlagFor?: StabilityFlagFor,
   formatActivation?: (yoga: YogaData) => string | undefined,
+  formatMeaning?: (yoga: YogaData) => string | undefined,
+  formatBasis?: (yoga: YogaData) => string | undefined,
 ): ReadonlyArray<ReportPdfYoga> {
   return chart.yogas.map((yoga) => {
     const category = titleCase(yoga.category.replace(/_/g, ' '));
@@ -471,6 +474,10 @@ export function buildYogas(
       ? formatActivation(yoga)
       : formatYogaActivation(yoga);
     const activation = rawActivation ? glyphSafe(rawActivation) : undefined;
+    const rawMeaning = formatMeaning ? formatMeaning(yoga) : formatYogaMeaningLine(yoga);
+    const meaning = rawMeaning ? glyphSafe(rawMeaning) : undefined;
+    const rawBasis = formatBasis ? formatBasis(yoga) : formatYogaBasisLine(yoga);
+    const basis = rawBasis ? glyphSafe(rawBasis) : undefined;
     return {
       name: glyphSafe(yoga.name),
       classification: glyphSafe(category ? `${category} · ${grade}` : grade),
@@ -480,6 +487,8 @@ export function buildYogas(
       ...buildYogaStrength(yoga),
       ...(stability ? { stability } : {}),
       ...(activation ? { activation } : {}),
+      ...(meaning ? { meaning } : {}),
+      ...(basis ? { basis } : {}),
     };
   });
 }

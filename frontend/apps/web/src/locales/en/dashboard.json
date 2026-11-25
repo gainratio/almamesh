@@ -122,7 +122,10 @@
     "empty_body": "Please generate your birth chart to view the technical analysis.",
     "force_field_title": "Planetary Force Field",
     "force_field_unavailable": "This browser can't draw the 3D view here. Your chart below has everything.",
-    "kundli_title": "Kundli & Planetary Position"
+    "kundli_title": "Kundli & Planetary Position",
+    "yogas_title": "Key Yogas Identified",
+    "yogas_subtitle": "Named planetary patterns computed on-device, explained in plain language.",
+    "yogas_empty": "No classical yogas from this catalog formed in the D1 chart."
   },
   "time_travel": {
     "sheet_intro": "Pick a time. The Dashboard will show that moment.",

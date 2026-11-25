@@ -31,7 +31,9 @@ function YogaCard({ yoga }: { yoga: ReportPdfYoga }): ReactElement {
       {yoga.strength ? <Text style={s.yogaPct}>{yoga.strength}</Text> : null}
       {yoga.strengthLedger ? <Text style={s.yogaLedger}>{yoga.strengthLedger}</Text> : null}
       {yoga.activation ? <Text style={s.yogaLedger}>{yoga.activation}</Text> : null}
+      {yoga.meaning ? <Text style={s.yogaMeaning}>{yoga.meaning}</Text> : null}
       <Text style={s.yogaDesc}>{yoga.description}</Text>
+      {yoga.basis ? <Text style={s.yogaBasis}>{yoga.basis}</Text> : null}
       {yoga.signature ? <Text style={s.yogaSignature}>{yoga.signature}</Text> : null}
     </View>
   );

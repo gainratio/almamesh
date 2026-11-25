@@ -157,6 +157,10 @@ export interface BuildReportPdfDataInput {
   readonly formatCombustion?: CombustionCopy;
   /** Optional localized formatter for `yoga.dasha_activation` (falls back to English). */
   readonly formatYogaActivation?: (yoga: YogaData) => string | undefined;
+  /** Optional localized plain-language yoga meaning formatter (falls back to English). */
+  readonly formatYogaMeaning?: (yoga: YogaData) => string | undefined;
+  /** Optional localized chart-formation + classical-source formatter (falls back to English). */
+  readonly formatYogaBasis?: (yoga: YogaData) => string | undefined;
   readonly detailLabels: BirthDetailLabels;
   readonly chromeLabels: ReportPdfLabels;
   /**
@@ -318,7 +322,13 @@ export function buildReportPdfData(input: BuildReportPdfDataInput): ReportPdfDat
       input.formatAntarHeading,
       input.formatPratyantarHeading,
     ),
-    yogas: buildYogas(input.sidereal, stabilityFlagFor, input.formatYogaActivation),
+    yogas: buildYogas(
+      input.sidereal,
+      stabilityFlagFor,
+      input.formatYogaActivation,
+      input.formatYogaMeaning,
+      input.formatYogaBasis,
+    ),
     yogaNarrative: input.interpretation
       ? buildYogaNarrative(
           input.interpretation,

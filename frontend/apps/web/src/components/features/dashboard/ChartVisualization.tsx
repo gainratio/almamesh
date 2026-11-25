@@ -14,6 +14,7 @@ import { Card } from '../../ui';
 import { PlanetaryTable } from '../astrologer-view';
 import { supportsWebGl, WebGlGate } from '../../WebGlGate';
 import { DashboardKundliCard } from './DashboardKundliCard';
+import { DashboardYogasCard } from './DashboardYogasCard';
 
 // Lazy so three.js + the force-field chunk stay out of first paint.
 const ForceFieldExperience = lazy(() =>
@@ -173,6 +174,8 @@ export function ChartVisualization({
         selectedPlanet={selectedPlanet}
         onSelectPlanet={setSelectedPlanet}
       />
+
+      <DashboardYogasCard yogas={siderealChart.yogas} />
     </div>
   );
 }
