@@ -110,6 +110,120 @@ function planetLabel(planet: ChartPlanet, showDegrees: boolean): string {
   return `${planet.label}${retro}${degrees}`;
 }
 
+/** Scaled bounding box of one North-Indian house polygon. */
+interface CellBounds {
+  readonly minX: number;
+  readonly maxX: number;
+  readonly minY: number;
+  readonly maxY: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/** Computed geometry for every text element inside one house cell. */
+export interface CellTextLayout {
+  readonly signX: number;
+  readonly signY: number;
+  readonly signFont: number;
+  readonly lagnaY: number;
+  readonly planetX: number;
+  readonly firstPlanetY: number;
+  readonly lineH: number;
+  readonly planetFont: number;
+  readonly labels: readonly string[];
+}
+
+const MONO_CHAR_WIDTH_RATIO = 0.62;
+const MIN_FONT_PT = 4.5;
+
+function boundsOf(polygon: readonly UnitPoint[], size: number): CellBounds {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const point of polygon) {
+    const x = point.x * size;
+    const y = point.y * size;
+    if (x < minX) minX = x;
+    if (x > maxX) maxX = x;
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  return { minX, maxX, minY, maxY, width: maxX - minX, height: maxY - minY };
+}
+
+function clamp(value: number, lo: number, hi: number): number {
+  return hi < lo ? (lo + hi) / 2 : Math.min(Math.max(value, lo), hi);
+}
+
+/**
+ * Derive font sizes and clamped text anchors purely from each house polygon's
+ * bounds so outer triangles (H2/H12 vertically, H3/H5/H9/H11 horizontally) and
+ * dense varga stacks never clip outside the SVG viewport `[0, size]`.
+ */
+export function computeCellTextLayout(
+  house: ChartHouse,
+  houseCell: HouseCell,
+  size: number,
+  isLagna: boolean,
+  showDegrees: boolean,
+): CellTextLayout {
+  const center = scale(houseCell.centroid, size);
+  const bounds = boundsOf(houseCell.polygon, size);
+  const pad = Math.max(2.5, size * 0.018);
+  const labels = house.planets.map((planet) => planetLabel(planet, showDegrees));
+  const count = labels.length;
+  const maxChars = labels.reduce((longest, label) => Math.max(longest, label.length), 0);
+
+  const basePlanetFont = Math.max(6.5, size * 0.042);
+  const baseSignFont = Math.max(5.5, size * 0.034);
+  const baseLineH = Math.max(8.5, size * 0.05);
+
+  const availW = Math.max(10, bounds.width - pad * 2);
+  const availH = Math.max(10, bounds.height - pad * 2);
+  const planetFontH =
+    maxChars > 0
+      ? Math.max(MIN_FONT_PT, Math.min(basePlanetFont, availW / (maxChars * MONO_CHAR_WIDTH_RATIO)))
+      : basePlanetFont;
+
+  const baseHeaderH = isLagna ? baseSignFont * 1.2 : 0;
+  const baseStackBelow = count > 0 ? baseLineH * 1.05 + (count - 1) * baseLineH : 0;
+  const reqH = baseSignFont + baseHeaderH + baseStackBelow;
+  const vScale = reqH > availH ? availH / reqH : 1;
+
+  const planetFont = Math.max(MIN_FONT_PT, Math.min(planetFontH, basePlanetFont * vScale));
+  const signFont = Math.max(MIN_FONT_PT, baseSignFont * vScale);
+  const lineH = Math.max(planetFont * 1.12, baseLineH * vScale);
+
+  const headerH = isLagna ? signFont * 1.2 : 0;
+  const stackBelow = count > 0 ? lineH * 1.05 + (count - 1) * lineH : 0;
+  const idealSignY = center.y - (count > 0 ? (stackBelow - signFont) / 2 : -signFont * 0.35);
+  const minSignY = bounds.minY + pad + signFont + headerH;
+  const maxSignY = bounds.maxY - pad - stackBelow;
+  const signY = clamp(idealSignY, minSignY, Math.max(minSignY, maxSignY));
+
+  const halfPlanetW = (maxChars * MONO_CHAR_WIDTH_RATIO * planetFont) / 2;
+  const planetX = clamp(center.x, bounds.minX + pad + halfPlanetW, bounds.maxX - pad - halfPlanetW);
+  const signDigits = String(house.signIndex + 1).length;
+  const halfSignW = (signDigits * MONO_CHAR_WIDTH_RATIO * signFont) / 2;
+  const signX = clamp(center.x, bounds.minX + pad + halfSignW, bounds.maxX - pad - halfSignW);
+
+  return {
+    signX,
+    signY,
+    signFont,
+    lagnaY: signY - signFont * 1.2,
+    planetX,
+    firstPlanetY: signY + lineH * 1.05,
+    lineH,
+    planetFont,
+    labels,
+  };
+}
+
+/** Exported for geometric viewport-bounds unit tests. */
+export const NORTH_INDIAN_HOUSE_CELLS: readonly HouseCell[] = HOUSE_CELLS;
+
 interface HouseCellViewProps {
   readonly house: ChartHouse;
   readonly cell: HouseCell;
@@ -126,14 +240,7 @@ function HouseCellView({
   isLagna,
   showDegrees,
 }: HouseCellViewProps): ReactElement {
-  const center = scale(houseCell.centroid, size);
-  const lineH = Math.max(9, size * 0.05);
-  const planetFont = Math.max(7, size * 0.042);
-  const signFont = Math.max(6, size * 0.034);
-  const count = house.planets.length;
-  const firstY = center.y - ((count - 1) * lineH) / 2 + lineH * 0.1;
-  // The faint sign number sits above the planet stack.
-  const signY = center.y - lineH * (count / 2 + 0.85);
+  const layout = computeCellTextLayout(house, houseCell, size, isLagna, showDegrees);
 
   return (
     <>
@@ -144,18 +251,18 @@ function HouseCellView({
         strokeWidth={isLagna ? 1.2 : 0.8}
       />
       <Text
-        x={center.x}
-        y={signY}
-        style={{ fontFamily: FONT_MONO, fontSize: signFont, fill: PAPER.signNum }}
+        x={layout.signX}
+        y={layout.signY}
+        style={{ fontFamily: FONT_MONO, fontSize: layout.signFont, fill: PAPER.signNum }}
         textAnchor="middle"
       >
         {String(house.signIndex + 1)}
       </Text>
       {isLagna ? (
         <Text
-          x={center.x}
-          y={signY - signFont * 1.25}
-          style={{ fontFamily: FONT_MONO, fontSize: signFont, fill: PAPER.accent }}
+          x={layout.signX}
+          y={layout.lagnaY}
+          style={{ fontFamily: FONT_MONO, fontSize: layout.signFont, fill: PAPER.accent }}
           textAnchor="middle"
         >
           La
@@ -164,12 +271,12 @@ function HouseCellView({
       {house.planets.map((planet, index) => (
         <Text
           key={planet.name}
-          x={center.x}
-          y={firstY + index * lineH}
-          style={{ fontFamily: FONT_MONO, fontSize: planetFont, fill: planet.color }}
+          x={layout.planetX}
+          y={layout.firstPlanetY + index * layout.lineH}
+          style={{ fontFamily: FONT_MONO, fontSize: layout.planetFont, fill: planet.color }}
           textAnchor="middle"
         >
-          {planetLabel(planet, showDegrees)}
+          {layout.labels[index]}
         </Text>
       ))}
     </>

@@ -40,13 +40,20 @@ export interface EvidenceLedger {
    */
   readonly generalGuidance: readonly string[];
   /**
-   * How many model statements were rejected for citing something this chart
-   * does not contain. Surfaced in Assumptions & Provenance so a drop is
-   * counted, never silent.
+   * Total model statements discarded across all validation gates. Surfaced in
+   * Assumptions & Provenance so no drop is ever silent.
    */
   readonly rejectedCount: number;
-  /** The distinct bogus ids, for the provenance line. Bounded for display. */
+  /** Distinct ids rejected as genuinely unsupported / fabricated factors. */
   readonly rejectedCitations: readonly string[];
+  /** Statements rejected for citing an observation or factor absent from this chart. */
+  readonly unsupportedCount: number;
+  /** Statements withheld for predictive or non-reflective phrasing. */
+  readonly reflectionRejectedCount: number;
+  /** Prior-period daśā statements expired by a period rollover since generation. */
+  readonly staleDashaCount: number;
+  /** Malformed, empty, or duplicate statements discarded. */
+  readonly otherRejectedCount: number;
   /** True when a model reading was applied to at least one row. */
   readonly annotated: boolean;
 }
@@ -76,15 +83,29 @@ export function buildEvidenceLedger(
     };
   });
 
+  const unsupported = validated.rejected.filter(
+    (r) => r.reason === 'unknown-observation' || r.reason === 'unknown-factor',
+  );
+  const reflectionRejectedCount = validated.rejected.filter(
+    (r) => r.reason === 'not-reflection',
+  ).length;
+  const staleDashaCount = validated.rejected.filter((r) => r.reason === 'stale-dasha').length;
+  const otherRejectedCount =
+    validated.rejected.length - unsupported.length - reflectionRejectedCount - staleDashaCount;
+
   return {
     rows,
     alternateLagna: ledger.alternateLagna,
     lagnaSensitivity: ledger.lagnaSensitivity,
     generalGuidance: validated.generalGuidance,
     rejectedCount: validated.rejected.length,
-    rejectedCitations: [...new Set(validated.rejected.map((r) => r.citedId))]
+    rejectedCitations: [...new Set(unsupported.map((r) => r.citedId))]
       .filter((id) => id !== '')
       .slice(0, MAX_REPORTED_REJECTIONS),
+    unsupportedCount: unsupported.length,
+    reflectionRejectedCount,
+    staleDashaCount,
+    otherRejectedCount,
     annotated: validated.accepted.length > 0,
   };
 }

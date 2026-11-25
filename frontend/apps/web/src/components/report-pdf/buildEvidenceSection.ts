@@ -67,9 +67,32 @@ function titleCase(value: string): string {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : '';
 }
 
-/** The calendar day of an engine ISO instant — periods are dated, not clocked. */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * The calendar day of an engine ISO value, following the Periods panel rule
+ * (`formatPredictiveDate`): a date-only string keeps its written Y/M/D, while
+ * a full instant formats in the viewer's timezone so Section VIII agrees with
+ * the Dasha tables, Transits timeline, and Life Domains.
+ */
 function isoDay(value: string): string {
-  return value.slice(0, 10);
+  if (DATE_ONLY.test(value)) {
+    return value;
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value.slice(0, 10);
+  }
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-CA', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    })
+      .formatToParts(parsed)
+      .map((part) => [part.type, part.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 function joinOr(copy: Copy, values: readonly (string | number)[]): string {
@@ -337,15 +360,23 @@ function alternativeCell(copy: Copy, alternative: Alternative): string {
 
 /* ── Assembly ─────────────────────────────────────────────────────────────── */
 
-function evidenceRow(copy: Copy, row: EvidenceRow): ReportPdfEvidenceRow {
+function evidenceRow(
+  copy: Copy,
+  row: EvidenceRow,
+  dashaRolledOver: boolean,
+): ReportPdfEvidenceRow {
   const { observation } = row;
+  const emptyKey =
+    observation.primary.kind === 'dasha' && dashaRolledOver
+      ? 'no_interpretation_dasha_rollover'
+      : 'no_interpretation';
   return {
     observationId: observation.id,
     observation: observationSentence(copy, observation.primary),
     evidence: observation.supporting.map((factor) => factorLine(copy, factor)),
     interpretation:
       row.interpretation === null
-        ? line(copy, 'no_interpretation')
+        ? line(copy, emptyKey)
         : copy.text(row.interpretation),
     confidence: confidenceCell(copy, observation.confidence),
     alternative: alternativeCell(copy, observation.alternative),
@@ -407,17 +438,30 @@ function alternateBlock(
   };
 }
 
-/** The rejected-statement provenance line, or nothing when none were dropped. */
+/** The rejected-statement provenance lines, separated honestly by cause. */
 function rejectedNote(copy: Copy, ledger: EvidenceLedger): { rejectedNote?: string } {
   if (ledger.rejectedCount === 0) {
     return {};
   }
-  return {
-    rejectedNote: line(copy, 'rejected_note', {
-      count: ledger.rejectedCount,
-      citations: joinOr(copy, ledger.rejectedCitations),
-    }),
-  };
+  const notes: string[] = [];
+  if (ledger.unsupportedCount > 0) {
+    notes.push(
+      line(copy, 'rejected_note', {
+        count: ledger.unsupportedCount,
+        citations: joinOr(copy, ledger.rejectedCitations),
+      }),
+    );
+  }
+  if (ledger.reflectionRejectedCount > 0) {
+    notes.push(line(copy, 'rejected_reflection_note', { count: ledger.reflectionRejectedCount }));
+  }
+  if (ledger.staleDashaCount > 0) {
+    notes.push(line(copy, 'rejected_stale_dasha_note', { count: ledger.staleDashaCount }));
+  }
+  if (ledger.otherRejectedCount > 0) {
+    notes.push(line(copy, 'rejected_other_note', { count: ledger.otherRejectedCount }));
+  }
+  return notes.length > 0 ? { rejectedNote: notes.join('\n') } : {};
 }
 
 /**
@@ -455,7 +499,9 @@ export function buildEvidenceSection(
       confidence: line(copy, 'cell_confidence'),
       alternative: line(copy, 'cell_alternative'),
     },
-    rows: ledger.rows.map((row) => evidenceRow(copy, row)),
+    rows: ledger.rows.map((row) =>
+      evidenceRow(copy, row, ledger.annotated && ledger.staleDashaCount > 0),
+    ),
     ...(ledger.generalGuidance.length > 0
       ? {
           guidanceHeading: line(copy, 'guidance_heading'),

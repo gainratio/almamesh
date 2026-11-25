@@ -64,7 +64,7 @@ import { whenDataLifecycleReady } from '../lib/profileDataLifecycle';
 import { buildEnsurePredictiveInput, predictiveProfileKeyOf, predictiveReferenceInstant } from '../lib/predictive';
 import {
   storedChartAnalysisInstant,
-  storedChartReferenceDay,
+  storedChartReferenceInstant,
   viewerTimeZone,
 } from '../lib/analysisInstant';
 import { fetchEvidenceAnnotations } from './evidenceAnnotations';
@@ -224,7 +224,7 @@ function expectedPredictiveKey(chartId: string | null): string | null {
   const input = buildEnsurePredictiveInput(
     predictiveProfileKey(chartId),
     stored?.birth_data as ProcessedBirthData | undefined,
-    stored ? storedChartReferenceDay(stored, todayDay) : todayDay,
+    stored ? storedChartReferenceInstant(stored, todayDay) : todayDay,
   );
   return input ? predictiveRequestKey(input) : null;
 }

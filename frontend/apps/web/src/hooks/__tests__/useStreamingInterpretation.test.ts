@@ -147,7 +147,7 @@ const CURRENT_PREDICTIVE_KEY = predictiveRequestKey({
   datetimeUtc: '1990-03-30T06:45:00Z',
   latitude: 12.97,
   longitude: 77.59,
-  referenceInstant: '2026-07-12T00:00:00Z',
+  referenceInstant: '2026-07-12T12:00:00.000Z',
   utcOffsetMinutes: 330,
 });
 

@@ -65,9 +65,21 @@ export interface AcceptedAnnotation {
 export type RejectionReason =
   | 'unknown-observation'
   | 'unknown-factor'
+  | 'stale-dasha'
+  | 'duplicate-observation'
   | 'malformed'
   | 'empty-interpretation'
   | 'not-reflection';
+
+const VIMSHOTTARI_LORD = '(?:sun|moon|mars|mercury|jupiter|venus|saturn|rahu|ketu)';
+const CLASSICAL_DASHA_OBSERVATION_ID = new RegExp(
+  `^dasha:(?:maha:${VIMSHOTTARI_LORD}|antar:${VIMSHOTTARI_LORD}/${VIMSHOTTARI_LORD}|pratyantar:${VIMSHOTTARI_LORD}/${VIMSHOTTARI_LORD}/${VIMSHOTTARI_LORD})$`,
+);
+
+/** True when `id` is a structurally valid classical Vimśottarī daśā path. */
+function isClassicalDashaObservationId(id: string): boolean {
+  return CLASSICAL_DASHA_OBSERVATION_ID.test(id);
+}
 
 export interface RejectedAnnotation {
   /** What the model claimed to be citing, verbatim, for the provenance count. */
@@ -99,18 +111,27 @@ function validateOne(
   if (typeof interpretation !== 'string' || interpretation.trim() === '') {
     return { citedId: observationId, reason: 'empty-interpretation' };
   }
+  if (!observationIds.has(observationId)) {
+    return {
+      citedId: observationId,
+      reason: isClassicalDashaObservationId(observationId) ? 'stale-dasha' : 'unknown-observation',
+    };
+  }
   if (reflectionIssues(interpretation).length > 0) {
     return { citedId: observationId, reason: 'not-reflection' };
   }
-  if (!observationIds.has(observationId)) {
-    return { citedId: observationId, reason: 'unknown-observation' };
-  }
   const alsoCites = asStringArray(raw.also_cites);
-  const bogus = alsoCites.find((id) => !factorIds.has(id));
-  if (bogus !== undefined) {
+  const bogusFactors = alsoCites.filter((id) => !factorIds.has(id));
+  if (bogusFactors.length > 0) {
     // One fabricated supporting citation condemns the whole statement. A claim
     // that cites three real factors and one invented one is not 75% true.
-    return { citedId: bogus, reason: 'unknown-factor' };
+    // Only when every missing supporting id is a classical daśā path (rolled
+    // over since the reading was generated) do we classify it as stale-dasha.
+    const fabricated = bogusFactors.find((id) => !isClassicalDashaObservationId(id));
+    if (fabricated !== undefined) {
+      return { citedId: fabricated, reason: 'unknown-factor' };
+    }
+    return { citedId: bogusFactors[0]!, reason: 'stale-dasha' };
   }
   return { observationId, interpretation: interpretation.trim(), alsoCites };
 }
@@ -152,7 +173,7 @@ export function validateAnnotations(
     // One interpretation per observation: a second is a duplicate claim on the
     // same evidence and cannot both be the reading.
     if (seen.has(result.observationId)) {
-      rejected.push({ citedId: result.observationId, reason: 'unknown-observation' });
+      rejected.push({ citedId: result.observationId, reason: 'duplicate-observation' });
       continue;
     }
     seen.add(result.observationId);
