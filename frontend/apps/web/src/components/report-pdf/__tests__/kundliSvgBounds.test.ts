@@ -47,13 +47,12 @@ function assertStrictlyInsideViewport(layout: CellTextLayout, size: number, isLa
   expect(layout.signX).toBeGreaterThan(0);
   expect(layout.signX).toBeLessThan(size);
 
-  layout.labels.forEach((label, index) => {
-    const halfW = (label.length * MONO_CHAR_WIDTH_RATIO * layout.planetFont) / 2;
-    const baselineY = layout.firstPlanetY + index * layout.lineH;
-    expect(layout.planetX - halfW, `left clip for "${label}"`).toBeGreaterThanOrEqual(0);
-    expect(layout.planetX + halfW, `right clip for "${label}"`).toBeLessThanOrEqual(size);
-    expect(baselineY - layout.planetFont, `top clip for "${label}"`).toBeGreaterThanOrEqual(0);
-    expect(baselineY, `bottom clip for "${label}"`).toBeLessThanOrEqual(size);
+  layout.rows.forEach((row) => {
+    const halfW = (row.label.length * MONO_CHAR_WIDTH_RATIO * row.fontSize) / 2;
+    expect(row.x - halfW, `left clip for "${row.label}"`).toBeGreaterThanOrEqual(0);
+    expect(row.x + halfW, `right clip for "${row.label}"`).toBeLessThanOrEqual(size);
+    expect(row.y - row.fontSize, `top clip for "${row.label}"`).toBeGreaterThanOrEqual(0);
+    expect(row.y, `bottom clip for "${row.label}"`).toBeLessThanOrEqual(size);
   });
 }
 

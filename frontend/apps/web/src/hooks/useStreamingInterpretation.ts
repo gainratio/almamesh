@@ -35,6 +35,7 @@ import {
   type SectionProgressSnapshot,
 } from '@almamesh/llm';
 import {
+  useAyanamsaStore,
   useChartLibraryStore,
   useInterpretationStore,
   useLanguageStore,
@@ -221,10 +222,13 @@ function predictiveProfileKey(chartId: string | null): string {
 function expectedPredictiveKey(chartId: string | null): string | null {
   const stored = chartId ? useChartLibraryStore.getState().getChart(chartId) : undefined;
   const todayDay = predictiveReferenceInstant(new Date(), viewerTimeZone());
+  const ayanamsa = useAyanamsaStore.getState().ayanamsa;
   const input = buildEnsurePredictiveInput(
     predictiveProfileKey(chartId),
     stored?.birth_data as ProcessedBirthData | undefined,
     stored ? storedChartReferenceInstant(stored, todayDay) : todayDay,
+    {},
+    ayanamsa,
   );
   return input ? predictiveRequestKey(input) : null;
 }
