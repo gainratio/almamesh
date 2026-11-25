@@ -152,4 +152,17 @@ describe('ReportYogas — stability chip', () => {
     // the grade still renders
     expect(screen.getByTestId('report-yogas').textContent).toContain('strong');
   });
+
+  it('renders the plain-language primer, meaning, and deduplicated multi-rule basis', () => {
+    render(<ReportYogas yogas={[strongYoga]} audience="you" />);
+    expect(screen.getByTestId('report-yogas-primer').textContent).toContain(
+      'named geometric pattern of planets and houses',
+    );
+    expect(screen.getByTestId('report-yoga-meaning').textContent).toContain(
+      'What it means: Jupiter placed in an angular house from the Moon',
+    );
+    const basis = screen.getByTestId('report-yoga-basis');
+    expect(basis.textContent).toContain('In this chart: Jupiter in the 1st from the Moon');
+    expect(basis.querySelector('cite')?.textContent).toBe('BPHS');
+  });
 });

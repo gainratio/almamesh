@@ -708,10 +708,27 @@
   border-color: var(--report-gold-deep);
 }
 
+.report-yoga-meaning {
+  margin: 5px 0 0;
+  max-width: var(--report-measure);
+  font-size: 0.87rem;
+  line-height: 1.5;
+  color: var(--report-ink);
+}
+
+.report-yoga-label {
+  font-family: var(--report-sans);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--report-ink-soft);
+}
+
 .report-yoga-desc {
   margin: 4px 0 0;
   max-width: var(--report-measure);
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   color: var(--report-ink-soft);
 }
 

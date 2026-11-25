@@ -152,6 +152,23 @@ describe('Defect 3 — the birth-time stability marker reaches the PDF', () => {
     expect(screen.getByText('Gaja Kesari Yoga')).toBeTruthy();
   });
 
+  it('prints plain-language yoga meaning and chart-specific basis when supplied', () => {
+    const data = yogasData({
+      yogas: [
+        {
+          ...YOGA,
+          meaning: 'What it means: Jupiter placed in an angular house from the Moon.',
+          basis: 'In this chart: Jupiter in the 4th from the Moon — BPHS',
+        },
+      ],
+    });
+    render(<ReportPdfYogas data={data} />);
+    expect(
+      screen.getByText('What it means: Jupiter placed in an angular house from the Moon.'),
+    ).toBeTruthy();
+    expect(screen.getByText('In this chart: Jupiter in the 4th from the Moon — BPHS')).toBeTruthy();
+  });
+
   it('prints a life-domain stability flag when one was supplied', () => {
     render(<ReportPdfDomains data={domainsData({ ...DOMAIN_BLOCK, stability: 'birth-time stable' })} />);
     expect(screen.getByText('birth-time stable')).toBeTruthy();

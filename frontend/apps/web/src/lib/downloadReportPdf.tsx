@@ -63,6 +63,10 @@ export interface ReportPdfChrome {
   readonly formatCombustion?: CombustionCopy;
   /** Optional localized formatter for `yoga.dasha_activation`. */
   readonly formatYogaActivation?: (yoga: YogaData) => string | undefined;
+  /** Optional localized plain-language yoga meaning formatter. */
+  readonly formatYogaMeaning?: (yoga: YogaData) => string | undefined;
+  /** Optional localized chart-formation + classical-source formatter. */
+  readonly formatYogaBasis?: (yoga: YogaData) => string | undefined;
   /** Localized kundli plate captions ("Rāśi · D1" / "Navāṁśa · D9"). */
   readonly chartCaptions: { readonly rasi: string; readonly navamsa: string };
   readonly detailLabels: BirthDetailLabels;
@@ -207,6 +211,8 @@ export async function downloadReportPdf(input: DownloadReportPdfInput): Promise<
     formatPratyantarHeading: input.chrome.formatPratyantarHeading,
     formatCombustion: input.chrome.formatCombustion,
     formatYogaActivation: input.chrome.formatYogaActivation,
+    formatYogaMeaning: input.chrome.formatYogaMeaning,
+    formatYogaBasis: input.chrome.formatYogaBasis,
     detailLabels: input.chrome.detailLabels,
     chromeLabels: input.chrome.chromeLabels,
     comprehensive: input.comprehensive

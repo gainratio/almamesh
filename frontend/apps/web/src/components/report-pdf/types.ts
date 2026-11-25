@@ -166,6 +166,16 @@ export interface ReportPdfYoga {
    * OPTIONAL: absent when `yoga.dasha_activation` is absent on older bundles.
    */
   readonly activation?: string;
+  /**
+   * Plain-language reflective explanation ("What it means: ..."), pre-localized.
+   * OPTIONAL: absent on minimal synthetic unit-test fixtures.
+   */
+  readonly meaning?: string;
+  /**
+   * Chart-specific formation basis + classical citation ("In this chart: ... — BPHS").
+   * OPTIONAL: absent when `formation_rules` is empty or in synthetic fixtures.
+   */
+  readonly basis?: string;
 }
 
 /**

@@ -125,7 +125,10 @@
     "empty_body": "Gere seu mapa natal para ver a análise técnica.",
     "force_field_title": "Campo de força planetário",
     "force_field_unavailable": "Este navegador não consegue desenhar a visualização 3D aqui. Seu mapa, logo abaixo, tem tudo.",
-    "kundli_title": "Kundli e posição planetária"
+    "kundli_title": "Kundli e posição planetária",
+    "yogas_title": "Yogas principais identificados",
+    "yogas_subtitle": "Padrões planetários clássicos calculados no seu dispositivo, explicados em linguagem simples.",
+    "yogas_empty": "No mapa D1 não se formou nenhum yoga clássico deste catálogo."
   },
   "time_travel": {
     "sheet_intro": "Escolha um momento. O painel vai mostrar esse momento.",

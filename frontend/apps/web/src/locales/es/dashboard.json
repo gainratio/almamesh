@@ -125,7 +125,10 @@
     "empty_body": "Genera tu carta natal para ver el análisis técnico.",
     "force_field_title": "Campo de fuerza planetario",
     "force_field_unavailable": "Este navegador no puede dibujar aquí la vista 3D. Tu carta, más abajo, lo tiene todo.",
-    "kundli_title": "Kundli y posición planetaria"
+    "kundli_title": "Kundli y posición planetaria",
+    "yogas_title": "Yogas principales identificados",
+    "yogas_subtitle": "Patrones planetarios clásicos calculados en tu dispositivo, explicados en lenguaje claro.",
+    "yogas_empty": "En la carta D1 no se formó ningún yoga clásico de este catálogo."
   },
   "time_travel": {
     "sheet_intro": "Elige un momento. El panel mostrará ese momento.",
