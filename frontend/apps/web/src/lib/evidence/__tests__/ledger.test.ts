@@ -233,6 +233,54 @@ describe('the citation validator fails closed', () => {
     ]);
   });
 
+  it('keeps non-reflective prose on a rolled-over dasha classified as not-reflection and records all multi-level rollover ids', () => {
+    const base = nearCuspChart();
+    const dualRolledChart = {
+      ...base,
+      dashas: {
+        ...base.dashas,
+        maha_dasha_sequence: base.dashas.maha_dasha_sequence.map(({ antar_sequence: _omit, ...m }) => m),
+        current_antar: {
+          lord: 'sun',
+          start_date: '2027-01-31T06:13:52.961049Z',
+          end_date: '2028-01-13T00:00:00Z',
+          duration_years: 0.95,
+        },
+        current_pratyantar: {
+          lord: 'sun',
+          start_date: '2027-01-31T06:13:52.961049Z',
+          end_date: '2027-02-17T00:00:00Z',
+          duration_years: 0.05,
+        },
+      },
+    };
+    const ledger = buildEvidenceLedger(dualRolledChart, {
+      readings: [
+        { observation_id: 'lagna', interpretation: 'Aquarius ascendant reflects systematic effort.' },
+        {
+          observation_id: 'dasha:antar:saturn/venus',
+          interpretation: 'You will get promoted next month.',
+        },
+        {
+          observation_id: REAL_YOGA_OBSERVATION,
+          interpretation: 'Partnership themes are active.',
+          also_cites: ['dasha:antar:saturn/venus', 'dasha:pratyantar:saturn/venus/ketu'],
+        },
+      ],
+    });
+    expect(ledger.reflectionRejectedCount).toBe(1);
+    expect(ledger.staleDashaCount).toBe(1);
+    expect(ledger.staleDashaLevels).toEqual(['antar', 'pratyantar']);
+    // Birth Mahā has no prior Mahā in maha_dasha_sequence, so citing previous cyclic maha stays unsupported.
+    const birthMahaHallucination = buildEvidenceLedger(base, {
+      readings: [
+        { observation_id: 'dasha:maha:jupiter', interpretation: 'Prior Jupiter mahadasha.' },
+      ],
+    });
+    expect(birthMahaHallucination.unsupportedCount).toBe(1);
+    expect(birthMahaHallucination.staleDashaCount).toBe(0);
+  });
+
   it('still fails closed as unknown-factor when a fabricated factor accompanies a stale dasha in also_cites', () => {
     const base = nearCuspChart();
     const rolledChart = {

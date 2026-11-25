@@ -75,6 +75,8 @@ export interface RejectedAnnotation {
   /** What the model claimed to be citing, verbatim, for the provenance count. */
   readonly citedId: string;
   readonly reason: RejectionReason;
+  /** When `reason === 'stale-dasha'`, every rolled-over dasha id referenced by this statement. */
+  readonly staleIds?: readonly string[];
 }
 
 export interface ValidatedAnnotations {
@@ -102,14 +104,14 @@ function validateOne(
   if (typeof interpretation !== 'string' || interpretation.trim() === '') {
     return { citedId: observationId, reason: 'empty-interpretation' };
   }
-  if (!observationIds.has(observationId)) {
-    return {
-      citedId: observationId,
-      reason: priorDashaIds.has(observationId) ? 'stale-dasha' : 'unknown-observation',
-    };
+  if (!observationIds.has(observationId) && !priorDashaIds.has(observationId)) {
+    return { citedId: observationId, reason: 'unknown-observation' };
   }
   if (reflectionIssues(interpretation).length > 0) {
     return { citedId: observationId, reason: 'not-reflection' };
+  }
+  if (!observationIds.has(observationId)) {
+    return { citedId: observationId, reason: 'stale-dasha', staleIds: [observationId] };
   }
   const alsoCites = asStringArray(raw.also_cites);
   const bogusFactors = alsoCites.filter((id) => !factorIds.has(id));
@@ -122,7 +124,7 @@ function validateOne(
     if (fabricated !== undefined) {
       return { citedId: fabricated, reason: 'unknown-factor' };
     }
-    return { citedId: bogusFactors[0]!, reason: 'stale-dasha' };
+    return { citedId: bogusFactors[0]!, reason: 'stale-dasha', staleIds: bogusFactors };
   }
   return { observationId, interpretation: interpretation.trim(), alsoCites };
 }

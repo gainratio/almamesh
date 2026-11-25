@@ -199,8 +199,11 @@ export function formatPredictiveDate(iso: string): string {
  * `2-digit` day padding so both bounds of a window share one consistent format.
  */
 export function formatPredictiveWindowBound(iso: string): string {
+  if (DATE_ONLY.test(iso)) {
+    return formatPredictiveDate(iso);
+  }
   const parsed = new Date(iso);
-  if (DATE_ONLY.test(iso) || Number.isNaN(parsed.getTime())) {
+  if (Number.isNaN(parsed.getTime())) {
     return formatPredictiveDate(iso);
   }
   const timeZone = UTC_MIDNIGHT.test(iso) ? 'UTC' : resolvedViewerTimeZone();

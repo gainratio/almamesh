@@ -43,6 +43,8 @@ function assertStrictlyInsideViewport(layout: CellTextLayout, size: number, isLa
   expect(layout.signY).toBeLessThanOrEqual(size);
   if (isLagna) {
     expect(layout.lagnaY - layout.signFont).toBeGreaterThanOrEqual(0);
+    expect(layout.lagnaX).toBeGreaterThan(0);
+    expect(layout.lagnaX).toBeLessThan(size);
   }
   expect(layout.signX).toBeGreaterThan(0);
   expect(layout.signX).toBeLessThan(size);
@@ -97,10 +99,23 @@ describe('ReportPdfKundli geometric bounds', () => {
         false,
       );
       assertStrictlyInsideViewport(layout, 160, isLagna);
-      if (isLagna) {
-        expect(layout.lagnaX).toBeGreaterThan(0);
-        expect(layout.lagnaX).toBeLessThan(160);
-      }
     }
+  });
+
+  it('keeps extreme 9-planet stellium inside [0, 120] even in shallow bottom triangle H6', () => {
+    const ninePlanets = [
+      planet('sun', 'Su'),
+      planet('moon', 'Mo'),
+      planet('mars', 'Ma'),
+      planet('mercury', 'Me'),
+      planet('jupiter', 'Ju'),
+      planet('venus', 'Ve'),
+      planet('saturn', 'Sa'),
+      planet('rahu', 'Ra'),
+      planet('ketu', 'Ke'),
+    ];
+    const h6 = house(6, 5, ninePlanets);
+    const layout = computeCellTextLayout(h6, NORTH_INDIAN_HOUSE_CELLS[5]!, 120, false, false);
+    assertStrictlyInsideViewport(layout, 120, false);
   });
 });

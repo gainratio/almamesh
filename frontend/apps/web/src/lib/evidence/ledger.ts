@@ -107,13 +107,21 @@ function priorChartDashaIds(chart: SiderealChart): ReadonlySet<string> {
   const antarStart = parseInstantMs(antar?.start_date);
   const pratyantarStart = parseInstantMs(pratyantar?.start_date);
 
-  for (const m of dashas.maha_dasha_sequence ?? []) {
+  const mahaSeq = dashas.maha_dasha_sequence ?? [];
+  const pratyantarSeq = dashas.pratyantar_sequence ?? [];
+  let currentMahaHasAntars = false;
+
+  for (const m of mahaSeq) {
     const mLord = m.lord.toLowerCase();
     const mEnd = parseInstantMs(m.end_date);
     if (mahaStart !== null && mEnd !== null && mEnd <= mahaStart) {
       prior.add(`dasha:maha:${mLord}`);
     }
-    for (const a of m.antar_sequence ?? []) {
+    const antars = m.antar_sequence ?? [];
+    if (maha && mLord === maha.lord.toLowerCase() && antars.length > 0) {
+      currentMahaHasAntars = true;
+    }
+    for (const a of antars) {
       const aLord = a.lord.toLowerCase();
       const aEnd = parseInstantMs(a.end_date);
       if (antarStart !== null && aEnd !== null && aEnd <= antarStart) {
@@ -125,7 +133,7 @@ function priorChartDashaIds(chart: SiderealChart): ReadonlySet<string> {
   if (maha && antar) {
     const mLord = maha.lord.toLowerCase();
     const aLord = antar.lord.toLowerCase();
-    for (const p of dashas.pratyantar_sequence ?? []) {
+    for (const p of pratyantarSeq) {
       const pLord = p.lord.toLowerCase();
       const pEnd = parseInstantMs(p.end_date);
       if (pratyantarStart !== null && pEnd !== null && pEnd <= pratyantarStart) {
@@ -134,30 +142,51 @@ function priorChartDashaIds(chart: SiderealChart): ReadonlySet<string> {
     }
   }
 
-  // Also include the deterministic immediately preceding cyclic leg when a
-  // payload omits nested sub-sequences (e.g. pratyantar_sequence absent).
+  // Gate each cyclic fallback leg on its corresponding sequence being absent so
+  // a chart carrying explicit timelines (e.g. a child still in their birth Mahā)
+  // never synthesizes an unelapsed prior period.
   if (maha) {
     const mLord = maha.lord.toLowerCase();
     const prevMaha = previousLord(mLord);
-    if (prevMaha) prior.add(`dasha:maha:${prevMaha}`);
+    if (mahaSeq.length === 0 && prevMaha) {
+      prior.add(`dasha:maha:${prevMaha}`);
+    }
     if (antar) {
       const aLord = antar.lord.toLowerCase();
       const prevAntar = previousLord(aLord);
-      if (prevAntar) {
-        if (aLord === mLord && prevMaha) {
-          prior.add(`dasha:antar:${prevMaha}/${prevAntar}`);
+      if (!currentMahaHasAntars && prevAntar) {
+        if (aLord === mLord) {
+          const lastAntarOfPrevMaha = prevMaha ? previousLord(prevMaha) : null;
+          if (
+            prevMaha &&
+            lastAntarOfPrevMaha &&
+            (mahaSeq.length === 0 || prior.has(`dasha:maha:${prevMaha}`))
+          ) {
+            prior.add(`dasha:antar:${prevMaha}/${lastAntarOfPrevMaha}`);
+          }
         } else {
           prior.add(`dasha:antar:${mLord}/${prevAntar}`);
         }
       }
-      if (pratyantar) {
+      if (pratyantar && pratyantarSeq.length === 0) {
         const pLord = pratyantar.lord.toLowerCase();
-        const prevPratyantar = previousLord(pLord);
-        if (prevPratyantar) {
-          if (pLord === aLord && prevAntar) {
-            const parentMaha = aLord === mLord && prevMaha ? prevMaha : mLord;
-            prior.add(`dasha:pratyantar:${parentMaha}/${prevAntar}/${prevPratyantar}`);
-          } else {
+        if (pLord === aLord) {
+          // A new antar starts with `aLord/aLord`, so the immediately preceding
+          // pratyantar was the LAST pratyantar (`previousLord(prevAntar)`) of
+          // the immediately preceding antar (`prevAntar`).
+          const prevParentMaha = aLord === mLord && prevMaha ? prevMaha : mLord;
+          const prevParentAntar =
+            aLord === mLord && prevMaha ? previousLord(prevMaha) : prevAntar;
+          const lastPratyantar = prevParentAntar ? previousLord(prevParentAntar) : null;
+          if (prevParentAntar && lastPratyantar) {
+            const prevAntarId = `dasha:antar:${prevParentMaha}/${prevParentAntar}`;
+            if (!currentMahaHasAntars || prior.has(prevAntarId)) {
+              prior.add(`dasha:pratyantar:${prevParentMaha}/${prevParentAntar}/${lastPratyantar}`);
+            }
+          }
+        } else {
+          const prevPratyantar = previousLord(pLord);
+          if (prevPratyantar) {
             prior.add(`dasha:pratyantar:${mLord}/${aLord}/${prevPratyantar}`);
           }
         }
@@ -201,8 +230,10 @@ function partitionRejections(rejected: readonly RejectedAnnotation[]): Rejection
         break;
       case 'stale-dasha': {
         staleDashaCount += 1;
-        const level = dashaLevelOfId(item.citedId);
-        if (level !== null) staleLevels.add(level);
+        for (const id of item.staleIds ?? [item.citedId]) {
+          const level = dashaLevelOfId(id);
+          if (level !== null) staleLevels.add(level);
+        }
         break;
       }
       case 'malformed':
