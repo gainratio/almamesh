@@ -65,6 +65,8 @@ export interface AcceptedAnnotation {
 export type RejectionReason =
   | 'unknown-observation'
   | 'unknown-factor'
+  | 'stale-dasha'
+  | 'duplicate-observation'
   | 'malformed'
   | 'empty-interpretation'
   | 'not-reflection';
@@ -73,6 +75,8 @@ export interface RejectedAnnotation {
   /** What the model claimed to be citing, verbatim, for the provenance count. */
   readonly citedId: string;
   readonly reason: RejectionReason;
+  /** When `reason === 'stale-dasha'`, every rolled-over dasha id referenced by this statement. */
+  readonly staleIds?: readonly string[];
 }
 
 export interface ValidatedAnnotations {
@@ -90,6 +94,7 @@ function validateOne(
   raw: RawAnnotation,
   observationIds: ReadonlySet<string>,
   factorIds: ReadonlySet<string>,
+  priorDashaIds: ReadonlySet<string>,
 ): AcceptedAnnotation | RejectedAnnotation {
   const observationId = raw.observation_id;
   if (typeof observationId !== 'string' || observationId === '') {
@@ -99,18 +104,27 @@ function validateOne(
   if (typeof interpretation !== 'string' || interpretation.trim() === '') {
     return { citedId: observationId, reason: 'empty-interpretation' };
   }
+  if (!observationIds.has(observationId) && !priorDashaIds.has(observationId)) {
+    return { citedId: observationId, reason: 'unknown-observation' };
+  }
   if (reflectionIssues(interpretation).length > 0) {
     return { citedId: observationId, reason: 'not-reflection' };
   }
   if (!observationIds.has(observationId)) {
-    return { citedId: observationId, reason: 'unknown-observation' };
+    return { citedId: observationId, reason: 'stale-dasha', staleIds: [observationId] };
   }
   const alsoCites = asStringArray(raw.also_cites);
-  const bogus = alsoCites.find((id) => !factorIds.has(id));
-  if (bogus !== undefined) {
+  const bogusFactors = alsoCites.filter((id) => !factorIds.has(id));
+  if (bogusFactors.length > 0) {
     // One fabricated supporting citation condemns the whole statement. A claim
     // that cites three real factors and one invented one is not 75% true.
-    return { citedId: bogus, reason: 'unknown-factor' };
+    // Only when every missing supporting id is verified as a strictly prior
+    // Vimśottarī period of THIS chart do we classify it as stale-dasha.
+    const fabricated = bogusFactors.find((id) => !priorDashaIds.has(id));
+    if (fabricated !== undefined) {
+      return { citedId: fabricated, reason: 'unknown-factor' };
+    }
+    return { citedId: bogusFactors[0]!, reason: 'stale-dasha', staleIds: bogusFactors };
   }
   return { observationId, interpretation: interpretation.trim(), alsoCites };
 }
@@ -121,15 +135,22 @@ function isRejection(
   return 'reason' in result;
 }
 
+const EMPTY_PRIOR_DASHAS: ReadonlySet<string> = new Set();
+
 /**
  * Validate raw model output against the factors and observations THIS chart
  * actually produced. Nothing here trusts a field's type without checking it —
  * the payload arrived from a language model over HTTP.
+ *
+ * `priorDashaIds`, when supplied by `buildEvidenceLedger`, lists ONLY strictly
+ * prior Vimśottarī periods verified against this chart's own dasha timeline;
+ * any other absent dasha id (future or hallucinated lord) stays `unknown-*`.
  */
 export function validateAnnotations(
   payload: RawAnnotationPayload | null | undefined,
   observationIds: ReadonlySet<string>,
   factorIds: ReadonlySet<string>,
+  priorDashaIds: ReadonlySet<string> = EMPTY_PRIOR_DASHAS,
 ): ValidatedAnnotations {
   if (payload == null || typeof payload !== 'object') {
     return { accepted: [], rejected: [], generalGuidance: [] };
@@ -144,7 +165,7 @@ export function validateAnnotations(
       rejected.push({ citedId: '', reason: 'malformed' });
       continue;
     }
-    const result = validateOne(row as RawAnnotation, observationIds, factorIds);
+    const result = validateOne(row as RawAnnotation, observationIds, factorIds, priorDashaIds);
     if (isRejection(result)) {
       rejected.push(result);
       continue;
@@ -152,7 +173,7 @@ export function validateAnnotations(
     // One interpretation per observation: a second is a duplicate claim on the
     // same evidence and cannot both be the reading.
     if (seen.has(result.observationId)) {
-      rejected.push({ citedId: result.observationId, reason: 'unknown-observation' });
+      rejected.push({ citedId: result.observationId, reason: 'duplicate-observation' });
       continue;
     }
     seen.add(result.observationId);

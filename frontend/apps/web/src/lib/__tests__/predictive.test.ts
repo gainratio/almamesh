@@ -11,6 +11,7 @@ import {
   titleCaseToken,
   toVargaChart,
 } from '../predictive';
+import { storedChartReferenceInstant } from '../analysisInstant';
 import { VARGA_CTX_FULL } from '../../test/predictiveFixtures';
 
 const BIRTH: ProcessedBirthData = {
@@ -194,4 +195,38 @@ describe('formatReferenceDay', () => {
       expect(formatReferenceDay('2026-10-07T00:00:00Z')).toBe('Oct 7, 2026');
     },
   );
+
+  it('formats a date-only string as its written calendar day even west of UTC', () => {
+    vi.stubEnv('TZ', 'America/Los_Angeles');
+    expect(formatReferenceDay('2026-10-07')).toBe('Oct 7, 2026');
+  });
+
+  it('formats a non-midnight chart instant in the viewer timezone with consistent window-bound padding', () => {
+    // 02:00 UTC on Nov 5 is 6:00 PM on Nov 4 in Los Angeles, and Nov 5 in UTC/Kolkata.
+    vi.stubEnv('TZ', 'America/Los_Angeles');
+    expect(formatReferenceDay('2026-11-05T02:00:00Z')).toBe('Nov 4, 2026');
+    expect(formatPredictiveWindowBound('2026-11-05T02:00:00Z')).toBe('Nov 04, 2026');
+
+    vi.stubEnv('TZ', 'Asia/Kolkata');
+    expect(formatReferenceDay('2026-11-05T02:00:00Z')).toBe('Nov 5, 2026');
+    expect(formatPredictiveWindowBound('2026-11-05T02:00:00Z')).toBe('Nov 05, 2026');
+  });
+});
+
+describe('storedChartReferenceInstant', () => {
+  it('preserves the exact intra-day snapshot instant instead of truncating to UTC midnight', () => {
+    const exact = '2026-11-24T22:10:00Z';
+    const stored = {
+      sidereal_chart: { snapshot: { reference_date: exact } },
+      astronomical_calculations: { calculation_timestamp: '2026-11-24T12:00:00Z' },
+    } as unknown as StoredChart;
+    expect(storedChartReferenceInstant(stored, '2026-11-24T00:00:00Z')).toBe(exact);
+  });
+
+  it('falls back to the caller instant only when a legacy chart records none', () => {
+    const legacy = { astronomical_calculations: {} } as unknown as StoredChart;
+    expect(storedChartReferenceInstant(legacy, '2026-11-24T00:00:00Z')).toBe(
+      '2026-11-24T00:00:00Z',
+    );
+  });
 });

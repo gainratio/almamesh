@@ -208,7 +208,7 @@ describe('one analysis instant on screen for a pre-snapshot chart', () => {
   it('shows the atlas as of exactly the date the footer prints', () => {
     const chart = calculatedLegacyChart();
     renderScreen(chart);
-    predictiveReadyFor(chart, predictiveReferenceInstant(new Date(CALCULATED), 'Asia/Kolkata'));
+    predictiveReadyFor(chart, CALCULATED);
     mount(chart);
     const dates = asOfDates();
     expect(dates).toHaveLength(2);
@@ -219,7 +219,7 @@ describe('one analysis instant on screen for a pre-snapshot chart', () => {
   it('refreshes the current timeline from the facts computed for the chart\'s own day', () => {
     const chart = calculatedLegacyChart();
     renderScreen(chart);
-    predictiveReadyFor(chart, predictiveReferenceInstant(new Date(CALCULATED), 'Asia/Kolkata'));
+    predictiveReadyFor(chart, CALCULATED);
     usePredictiveStore.setState({ rawContexts: {} as never });
     expect(currentTimelineInputState(CHART_ID)).toBe('ready');
   });

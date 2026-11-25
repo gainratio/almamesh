@@ -7,11 +7,14 @@
  * block is a device for making invented prose look derived.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { buildEvidenceLedger } from '../ledger';
 import { validateAnnotations } from '../annotations';
 import { buildObservations } from '../observations';
+import { buildEvidenceSection } from '../../../components/report-pdf/buildEvidenceSection';
+import { maximalReportT } from '../../../components/report-pdf/__tests__/maximalReportFixture';
+import { formatPredictiveDate } from '../../predictive';
 import { nearCuspChart, secureLagnaChart } from './evidenceFixtures';
 
 function legacyNearCuspChart() {
@@ -146,7 +149,187 @@ describe('the citation validator fails closed', () => {
     });
     expect(ledger.rows.find((row) => row.observation.id === 'lagna')?.interpretation).toBe('first');
     expect(ledger.rejectedCount).toBe(1);
+    expect(ledger.otherRejectedCount).toBe(1);
+    expect(ledger.unsupportedCount).toBe(0);
+    expect(ledger.rejectedCitations).toEqual([]);
   });
+
+  it('never accuses valid factors rejected for non-reflective prose of being absent from the chart', () => {
+    const ledger = buildEvidenceLedger(nearCuspChart(), {
+      readings: [
+        { observation_id: 'lagna', interpretation: 'You will get married in 2027.' },
+        { observation_id: REAL_YOGA_OBSERVATION, interpretation: 'You will receive a windfall next year.' },
+      ],
+    });
+    expect(ledger.rejectedCount).toBe(2);
+    expect(ledger.reflectionRejectedCount).toBe(2);
+    expect(ledger.unsupportedCount).toBe(0);
+    expect(ledger.rejectedCitations).toEqual([]);
+
+    const section = buildEvidenceSection(ledger, maximalReportT());
+    expect(section.rejectedNote).toContain('non-reflective phrasing');
+    expect(section.rejectedNote).not.toContain('does not contain');
+    expect(section.rejectedNote).not.toContain('lagna');
+    expect(section.rejectedNote).not.toContain(REAL_YOGA_OBSERVATION);
+  });
+
+  it('classifies rolled-over classical dasha citations as stale-dasha and explains the rollover on empty dasha rows', () => {
+    const base = nearCuspChart();
+    const rolledChart = {
+      ...base,
+      dashas: {
+        ...base.dashas,
+        current_pratyantar: {
+          lord: 'ketu',
+          start_date: '2026-11-24T18:57:22.961049Z',
+          end_date: '2027-01-31T06:13:52.961049Z',
+          duration_years: 0.18472222222222223,
+        },
+      },
+    };
+    const ledger = buildEvidenceLedger(rolledChart, {
+      readings: [
+        { observation_id: 'lagna', interpretation: 'Aquarius ascendant emphasizes systems thinking.' },
+        {
+          observation_id: 'dasha:pratyantar:saturn/venus/mercury',
+          interpretation: 'Prior pratyantar period reflection.',
+        },
+        {
+          observation_id: REAL_YOGA_OBSERVATION,
+          interpretation: 'Partnership themes are highlighted.',
+          also_cites: ['dasha:pratyantar:saturn/venus/mercury'],
+        },
+      ],
+    });
+    expect(ledger.annotated).toBe(true);
+    expect(ledger.staleDashaCount).toBe(2);
+    expect(ledger.unsupportedCount).toBe(0);
+    expect(ledger.rejectedCitations).toEqual([]);
+
+    const section = buildEvidenceSection(ledger, maximalReportT());
+    expect(section.rejectedNote).toContain('expired after a period rollover');
+    expect(section.rejectedNote).not.toContain('does not contain');
+    const pratyantarRow = section.rows.find((r) => r.observationId === 'dasha:pratyantar:saturn/venus/ketu');
+    const mahaRow = section.rows.find((r) => r.observationId === 'dasha:maha:saturn');
+    expect(pratyantarRow?.interpretation).toContain('regenerate the reading to annotate this period');
+    expect(mahaRow?.interpretation).not.toContain('regenerate the reading to annotate this period');
+  });
+
+  it('keeps hallucinated or future dasha lords fail-closed as unsupported citations (never stale-dasha)', () => {
+    const ledger = buildEvidenceLedger(nearCuspChart(), {
+      readings: [
+        { observation_id: 'dasha:maha:mars', interpretation: 'Hallucinated Mars mahadasha.' },
+        {
+          observation_id: 'dasha:pratyantar:saturn/venus/sun',
+          interpretation: 'Future or wrong pratyantar lord.',
+        },
+      ],
+    });
+    expect(ledger.unsupportedCount).toBe(2);
+    expect(ledger.staleDashaCount).toBe(0);
+    expect(ledger.rejectedCitations).toEqual([
+      'dasha:maha:mars',
+      'dasha:pratyantar:saturn/venus/sun',
+    ]);
+  });
+
+  it('keeps non-reflective prose on a rolled-over dasha classified as not-reflection and records all multi-level rollover ids', () => {
+    const base = nearCuspChart();
+    const dualRolledChart = {
+      ...base,
+      dashas: {
+        ...base.dashas,
+        maha_dasha_sequence: base.dashas.maha_dasha_sequence.map(({ antar_sequence: _omit, ...m }) => m),
+        current_antar: {
+          lord: 'sun',
+          start_date: '2027-01-31T06:13:52.961049Z',
+          end_date: '2028-01-13T00:00:00Z',
+          duration_years: 0.95,
+        },
+        current_pratyantar: {
+          lord: 'sun',
+          start_date: '2027-01-31T06:13:52.961049Z',
+          end_date: '2027-02-17T00:00:00Z',
+          duration_years: 0.05,
+        },
+      },
+    };
+    const ledger = buildEvidenceLedger(dualRolledChart, {
+      readings: [
+        { observation_id: 'lagna', interpretation: 'Aquarius ascendant reflects systematic effort.' },
+        {
+          observation_id: 'dasha:antar:saturn/venus',
+          interpretation: 'You will get promoted next month.',
+        },
+        {
+          observation_id: REAL_YOGA_OBSERVATION,
+          interpretation: 'Partnership themes are active.',
+          also_cites: ['dasha:antar:saturn/venus', 'dasha:pratyantar:saturn/venus/ketu'],
+        },
+      ],
+    });
+    expect(ledger.reflectionRejectedCount).toBe(1);
+    expect(ledger.staleDashaCount).toBe(1);
+    expect(ledger.staleDashaLevels).toEqual(['antar', 'pratyantar']);
+    // Birth Mahā has no prior Mahā in maha_dasha_sequence, so citing previous cyclic maha stays unsupported.
+    const birthMahaHallucination = buildEvidenceLedger(base, {
+      readings: [
+        { observation_id: 'dasha:maha:jupiter', interpretation: 'Prior Jupiter mahadasha.' },
+      ],
+    });
+    expect(birthMahaHallucination.unsupportedCount).toBe(1);
+    expect(birthMahaHallucination.staleDashaCount).toBe(0);
+  });
+
+  it('still fails closed as unknown-factor when a fabricated factor accompanies a stale dasha in also_cites', () => {
+    const base = nearCuspChart();
+    const rolledChart = {
+      ...base,
+      dashas: {
+        ...base.dashas,
+        current_pratyantar: {
+          lord: 'ketu',
+          start_date: '2026-11-24T18:57:22.961049Z',
+          end_date: '2027-01-31T06:13:52.961049Z',
+          duration_years: 0.18472222222222223,
+        },
+      },
+    };
+    const ledger = buildEvidenceLedger(rolledChart, {
+      readings: [
+        {
+          observation_id: REAL_YOGA_OBSERVATION,
+          interpretation: 'Partnership themes are highlighted.',
+          also_cites: ['dasha:pratyantar:saturn/venus/mercury', 'dignity:pluto'],
+        },
+      ],
+    });
+    expect(ledger.unsupportedCount).toBe(1);
+    expect(ledger.staleDashaCount).toBe(0);
+    expect(ledger.rejectedCitations).toEqual(['dignity:pluto']);
+  });
+});
+
+describe('evidence section dasha date timezone parity', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each([
+    { zone: 'America/Los_Angeles', expectedIso: '2027-01-30', expectedDisplay: 'Jan 30, 2027' },
+    { zone: 'Asia/Kolkata', expectedIso: '2027-01-31', expectedDisplay: 'Jan 31, 2027' },
+  ])(
+    'matches formatPredictiveDate calendar day in $zone for an instant crossing UTC midnight',
+    ({ zone, expectedIso, expectedDisplay }) => {
+      vi.stubEnv('TZ', zone);
+      const chart = nearCuspChart();
+      const handoverIso = chart.dashas.current_antar!.end_date;
+      const section = buildEvidenceSection(buildEvidenceLedger(chart), maximalReportT());
+      const antarRow = section.rows.find((r) => r.observationId === 'dasha:antar:saturn/venus');
+      expect(antarRow?.observation).toContain(expectedIso);
+      expect(formatPredictiveDate(handoverIso)).toBe(expectedDisplay);
+    },
+  );
 });
 
 describe('the keyless report is complete without any model', () => {

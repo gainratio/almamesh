@@ -47,20 +47,30 @@ export function predictiveReferenceInstant(
   return `${parts.year}-${parts.month}-${parts.day}T00:00:00Z`;
 }
 
+const UTC_MIDNIGHT = /T00:00:00(?:\.0+)?(?:Z|\+00:00)$/;
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** The viewer's resolved IANA timezone (explicit fallback to UTC). */
+function resolvedViewerTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+}
+
 /**
- * Display one analysis day — a `predictiveReferenceInstant` value — as the
- * calendar day it names. It is UTC midnight of the chart-local day, so it is
- * formatted in UTC: formatting it in the viewer's zone printed the day BEFORE
- * for anyone west of Greenwich ("As of Oct 06" on Oct 07 in California). Every
- * "As of" on screen and in the PDF goes through here, so they cannot disagree.
+ * Display one analysis instant or day as the calendar day it names.
+ *
+ * A date-only string (`YYYY-MM-DD`) or UTC-midnight sentinel
+ * (`predictiveReferenceInstant`) encodes a calendar day directly, so it is
+ * formatted in UTC (preventing a day rollback west of GMT). A non-midnight
+ * chart instant (`storedChartReferenceInstant`) is a real point in time,
+ * formatted in the viewer's timezone so every "As of" line matches the cover
+ * date and provenance footer.
  */
 export function formatReferenceDay(day: string): string {
-  return formatDisplayDate(new Date(day), {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    timeZone: 'UTC',
-  });
+  const isCalendarSentinel = DATE_ONLY.test(day) || UTC_MIDNIGHT.test(day);
+  const options: Intl.DateTimeFormatOptions = isCalendarSentinel
+    ? { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' }
+    : { year: 'numeric', month: 'short', day: 'numeric', timeZone: resolvedViewerTimeZone() };
+  return formatDisplayDate(new Date(day), options);
 }
 
 /** A period's engine bounds: its window length and its reading's inclusive last day. */
@@ -166,8 +176,6 @@ export function toVargaChart(data: VargaChartFullData): VargaChart {
   };
 }
 
-const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
-
 /**
  * Locale-aware display for an engine ISO value: a date-only string renders as
  * that CALENDAR date (never reparsed through UTC, which can roll it back a day
@@ -185,16 +193,21 @@ export function formatPredictiveDate(iso: string): string {
 }
 
 /**
- * Display date for an engine window bound. The bounds are UTC instants (often
- * UTC midnight), so they are formatted in UTC: west of Greenwich a local-time
- * render would show the previous day ("Oct 08" for a window starting 9 Oct).
+ * Display date for an engine window bound. A UTC-midnight bound names a UTC
+ * calendar day (formatted in UTC so west of Greenwich does not roll back a day);
+ * a non-midnight chart instant formats in the viewer's timezone with matching
+ * `2-digit` day padding so both bounds of a window share one consistent format.
  */
 export function formatPredictiveWindowBound(iso: string): string {
-  const parsed = new Date(iso);
-  if (DATE_ONLY.test(iso) || Number.isNaN(parsed.getTime())) {
+  if (DATE_ONLY.test(iso)) {
     return formatPredictiveDate(iso);
   }
-  return formatDisplayDate(parsed, { year: 'numeric', month: 'short', day: '2-digit', timeZone: 'UTC' });
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) {
+    return formatPredictiveDate(iso);
+  }
+  const timeZone = UTC_MIDNIGHT.test(iso) ? 'UTC' : resolvedViewerTimeZone();
+  return formatDisplayDate(parsed, { year: 'numeric', month: 'short', day: '2-digit', timeZone });
 }
 
 /**

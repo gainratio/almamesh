@@ -74,16 +74,27 @@ export function storedChartRecordsInstant(stored: StoredChartDaySource): boolean
 }
 
 /**
+ * The ONE exact analysis instant for a stored chart: its snapshot's
+ * `reference_date`, or its stored calculation timestamp, falling back to
+ * `fallbackInstant` only for legacy backups that record neither.
+ *
+ * Passing the chart's EXACT instant (not UTC midnight of its calendar day) to
+ * the predictive layer guarantees that `domains_context` and `transit_context`
+ * evaluate the exact same active Mahā / Antar / Pratyantar daśā as
+ * `sidereal_chart` — even on the day of an intra-day daśā rollover.
+ */
+export function storedChartReferenceInstant(
+  stored: StoredChartDaySource,
+  fallbackInstant: string,
+): string {
+  return recordedInstant(stored) ?? fallbackInstant;
+}
+
+/**
  * The ONE analysis DAY for a stored chart: the calendar day of its analysis
  * instant, as the UTC-midnight `predictiveReferenceInstant` the engine takes.
- * The Life Atlas, Sky & Timing, the current timeline and the PDF's transits
- * are computed for this day, and every "As of" prints it, so none of them can
- * name a day the chart's dasha was not computed for. The day is read in the
- * viewer's zone, the zone the footer, cover, PDF and prompt print the instant
- * in: an Indian chart viewed in California must not read "Oct 8" in the atlas
- * beside "Oct 7" in the footer. A chart that records no instant (the oldest
- * backups) is read as of `todayDay`, the caller's explicit today, until
- * `useChartReanchor` gives it one.
+ * Used for day-boundary staleness checks (`useChartReanchor`) so a returning
+ * visitor re-anchors once per calendar day in the viewer's timezone.
  */
 export function storedChartReferenceDay(stored: StoredChartDaySource, todayDay: string): string {
   const instant = recordedInstant(stored);

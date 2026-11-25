@@ -30,7 +30,7 @@ import {
 } from '../components/features/predictive';
 import { usePredictiveLayer } from '../hooks/usePredictiveLayer';
 import { formatReferenceDay, predictiveReferenceInstant, selectPrimaryStoredChart } from '../lib/predictive';
-import { storedChartReferenceDay, viewerTimeZone } from '../lib/analysisInstant';
+import { storedChartReferenceInstant, viewerTimeZone } from '../lib/analysisInstant';
 
 type PredictiveTab = 'timing' | 'periods' | 'vargas' | 'strength' | 'domains' | 'varshaphala';
 
@@ -60,7 +60,7 @@ export default function PredictivePage(): ReactElement {
   const siderealChart = storedChart?.sidereal_chart ?? null;
   const fallbackDay = predictiveReferenceInstant(new Date(), viewerTimeZone());
   const varshaphalaReference = storedChart
-    ? storedChartReferenceDay(storedChart, fallbackDay)
+    ? storedChartReferenceInstant(storedChart, fallbackDay)
     : fallbackDay;
 
   const ready =

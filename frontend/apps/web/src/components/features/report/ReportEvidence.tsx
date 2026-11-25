@@ -166,7 +166,10 @@ export function ReportEvidence({ chart, annotations }: ReportEvidenceProps): Rea
       </div>
       <EvidenceGuidance section={section} />
       {section.rejectedNote ? (
-        <p className="report-evidence-rejected" data-testid="report-evidence-rejected">
+        <p
+          className="report-evidence-rejected whitespace-pre-line"
+          data-testid="report-evidence-rejected"
+        >
           {section.rejectedNote}
         </p>
       ) : null}
