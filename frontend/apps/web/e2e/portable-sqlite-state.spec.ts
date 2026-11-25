@@ -39,6 +39,7 @@ interface BrowserProblems {
  * data failure still fails.
  */
 const BENIGN_ABORT_PATHS = ["/pyodide/", "/bundle/", "/models/", "/assets/"];
+const BENIGN_ABORT_EXACT = new Set(["/public.key"]);
 
 function watchBrowser(
   context: BrowserContext,
@@ -66,11 +67,11 @@ function watchBrowser(
     // Navigating between Settings routes can cancel the background engine
     // prewarm. Chromium reports that intentional cancellation as a failed
     // request even though no response failed and the app handles it normally.
+    const pathname = new URL(request.url()).pathname;
     if (
       request.failure()?.errorText === "net::ERR_ABORTED" &&
-      BENIGN_ABORT_PATHS.some((prefix) =>
-        new URL(request.url()).pathname.startsWith(prefix),
-      )
+      (BENIGN_ABORT_EXACT.has(pathname) ||
+        BENIGN_ABORT_PATHS.some((prefix) => pathname.startsWith(prefix)))
     ) {
       return;
     }

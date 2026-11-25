@@ -42,7 +42,7 @@ export interface BrowserProblems {
  * and the routed fakes qualify; an app-shell or data failure still fails.
  */
 const ABORT_TEXTS = [/ERR_ABORTED/, /cancell?ed/i, /Load request cancelled/i, /NS_BINDING_ABORTED/];
-const ABORTABLE_PATHS = [/^\/pyodide\//, /^\/bundle\//, /^\/models\//, /^\/assets\//];
+const ABORTABLE_PATHS = [/^\/pyodide\//, /^\/bundle\//, /^\/models\//, /^\/assets\//, /^\/public\.key$/];
 
 function isBenignAbort(url: URL, origin: string, errorText: string): boolean {
   if (!ABORT_TEXTS.some((pattern) => pattern.test(errorText))) return false;
