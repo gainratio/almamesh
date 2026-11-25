@@ -133,12 +133,15 @@ export interface CellTextLayout {
   readonly signX: number;
   readonly signY: number;
   readonly signFont: number;
+  readonly lagnaX: number;
   readonly lagnaY: number;
   readonly rows: readonly CellPlanetRow[];
 }
 
 const MONO_CHAR_WIDTH_RATIO = 0.62;
 const MIN_FONT_PT = 4.5;
+const GLYPH_ASCENT_RATIO = 0.85;
+const GLYPH_DESCENT_RATIO = 0.15;
 
 function boundsOf(polygon: readonly UnitPoint[], size: number): CellBounds {
   let minX = Infinity;
@@ -182,14 +185,69 @@ function polygonChordAtY(
   return lo <= hi ? [lo, hi] : null;
 }
 
+/**
+ * Conservative horizontal span across a glyph's full vertical extent
+ * `[baselineY - ascent, baselineY + descent]`, guaranteeing no glyph corner
+ * crosses a 45° diagonal divider.
+ */
+function bandChordAtY(
+  polygon: readonly UnitPoint[],
+  size: number,
+  baselineY: number,
+  fontSize: number,
+): readonly [number, number] | null {
+  const top = polygonChordAtY(polygon, size, baselineY - fontSize * GLYPH_ASCENT_RATIO);
+  const bot = polygonChordAtY(polygon, size, baselineY + fontSize * GLYPH_DESCENT_RATIO);
+  if (!top || !bot) return null;
+  const lo = Math.max(top[0], bot[0]);
+  const hi = Math.min(top[1], bot[1]);
+  return lo <= hi ? [lo, hi] : null;
+}
+
+/**
+ * Exact vertical interval `[yLo, yHi]` where a convex polygon's horizontal
+ * chord width is at least `minWidth`, keeping multi-planet stacks out of
+ * zero-width triangle and diamond apexes.
+ */
+function usableVerticalInterval(
+  polygon: readonly UnitPoint[],
+  size: number,
+  minWidth: number,
+  bounds: CellBounds,
+): readonly [number, number] {
+  const ys = [...new Set(polygon.map((p) => p.y * size))].sort((a, b) => a - b);
+  let yLo = Infinity;
+  let yHi = -Infinity;
+  for (let i = 0; i < ys.length - 1; i += 1) {
+    const y0 = ys[i]!;
+    const y1 = ys[i + 1]!;
+    const c0 = polygonChordAtY(polygon, size, y0);
+    const c1 = polygonChordAtY(polygon, size, y1);
+    const w0 = c0 ? c0[1] - c0[0] : 0;
+    const w1 = c1 ? c1[1] - c1[0] : 0;
+    if (w0 < minWidth && w1 < minWidth) continue;
+    let segLo = y0;
+    let segHi = y1;
+    if (w0 < minWidth && w1 >= minWidth) {
+      segLo = y0 + ((minWidth - w0) / (w1 - w0)) * (y1 - y0);
+    } else if (w0 >= minWidth && w1 < minWidth) {
+      segHi = y0 + ((w0 - minWidth) / (w0 - w1)) * (y1 - y0);
+    }
+    if (segLo < yLo) yLo = segLo;
+    if (segHi > yHi) yHi = segHi;
+  }
+  return yLo <= yHi ? [yLo, yHi] : [bounds.minY, bounds.maxY];
+}
+
 function clamp(value: number, lo: number, hi: number): number {
   return hi < lo ? (lo + hi) / 2 : Math.min(Math.max(value, lo), hi);
 }
 
 /**
  * Derive font sizes and clamped text anchors from each house polygon's exact
- * scanline chords so outer triangles (H2/H12 vertically, H3/H5/H9/H11
- * horizontally) and diagonal dividers never clip or overlap adjacent houses.
+ * glyph-band scanline chords and usable vertical interval so outer triangles
+ * (H2/H12, H3/H5/H9/H11), diamond apexes, and dense varga stacks stay strictly
+ * inside both `[0, size]` and their diagonal house borders.
  */
 export function computeCellTextLayout(
   house: ChartHouse,
@@ -209,8 +267,17 @@ export function computeCellTextLayout(
   const baseSignFont = Math.max(5.5, size * 0.034);
   const baseLineH = Math.max(8.5, size * 0.05);
 
+  const minLabelW = Math.max(2, maxChars) * MONO_CHAR_WIDTH_RATIO * MIN_FONT_PT;
+  const minChordW = Math.min(bounds.width * 0.72, Math.max(14, minLabelW + pad * 2));
+  const [usableMinY, usableMaxY] = usableVerticalInterval(
+    houseCell.polygon,
+    size,
+    minChordW,
+    bounds,
+  );
+  const usableH = Math.max(10, usableMaxY - usableMinY - pad * 2);
+
   const availW = Math.max(10, bounds.width - pad * 2);
-  const availH = Math.max(10, bounds.height - pad * 2);
   const planetFontH =
     maxChars > 0
       ? Math.max(MIN_FONT_PT, Math.min(basePlanetFont, availW / (maxChars * MONO_CHAR_WIDTH_RATIO)))
@@ -218,8 +285,8 @@ export function computeCellTextLayout(
 
   const baseHeaderH = isLagna ? baseSignFont * 1.2 : 0;
   const baseStackBelow = count > 0 ? baseLineH * 1.05 + (count - 1) * baseLineH : 0;
-  const reqH = baseSignFont + baseHeaderH + baseStackBelow;
-  const vScale = reqH > availH ? availH / reqH : 1;
+  const reqH = baseSignFont * GLYPH_ASCENT_RATIO + baseHeaderH + baseStackBelow + basePlanetFont * GLYPH_DESCENT_RATIO;
+  const vScale = reqH > usableH ? usableH / reqH : 1;
 
   const baseFittedPlanetFont = Math.max(MIN_FONT_PT, Math.min(planetFontH, basePlanetFont * vScale));
   const signFont = Math.max(MIN_FONT_PT, baseSignFont * vScale);
@@ -227,32 +294,55 @@ export function computeCellTextLayout(
 
   const headerH = isLagna ? signFont * 1.2 : 0;
   const stackBelow = count > 0 ? lineH * 1.05 + (count - 1) * lineH : 0;
-  const idealSignY = center.y - (count > 0 ? (stackBelow - signFont) / 2 : -signFont * 0.35);
-  const minSignY = bounds.minY + pad + signFont + headerH;
-  const maxSignY = bounds.maxY - pad - stackBelow;
+  const usableMidY = (usableMinY + usableMaxY) / 2;
+  const targetMidY = (center.y + usableMidY) / 2;
+  const idealSignY = targetMidY - (count > 0 ? (stackBelow - signFont) / 2 : -signFont * 0.35);
+  const minSignY = usableMinY + pad + signFont * GLYPH_ASCENT_RATIO + headerH;
+  const maxSignY = usableMaxY - pad - stackBelow - baseFittedPlanetFont * GLYPH_DESCENT_RATIO;
   const signY = clamp(idealSignY, minSignY, Math.max(minSignY, maxSignY));
 
-  const signChord = polygonChordAtY(houseCell.polygon, size, signY - signFont * 0.35);
+  const signChord = bandChordAtY(houseCell.polygon, size, signY, signFont);
   const signLo = signChord ? Math.max(bounds.minX, signChord[0]) : bounds.minX;
   const signHi = signChord ? Math.min(bounds.maxX, signChord[1]) : bounds.maxX;
   const signDigits = String(house.signIndex + 1).length;
   const halfSignW = (signDigits * MONO_CHAR_WIDTH_RATIO * signFont) / 2;
-  const signX = clamp(center.x, signLo + pad + halfSignW, signHi - pad - halfSignW);
+  const signX = clamp((signLo + signHi) / 2, signLo + pad + halfSignW, signHi - pad - halfSignW);
+
+  const lagnaY = signY - signFont * 1.2;
+  const lagnaChord = bandChordAtY(houseCell.polygon, size, lagnaY, signFont);
+  const lagnaLo = lagnaChord ? Math.max(bounds.minX, lagnaChord[0]) : signLo;
+  const lagnaHi = lagnaChord ? Math.min(bounds.maxX, lagnaChord[1]) : signHi;
+  const halfLagnaW = (2 * MONO_CHAR_WIDTH_RATIO * signFont) / 2;
+  const lagnaX = clamp(
+    (lagnaLo + lagnaHi) / 2,
+    lagnaLo + pad + halfLagnaW,
+    lagnaHi - pad - halfLagnaW,
+  );
 
   const firstPlanetY = signY + lineH * 1.05;
   const rows: CellPlanetRow[] = labels.map((label, index) => {
     const y = firstPlanetY + index * lineH;
-    const chord = polygonChordAtY(houseCell.polygon, size, y - baseFittedPlanetFont * 0.35);
-    const loX = chord ? Math.max(bounds.minX, chord[0]) : bounds.minX;
-    const hiX = chord ? Math.min(bounds.maxX, chord[1]) : bounds.maxX;
-    const rowAvailW = Math.max(8, hiX - loX - pad * 1.5);
+    const initialChord = bandChordAtY(houseCell.polygon, size, y, baseFittedPlanetFont);
+    const initLo = initialChord ? Math.max(bounds.minX, initialChord[0]) : bounds.minX;
+    const initHi = initialChord ? Math.min(bounds.maxX, initialChord[1]) : bounds.maxX;
+    const rowAvailW = Math.max(8, initHi - initLo - pad * 2);
     const fontSize = Math.max(
       MIN_FONT_PT,
-      Math.min(baseFittedPlanetFont, rowAvailW / (Math.max(1, label.length) * MONO_CHAR_WIDTH_RATIO)),
+      Math.min(
+        baseFittedPlanetFont,
+        rowAvailW / (Math.max(1, label.length) * MONO_CHAR_WIDTH_RATIO),
+      ),
     );
+    const chord =
+      fontSize < baseFittedPlanetFont
+        ? (bandChordAtY(houseCell.polygon, size, y, fontSize) ?? initialChord)
+        : initialChord;
+    const loX = chord ? Math.max(bounds.minX, chord[0]) : bounds.minX;
+    const hiX = chord ? Math.min(bounds.maxX, chord[1]) : bounds.maxX;
     const halfW = (label.length * MONO_CHAR_WIDTH_RATIO * fontSize) / 2;
     const preferredX = (loX + hiX) / 2;
-    const x = clamp(preferredX, Math.max(pad + halfW, loX + halfW), Math.min(size - pad - halfW, hiX - halfW));
+    const interiorX = clamp(preferredX, loX + pad + halfW, hiX - pad - halfW);
+    const x = clamp(interiorX, pad + halfW, size - pad - halfW);
     return { label, x, y, fontSize };
   });
 
@@ -260,7 +350,8 @@ export function computeCellTextLayout(
     signX,
     signY,
     signFont,
-    lagnaY: signY - signFont * 1.2,
+    lagnaX,
+    lagnaY,
     rows,
   };
 }
@@ -304,7 +395,7 @@ function HouseCellView({
       </Text>
       {isLagna ? (
         <Text
-          x={layout.signX}
+          x={layout.lagnaX}
           y={layout.lagnaY}
           style={{ fontFamily: FONT_MONO, fontSize: layout.signFont, fill: PAPER.accent }}
           textAnchor="middle"

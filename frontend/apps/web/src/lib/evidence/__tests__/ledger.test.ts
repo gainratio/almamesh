@@ -209,8 +209,28 @@ describe('the citation validator fails closed', () => {
     const section = buildEvidenceSection(ledger, maximalReportT());
     expect(section.rejectedNote).toContain('expired after a period rollover');
     expect(section.rejectedNote).not.toContain('does not contain');
-    const dashaRow = section.rows.find((r) => r.observationId === 'dasha:pratyantar:saturn/venus/ketu');
-    expect(dashaRow?.interpretation).toContain('regenerate the reading to annotate this period');
+    const pratyantarRow = section.rows.find((r) => r.observationId === 'dasha:pratyantar:saturn/venus/ketu');
+    const mahaRow = section.rows.find((r) => r.observationId === 'dasha:maha:saturn');
+    expect(pratyantarRow?.interpretation).toContain('regenerate the reading to annotate this period');
+    expect(mahaRow?.interpretation).not.toContain('regenerate the reading to annotate this period');
+  });
+
+  it('keeps hallucinated or future dasha lords fail-closed as unsupported citations (never stale-dasha)', () => {
+    const ledger = buildEvidenceLedger(nearCuspChart(), {
+      readings: [
+        { observation_id: 'dasha:maha:mars', interpretation: 'Hallucinated Mars mahadasha.' },
+        {
+          observation_id: 'dasha:pratyantar:saturn/venus/sun',
+          interpretation: 'Future or wrong pratyantar lord.',
+        },
+      ],
+    });
+    expect(ledger.unsupportedCount).toBe(2);
+    expect(ledger.staleDashaCount).toBe(0);
+    expect(ledger.rejectedCitations).toEqual([
+      'dasha:maha:mars',
+      'dasha:pratyantar:saturn/venus/sun',
+    ]);
   });
 
   it('still fails closed as unknown-factor when a fabricated factor accompanies a stale dasha in also_cites', () => {

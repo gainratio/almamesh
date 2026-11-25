@@ -74,7 +74,7 @@ describe('ReportPdfKundli geometric bounds', () => {
     },
   );
 
-  it('keeps dense varga stacks (6 planets in top outer triangle H2) inside [0, size]', () => {
+  it('keeps dense varga and stellium stacks inside [0, size] across H1 (Lagna), H2 (top triangle), and H3 (side triangle)', () => {
     const densePlanets = [
       planet('sun', 'Su'),
       planet('moon', 'Mo'),
@@ -83,8 +83,24 @@ describe('ReportPdfKundli geometric bounds', () => {
       planet('jupiter', 'Ju'),
       planet('venus', 'Ve'),
     ];
-    const h2 = house(2, 11, densePlanets);
-    const layout = computeCellTextLayout(h2, NORTH_INDIAN_HOUSE_CELLS[1]!, 160, false, false);
-    assertStrictlyInsideViewport(layout, 160, false);
+    for (const [cellIndex, isLagna] of [
+      [0, true],
+      [1, false],
+      [2, false],
+    ] as const) {
+      const h = house(cellIndex + 1, 11, densePlanets);
+      const layout = computeCellTextLayout(
+        h,
+        NORTH_INDIAN_HOUSE_CELLS[cellIndex]!,
+        160,
+        isLagna,
+        false,
+      );
+      assertStrictlyInsideViewport(layout, 160, isLagna);
+      if (isLagna) {
+        expect(layout.lagnaX).toBeGreaterThan(0);
+        expect(layout.lagnaX).toBeLessThan(160);
+      }
+    }
   });
 });

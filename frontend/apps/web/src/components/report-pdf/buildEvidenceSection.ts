@@ -18,6 +18,7 @@
  */
 
 import type { TFunction } from 'i18next';
+import { viewerTimeZone } from '../../lib/analysisInstant';
 import {
   BOUNDARY_MARGIN_DEG,
   CUSP_THRESHOLD_DEG,
@@ -85,6 +86,8 @@ function isoDay(value: string): string {
   }
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat('en-CA', {
+      calendar: 'iso8601',
+      timeZone: viewerTimeZone() || 'UTC',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -363,11 +366,11 @@ function alternativeCell(copy: Copy, alternative: Alternative): string {
 function evidenceRow(
   copy: Copy,
   row: EvidenceRow,
-  dashaRolledOver: boolean,
+  staleDashaLevels: ReadonlySet<string>,
 ): ReportPdfEvidenceRow {
   const { observation } = row;
   const emptyKey =
-    observation.primary.kind === 'dasha' && dashaRolledOver
+    observation.primary.kind === 'dasha' && staleDashaLevels.has(observation.primary.level)
       ? 'no_interpretation_dasha_rollover'
       : 'no_interpretation';
   return {
@@ -500,7 +503,11 @@ export function buildEvidenceSection(
       alternative: line(copy, 'cell_alternative'),
     },
     rows: ledger.rows.map((row) =>
-      evidenceRow(copy, row, ledger.annotated && ledger.staleDashaCount > 0),
+      evidenceRow(
+        copy,
+        row,
+        ledger.annotated ? new Set(ledger.staleDashaLevels) : new Set<string>(),
+      ),
     ),
     ...(ledger.generalGuidance.length > 0
       ? {

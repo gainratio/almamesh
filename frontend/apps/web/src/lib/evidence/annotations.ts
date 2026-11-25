@@ -71,16 +71,6 @@ export type RejectionReason =
   | 'empty-interpretation'
   | 'not-reflection';
 
-const VIMSHOTTARI_LORD = '(?:sun|moon|mars|mercury|jupiter|venus|saturn|rahu|ketu)';
-const CLASSICAL_DASHA_OBSERVATION_ID = new RegExp(
-  `^dasha:(?:maha:${VIMSHOTTARI_LORD}|antar:${VIMSHOTTARI_LORD}/${VIMSHOTTARI_LORD}|pratyantar:${VIMSHOTTARI_LORD}/${VIMSHOTTARI_LORD}/${VIMSHOTTARI_LORD})$`,
-);
-
-/** True when `id` is a structurally valid classical Vimśottarī daśā path. */
-function isClassicalDashaObservationId(id: string): boolean {
-  return CLASSICAL_DASHA_OBSERVATION_ID.test(id);
-}
-
 export interface RejectedAnnotation {
   /** What the model claimed to be citing, verbatim, for the provenance count. */
   readonly citedId: string;
@@ -102,6 +92,7 @@ function validateOne(
   raw: RawAnnotation,
   observationIds: ReadonlySet<string>,
   factorIds: ReadonlySet<string>,
+  priorDashaIds: ReadonlySet<string>,
 ): AcceptedAnnotation | RejectedAnnotation {
   const observationId = raw.observation_id;
   if (typeof observationId !== 'string' || observationId === '') {
@@ -114,7 +105,7 @@ function validateOne(
   if (!observationIds.has(observationId)) {
     return {
       citedId: observationId,
-      reason: isClassicalDashaObservationId(observationId) ? 'stale-dasha' : 'unknown-observation',
+      reason: priorDashaIds.has(observationId) ? 'stale-dasha' : 'unknown-observation',
     };
   }
   if (reflectionIssues(interpretation).length > 0) {
@@ -125,9 +116,9 @@ function validateOne(
   if (bogusFactors.length > 0) {
     // One fabricated supporting citation condemns the whole statement. A claim
     // that cites three real factors and one invented one is not 75% true.
-    // Only when every missing supporting id is a classical daśā path (rolled
-    // over since the reading was generated) do we classify it as stale-dasha.
-    const fabricated = bogusFactors.find((id) => !isClassicalDashaObservationId(id));
+    // Only when every missing supporting id is verified as a strictly prior
+    // Vimśottarī period of THIS chart do we classify it as stale-dasha.
+    const fabricated = bogusFactors.find((id) => !priorDashaIds.has(id));
     if (fabricated !== undefined) {
       return { citedId: fabricated, reason: 'unknown-factor' };
     }
@@ -142,15 +133,22 @@ function isRejection(
   return 'reason' in result;
 }
 
+const EMPTY_PRIOR_DASHAS: ReadonlySet<string> = new Set();
+
 /**
  * Validate raw model output against the factors and observations THIS chart
  * actually produced. Nothing here trusts a field's type without checking it —
  * the payload arrived from a language model over HTTP.
+ *
+ * `priorDashaIds`, when supplied by `buildEvidenceLedger`, lists ONLY strictly
+ * prior Vimśottarī periods verified against this chart's own dasha timeline;
+ * any other absent dasha id (future or hallucinated lord) stays `unknown-*`.
  */
 export function validateAnnotations(
   payload: RawAnnotationPayload | null | undefined,
   observationIds: ReadonlySet<string>,
   factorIds: ReadonlySet<string>,
+  priorDashaIds: ReadonlySet<string> = EMPTY_PRIOR_DASHAS,
 ): ValidatedAnnotations {
   if (payload == null || typeof payload !== 'object') {
     return { accepted: [], rejected: [], generalGuidance: [] };
@@ -165,7 +163,7 @@ export function validateAnnotations(
       rejected.push({ citedId: '', reason: 'malformed' });
       continue;
     }
-    const result = validateOne(row as RawAnnotation, observationIds, factorIds);
+    const result = validateOne(row as RawAnnotation, observationIds, factorIds, priorDashaIds);
     if (isRejection(result)) {
       rejected.push(result);
       continue;

@@ -196,15 +196,20 @@ describe('formatReferenceDay', () => {
     },
   );
 
-  it('formats a non-midnight chart instant in the viewer timezone so it matches the cover date', () => {
-    // 02:00 UTC on Nov 25 is 6:00 PM on Nov 24 in Los Angeles, and Nov 25 in UTC/Kolkata.
+  it('formats a date-only string as its written calendar day even west of UTC', () => {
     vi.stubEnv('TZ', 'America/Los_Angeles');
-    expect(formatReferenceDay('2026-11-25T02:00:00Z')).toBe('Nov 24, 2026');
-    expect(formatPredictiveWindowBound('2026-11-25T02:00:00Z')).toBe('Nov 24, 2026');
+    expect(formatReferenceDay('2026-10-07')).toBe('Oct 7, 2026');
+  });
+
+  it('formats a non-midnight chart instant in the viewer timezone with consistent window-bound padding', () => {
+    // 02:00 UTC on Nov 5 is 6:00 PM on Nov 4 in Los Angeles, and Nov 5 in UTC/Kolkata.
+    vi.stubEnv('TZ', 'America/Los_Angeles');
+    expect(formatReferenceDay('2026-11-05T02:00:00Z')).toBe('Nov 4, 2026');
+    expect(formatPredictiveWindowBound('2026-11-05T02:00:00Z')).toBe('Nov 04, 2026');
 
     vi.stubEnv('TZ', 'Asia/Kolkata');
-    expect(formatReferenceDay('2026-11-25T02:00:00Z')).toBe('Nov 25, 2026');
-    expect(formatPredictiveWindowBound('2026-11-25T02:00:00Z')).toBe('Nov 25, 2026');
+    expect(formatReferenceDay('2026-11-05T02:00:00Z')).toBe('Nov 5, 2026');
+    expect(formatPredictiveWindowBound('2026-11-05T02:00:00Z')).toBe('Nov 05, 2026');
   });
 });
 
