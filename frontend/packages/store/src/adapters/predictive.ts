@@ -174,8 +174,17 @@ function toFusion(raw: DashaTransitFusion): DashaTransitFusionData {
     instant: raw.instant,
     maha_lord: asPlanet(raw.maha_lord),
     antar_lord: asPlanetOrNull(raw.antar_lord),
+    ...(raw.pratyantar_lord !== undefined
+      ? { pratyantar_lord: asPlanetOrNull(raw.pratyantar_lord) }
+      : {}),
     maha_lord_transit_house_from_moon: raw.maha_lord_transit_house_from_moon,
     maha_lord_transit_house_from_lagna: raw.maha_lord_transit_house_from_lagna,
+    ...(raw.antar_lord_transit_house_from_moon !== undefined
+      ? { antar_lord_transit_house_from_moon: raw.antar_lord_transit_house_from_moon }
+      : {}),
+    ...(raw.pratyantar_lord_transit_house_from_moon !== undefined
+      ? { pratyantar_lord_transit_house_from_moon: raw.pratyantar_lord_transit_house_from_moon }
+      : {}),
     reinforcing: raw.reinforcing.map(asPlanet),
     afflicting: raw.afflicting.map(asPlanet),
     net_weight: raw.net_weight,

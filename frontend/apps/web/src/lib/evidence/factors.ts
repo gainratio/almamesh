@@ -18,7 +18,7 @@
  * `SiderealChart`; the only arithmetic here is picking a nearest boundary.
  */
 
-import type { SiderealChart, YogaData } from '@almamesh/browser/types';
+import type { SiderealChart, YogaDashaActivation, YogaData } from '@almamesh/browser/types';
 
 import { combustionOrbDeg } from './combustionOrbs';
 import { resolveCuspProximity } from '../lagnaCusp';
@@ -108,6 +108,7 @@ export type ChartFactor =
       readonly category: string;
       readonly housesInvolved: readonly number[];
       readonly planetsInvolved: readonly string[];
+      readonly dashaActivation?: YogaDashaActivation | null;
     })
   | (FactorMeta & {
       readonly kind: 'yogaStrength';
@@ -315,6 +316,7 @@ function yogaFactors(chart: SiderealChart): ChartFactor[] {
       category: yoga.category,
       housesInvolved: yoga.houses_involved,
       planetsInvolved: yoga.planets_involved,
+      ...(yoga.dasha_activation != null ? { dashaActivation: yoga.dasha_activation } : {}),
     });
     // The calibrated percentage is a Layer-2 MODEL output over the +-1 mark
     // lattice, never a measured fact — the engine says so with `strength_tier`.

@@ -68,7 +68,10 @@ import {
   storedChartReferenceInstant,
   viewerTimeZone,
 } from '../lib/analysisInstant';
-import { fetchEvidenceAnnotations } from './evidenceAnnotations';
+import {
+  fetchEvidenceAnnotationsOutcome,
+  trackEvidenceAnnotationFlight,
+} from './evidenceAnnotations';
 import { useSingleFlight } from './useSingleFlight';
 
 /** The structured sections, in the order the generator announces them. */
@@ -117,6 +120,8 @@ export interface UseStreamingInterpretationResult {
    * rejects every citation to a factor the chart does not contain.
    */
   evidenceAnnotations: RawEvidenceAnnotationPayload | undefined;
+  /** Canonical error code when the optional evidence-annotation request failed. */
+  evidenceAnnotationError: string | undefined;
   /** Lifecycle of the active chart's interpretation. */
   status: InterpretationStatus;
   /** Per-section completion/failure flags (the 5 keys), for a progress checklist. */
@@ -425,6 +430,7 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
   const markSectionFailed = useInterpretationStore((s) => s.markSectionFailed);
   const setInterpretation = useInterpretationStore((s) => s.setInterpretation);
   const setEvidenceAnnotations = useInterpretationStore((s) => s.setEvidenceAnnotations);
+  const setEvidenceAnnotationError = useInterpretationStore((s) => s.setEvidenceAnnotationError);
   const setError = useInterpretationStore((s) => s.setError);
   const startCurrentTimeline = useInterpretationStore((s) => s.startCurrentTimeline);
   const markCurrentTimelineSectionComplete = useInterpretationStore(
@@ -600,22 +606,31 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
       if (!readingCompleted || controller.signal.aborted) {
         return;
       }
-      const annotations = await fetchEvidenceAnnotations({
-        chart,
-        asOf: storedChartAnalysisInstant(stored),
-        config,
-        language,
-        signal: controller.signal,
-      });
-      if (annotations !== null && !controller.signal.aborted) {
-        await setEvidenceAnnotations(id, annotations, runToken);
-      }
+      await trackEvidenceAnnotationFlight(
+        id,
+        (async () => {
+          const outcome = await fetchEvidenceAnnotationsOutcome({
+            chart,
+            asOf: storedChartAnalysisInstant(stored),
+            config,
+            language,
+            signal: controller.signal,
+          });
+          if (controller.signal.aborted) return;
+          if (outcome.kind === 'ok') {
+            await setEvidenceAnnotations(id, outcome.payload, runToken);
+          } else if (outcome.kind === 'failed') {
+            await setEvidenceAnnotationError(id, outcome.errorCode, runToken);
+          }
+        })(),
+      );
     },
     [
       language,
       markSectionComplete,
       markSectionFailed,
       setError,
+      setEvidenceAnnotationError,
       setEvidenceAnnotations,
       setInterpretation,
       startInterpretation,
@@ -781,6 +796,7 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
     // is the single place it is ever checked against the computed chart, so
     // passing it through here cannot create a second, laxer validation site.
     evidenceAnnotations: !waitingForDurability ? entry?.evidenceAnnotations : undefined,
+    evidenceAnnotationError: !waitingForDurability ? entry?.evidenceAnnotationError : undefined,
     status,
     sections,
     failedSections: sections.filter((s) => s.failed).map((s) => s.key),

@@ -141,6 +141,42 @@ export interface YogaFormationRule {
   readonly houses: readonly number[];
 }
 
+export type YogaDashaLevel = "maha" | "antar" | "pratyantar";
+export type YogaActivationStatus = "direct" | "indirect" | "dormant";
+export type YogaMitigationKind = "combust" | "debilitated" | "dusthana" | "lagna_near_cusp";
+
+export interface YogaDashaLink {
+  readonly level: YogaDashaLevel;
+  readonly lord: string;
+}
+
+export interface YogaDispositorChain {
+  readonly level: YogaDashaLevel;
+  readonly lord: string;
+  readonly chain: readonly string[];
+}
+
+export interface YogaAspectLink {
+  readonly level: YogaDashaLevel;
+  readonly lord: string;
+  readonly target: string;
+  readonly house_offset: number;
+}
+
+export interface YogaMitigatingFactor {
+  readonly kind: YogaMitigationKind;
+  readonly planet?: string | null;
+  readonly house?: number | null;
+}
+
+export interface YogaDashaActivation {
+  readonly status: YogaActivationStatus;
+  readonly direct_lords: readonly YogaDashaLink[];
+  readonly dispositor_chains: readonly YogaDispositorChain[];
+  readonly aspect_links: readonly YogaAspectLink[];
+  readonly mitigating_factors: readonly YogaMitigatingFactor[];
+}
+
 /**
  * A detected yoga with a complete, honest trace. Every list is min-length-1 by
  * backend schema (a trace-less yoga is schema-impossible). `category` is the
@@ -173,6 +209,8 @@ export interface YogaData {
   readonly houses_involved: readonly number[];
   readonly planetary_signature: string;
   readonly formation_rules: readonly YogaFormationRule[];
+  /** Deterministic Vimshottari dasha activation breakdown (additive). */
+  readonly dasha_activation?: YogaDashaActivation | null;
 }
 
 /** One graha's placement in a divisional (varga) chart: sign + its lord only. */

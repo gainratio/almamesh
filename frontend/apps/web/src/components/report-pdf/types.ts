@@ -160,6 +160,12 @@ export interface ReportPdfYoga {
    * (older payloads), and the card then renders exactly as it did before.
    */
   readonly stability?: string;
+  /**
+   * Deterministic Vimshottari dasha activation breakdown (status, direct lords,
+   * dispositor chains, Parashari aspects, mitigating factors), pre-localized.
+   * OPTIONAL: absent when `yoga.dasha_activation` is absent on older bundles.
+   */
+  readonly activation?: string;
 }
 
 /**

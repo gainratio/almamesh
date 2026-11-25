@@ -37,6 +37,10 @@ interface ReportEvidenceProps {
    * through it means the screen cannot end up more permissive than the export.
    */
   readonly annotations?: RawAnnotationPayload;
+  /** True when a structured reading exists for this chart. */
+  readonly hasReading?: boolean;
+  /** Canonical error code when the optional evidence-annotation request failed. */
+  readonly annotationError?: string | null;
 }
 
 /** One five-cell row of the ledger, keyed by the observation's factor id. */
@@ -145,12 +149,21 @@ function EvidenceGuidance({ section }: { readonly section: ReportPdfEvidence }):
 }
 
 /** The evidence ledger, rendered for the screen. */
-export function ReportEvidence({ chart, annotations }: ReportEvidenceProps): ReactElement {
+export function ReportEvidence({
+  chart,
+  annotations,
+  hasReading,
+  annotationError,
+}: ReportEvidenceProps): ReactElement {
   const { t } = useTranslation('report');
   // Pure and input-shaped; rebuild only when the chart or the stored reading moves.
   const section = useMemo(
-    () => buildEvidenceSection(buildEvidenceLedger(chart, annotations), t),
-    [chart, annotations, t],
+    () =>
+      buildEvidenceSection(buildEvidenceLedger(chart, annotations), t, undefined, {
+        hasReading,
+        annotationError,
+      }),
+    [chart, annotations, hasReading, annotationError, t],
   );
 
   return (

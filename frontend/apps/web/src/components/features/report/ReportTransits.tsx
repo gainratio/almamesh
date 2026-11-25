@@ -9,7 +9,11 @@ import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TransitCtx, TransitPlacementData } from '@almamesh/shared-types';
 import { formatDegree } from '../../../lib/reportData';
-import { formatPredictiveDate, formatReferenceDay } from '../../../lib/predictive';
+import {
+  formatPredictiveDate,
+  formatTransitInstant,
+  sortSlowHits,
+} from '../../../lib/predictive';
 import {
   grahaName,
   sadeSatiPhaseName,
@@ -36,15 +40,21 @@ export function ReportTransits({ transitCtx }: ReportTransitsProps): ReactElemen
     (p): p is TransitPlacementData => p !== undefined,
   );
   const sadeSati = transitCtx.sade_sati;
+  const slowHits = sortSlowHits(transitCtx.slow_hits);
   const fusion = transitCtx.fusion;
   const list = (names: readonly string[]): string =>
     names.length > 0 ? names.map((n) => grahaName(tp, n)).join(', ') : tp('fusion.none');
+  const formatSubLord = (lord: string | null | undefined, house?: number | null): string => {
+    if (!lord) return tp('fusion.none');
+    const name = grahaName(tp, lord);
+    return house != null ? `${name} — ${tp('fusion.lord_house_from_moon', { house })}` : name;
+  };
 
   return (
     <section className="report-section" data-testid="report-transits">
       <ReportSectionHeading index={sectionNumeral('transits')} title={t('transits.heading')} />
       <p className="report-note">
-        {t('transits.as_of', { date: formatReferenceDay(transitCtx.gochara.instant) })}
+        {t('transits.as_of', { date: formatTransitInstant(transitCtx.gochara.instant) })}
       </p>
 
       {placements.length > 0 && (
@@ -110,7 +120,7 @@ export function ReportTransits({ transitCtx }: ReportTransitsProps): ReactElemen
       {/* Slow-graha hits — the dated exact contacts of the slow movers to the
           natal points (engine `slow_hits` verbatim; previously never printed). */}
       <h3 className="report-subsection-title">{t('transits.slow_hits_heading')}</h3>
-      {transitCtx.slow_hits.length === 0 ? (
+      {slowHits.length === 0 ? (
         <p className="report-note">{tp('slow_hits.empty')}</p>
       ) : (
         <table className="report-table" data-testid="report-slow-hits">
@@ -122,7 +132,7 @@ export function ReportTransits({ transitCtx }: ReportTransitsProps): ReactElemen
             </tr>
           </thead>
           <tbody>
-            {transitCtx.slow_hits.map((hit) => (
+            {slowHits.map((hit) => (
               <tr key={`${hit.graha}-${hit.kind}-${hit.exact}`} className="report-avoid-break">
                 <td>{formatPredictiveDate(hit.exact)}</td>
                 <td>
@@ -146,8 +156,19 @@ export function ReportTransits({ transitCtx }: ReportTransitsProps): ReactElemen
         </div>
         <div className="report-dasha-leg">
           <dt>{tp('fusion.antar_lord')}</dt>
-          <dd>{fusion.antar_lord ? grahaName(tp, fusion.antar_lord) : tp('fusion.none')}</dd>
+          <dd>{formatSubLord(fusion.antar_lord, fusion.antar_lord_transit_house_from_moon)}</dd>
         </div>
+        {fusion.pratyantar_lord != null ? (
+          <div className="report-dasha-leg">
+            <dt>{tp('fusion.pratyantar_lord')}</dt>
+            <dd>
+              {formatSubLord(
+                fusion.pratyantar_lord,
+                fusion.pratyantar_lord_transit_house_from_moon,
+              )}
+            </dd>
+          </div>
+        ) : null}
         <div className="report-dasha-leg">
           <dt>{tp('fusion.reinforcing')}</dt>
           <dd>{list(fusion.reinforcing)}</dd>

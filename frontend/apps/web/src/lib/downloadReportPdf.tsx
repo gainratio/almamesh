@@ -6,7 +6,12 @@
  * saves `AlmaMesh — <Name> (<date>).pdf`. No astrology is computed here.
  */
 
-import type { DomainStrengthReceipt, LagnaData, SiderealChart } from '@almamesh/browser/types';
+import type {
+  DomainStrengthReceipt,
+  LagnaData,
+  SiderealChart,
+  YogaData,
+} from '@almamesh/browser/types';
 import type {
   DomainsCtx,
   ProcessedBirthData,
@@ -56,6 +61,8 @@ export interface ReportPdfChrome {
    * to English rather than to silence: a dimmed row is what this replaced.
    */
   readonly formatCombustion?: CombustionCopy;
+  /** Optional localized formatter for `yoga.dasha_activation`. */
+  readonly formatYogaActivation?: (yoga: YogaData) => string | undefined;
   /** Localized kundli plate captions ("Rāśi · D1" / "Navāṁśa · D9"). */
   readonly chartCaptions: { readonly rasi: string; readonly navamsa: string };
   readonly detailLabels: BirthDetailLabels;
@@ -199,6 +206,7 @@ export async function downloadReportPdf(input: DownloadReportPdfInput): Promise<
     formatAntarHeading: input.chrome.formatAntarHeading,
     formatPratyantarHeading: input.chrome.formatPratyantarHeading,
     formatCombustion: input.chrome.formatCombustion,
+    formatYogaActivation: input.chrome.formatYogaActivation,
     detailLabels: input.chrome.detailLabels,
     chromeLabels: input.chrome.chromeLabels,
     comprehensive: input.comprehensive

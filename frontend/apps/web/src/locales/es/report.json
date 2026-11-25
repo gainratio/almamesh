@@ -115,6 +115,26 @@
       "tier": "estimación estructural",
       "summary": "neto {{net}} en la escala {{min}}…{{max}}",
       "aria": "Estimación de fuerza estructural: {{pct}} por ciento, {{band}}. {{scale}}"
+    },
+    "activation": {
+      "label": "Activación por daśā",
+      "status": {
+        "direct": "Activa (directa)",
+        "indirect": "Activa (regente / aspecto)",
+        "dormant": "Latente en el período en curso"
+      },
+      "direct_prefix": "Directa: {{items}}",
+      "dispositor_prefix": "Regente: {{items}}",
+      "aspect_prefix": "Aspecto: {{items}}",
+      "mitigating_prefix": "Factores moduladores: {{items}}",
+      "aspect_conjunction": "{{level}} {{lord}} en conjunción con {{target}}",
+      "aspect_drishti": "{{level}} {{lord}} → {{target}} (aspecto de casa {{offset}})",
+      "mitigation": {
+        "combust": "{{planet}} combusto",
+        "debilitated": "{{planet}} debilitado",
+        "dusthana": "{{planet}} en casa {{house}}",
+        "lagna_near_cusp": "ascendente cerca del límite de signo"
+      }
     }
   },
   "dasha": {
@@ -290,8 +310,13 @@
     "cell_alternative": "Alternativa",
     "no_interpretation": "Sin interpretación escrita: genera una lectura para añadirla.",
     "no_interpretation_dasha_rollover": "El daśā activo cambió desde que se generó esta lectura: vuelve a generarla para anotar este período.",
+    "no_interpretation_withheld_reflection": "Frase retenida por tono no reflexivo: vuelve a generar la lectura para reintentarlo.",
+    "no_interpretation_rejected_citation": "Frase rechazada por citar un factor no calculado: consulta la procedencia abajo.",
+    "no_interpretation_generation_failed": "La solicitud de anotación no se completó: vuelve a generar la lectura para reintentarlo.",
+    "no_interpretation_omitted": "No se devolvió una anotación individual para esta observación: vuelve a generar la lectura para completarla.",
     "guidance_heading": "Orientación general, no derivada de esta carta",
     "guidance_note": "El modelo marcó estas frases como no apoyadas en ningún factor calculado de esta carta. Se imprimen aparte del registro anterior y nada en esta carta las respalda.",
+    "rejected_generation_failed_note": "La solicitud de anotaciones por observación no se completó ({{code}}): vuelve a generar la lectura para completar las interpretaciones anteriores.",
     "rejected_note_one": "Se rechazó 1 frase del modelo por citar un factor que esta carta no contiene: {{citations}}",
     "rejected_note_other": "Se rechazaron {{count}} frases del modelo por citar factores que esta carta no contiene: {{citations}}",
     "rejected_reflection_note_one": "Se retuvo 1 frase del modelo por emplear un tono no reflexivo.",

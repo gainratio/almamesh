@@ -119,8 +119,11 @@ export interface DashaTransitFusion {
   readonly instant: string;
   readonly maha_lord: string;
   readonly antar_lord: string | null;
+  readonly pratyantar_lord?: string | null;
   readonly maha_lord_transit_house_from_moon: number;
   readonly maha_lord_transit_house_from_lagna: number;
+  readonly antar_lord_transit_house_from_moon?: number | null;
+  readonly pratyantar_lord_transit_house_from_moon?: number | null;
   readonly reinforcing: readonly string[];
   readonly afflicting: readonly string[];
   readonly net_weight: number;

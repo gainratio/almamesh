@@ -56,7 +56,7 @@ def _slow_hits(
             astro, natal.planets[PlanetName.SATURN].longitude, instant, ayanamsa_type, node_type
         ),
     ]
-    return [hit for hit in candidates if hit is not None]
+    return sorted((hit for hit in candidates if hit is not None), key=lambda hit: hit.exact)
 
 
 def calculate_transit_context(

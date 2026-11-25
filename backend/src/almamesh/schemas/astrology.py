@@ -29,6 +29,14 @@ __all__ = [
     "MahaDashaPeriod",
     "VimshottariDashaData",
     "YogaGrade",
+    "YogaDashaLevel",
+    "YogaActivationStatus",
+    "YogaMitigationKind",
+    "YogaDashaLink",
+    "YogaDispositorChain",
+    "YogaAspectLink",
+    "YogaMitigatingFactor",
+    "YogaDashaActivation",
     "YogaStrengthFactor",
     "YogaFormationRule",
     "YogaData",
@@ -208,6 +216,53 @@ class YogaFormationRule(BaseModel):
     houses: list[int] = []
 
 
+YogaDashaLevel = Literal["maha", "antar", "pratyantar"]
+YogaActivationStatus = Literal["direct", "indirect", "dormant"]
+YogaMitigationKind = Literal["combust", "debilitated", "dusthana", "lagna_near_cusp"]
+
+
+class YogaDashaLink(BaseModel):
+    """Direct participation of an active Vimshottari lord in a natal yoga."""
+
+    level: YogaDashaLevel
+    lord: PlanetName
+
+
+class YogaDispositorChain(BaseModel):
+    """Natal Rasi sign-lord chain linking an active dasha lord to a yoga planet."""
+
+    level: YogaDashaLevel
+    lord: PlanetName
+    chain: list[PlanetName] = Field(min_length=2)
+
+
+class YogaAspectLink(BaseModel):
+    """Whole-sign conjunction (1) or Parashari drishti from an active lord to a yoga planet."""
+
+    level: YogaDashaLevel
+    lord: PlanetName
+    target: PlanetName
+    house_offset: int
+
+
+class YogaMitigatingFactor(BaseModel):
+    """A structural condition qualifying how cleanly an activated yoga expresses."""
+
+    kind: YogaMitigationKind
+    planet: PlanetName | None = None
+    house: int | None = None
+
+
+class YogaDashaActivation(BaseModel):
+    """Deterministic mapping between a natal yoga and the active Vimshottari dasha."""
+
+    status: YogaActivationStatus
+    direct_lords: list[YogaDashaLink] = Field(default_factory=list)
+    dispositor_chains: list[YogaDispositorChain] = Field(default_factory=list)
+    aspect_links: list[YogaAspectLink] = Field(default_factory=list)
+    mitigating_factors: list[YogaMitigatingFactor] = Field(default_factory=list)
+
+
 class YogaData(BaseModel):
     """A detected yoga with a complete, honest trace.
 
@@ -240,6 +295,7 @@ class YogaData(BaseModel):
     houses_involved: list[int] = Field(min_length=1)
     planetary_signature: str
     formation_rules: list[YogaFormationRule] = Field(min_length=1)
+    dasha_activation: YogaDashaActivation | None = None
 
 
 class VargaPlanet(BaseModel):

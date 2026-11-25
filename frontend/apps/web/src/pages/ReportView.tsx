@@ -154,7 +154,8 @@ export default function ReportView(): ReactElement {
   const charts = useChartLibraryStore((s) => s.charts);
   const storedChart = selectPrimaryStoredChart(charts, activeProfileId);
   const chartId = storedChart?.chart_id ?? null;
-  const { interpretation, evidenceAnnotations } = useStreamingInterpretation(chartId);
+  const { interpretation, evidenceAnnotations, evidenceAnnotationError } =
+    useStreamingInterpretation(chartId);
 
   // The lazy predictive layer (transits / vargas / strength / domains): auto-
   // kicks off on mount (matching Dashboard and Sky & Timing) so visiting
@@ -310,7 +311,12 @@ export default function ReportView(): ReactElement {
         {/* Evidence & Confidence — the audit of everything above. Deterministic
             (engine chart only), so it renders whether or not a reading exists;
             without one, each row states plainly that it has no interpretation. */}
-        <ReportEvidence chart={sidereal} annotations={evidenceAnnotations} />
+        <ReportEvidence
+          chart={sidereal}
+          annotations={evidenceAnnotations}
+          hasReading={Boolean(readyInterpretation)}
+          annotationError={evidenceAnnotationError}
+        />
         {/* Predictive sections — rendered only when the lazy contexts are
             computed. Their numerals come from the registry, so a section that
             does not render never leaves a hole in the sequence for the ones

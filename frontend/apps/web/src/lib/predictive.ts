@@ -74,6 +74,47 @@ export function formatReferenceDay(day: string): string {
   return formatDisplayDate(new Date(day), options);
 }
 
+/**
+ * Display the transit calculation instant with its explicit clock and timezone
+ * so readers can verify the exact ephemeris timestamp (never bare calendar-day).
+ */
+export function formatTransitInstant(instant: string): string {
+  if (DATE_ONLY.test(instant)) {
+    return `${formatBirthDateForDisplay(instant)} (UTC)`;
+  }
+  const parsed = new Date(instant);
+  if (Number.isNaN(parsed.getTime())) {
+    return instant;
+  }
+  if (UTC_MIDNIGHT.test(instant)) {
+    const day = formatDisplayDate(parsed, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC',
+    });
+    return `${day}, 00:00 UTC`;
+  }
+  const zone = resolvedViewerTimeZone();
+  const day = formatDisplayDate(parsed, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    timeZone: zone,
+  });
+  const time = formatDisplayTime(parsed, {
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: zone,
+  });
+  return `${day}, ${time} (${zone})`;
+}
+
+/** Chronologically order slow-graha exact hits (defensive over cached payloads). */
+export function sortSlowHits<T extends { readonly exact: string }>(hits: readonly T[]): readonly T[] {
+  return [...hits].sort((a, b) => Date.parse(a.exact) - Date.parse(b.exact));
+}
+
 /** A period's engine bounds: its window length and its reading's inclusive last day. */
 export interface PredictiveBounds {
   readonly windowMonths?: 24;

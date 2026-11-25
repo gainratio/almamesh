@@ -31,9 +31,10 @@ import { formatDegree } from '../../lib/reportData';
 import {
   formatPct,
   formatPredictiveDate,
-  formatReferenceDay,
   formatRupas,
+  formatTransitInstant,
   hasApproximatedComponents,
+  sortSlowHits,
   sunriseBasisParams,
   toVargaChart,
 } from '../../lib/predictive';
@@ -178,7 +179,7 @@ export function buildTransitsSection(
     headers: [tr('transits.col_date'), tr('transits.col_event'), tr('transits.col_tone')].map(
       (h) => glyphSafe(h),
     ),
-    rows: ctx.slow_hits.map((hit) =>
+    rows: sortSlowHits(ctx.slow_hits).map((hit) =>
       row([
         formatPredictiveDate(hit.exact),
         `${grahaName(tp, hit.graha)} → ${slowHitTargetLabel(tp, hit.natal_point)}`,
@@ -190,6 +191,11 @@ export function buildTransitsSection(
 
   const list = (names: readonly string[]): string =>
     names.length > 0 ? names.map((n) => grahaName(tp, n)).join(', ') : tp('fusion.none');
+  const formatSubLord = (lord: string | null | undefined, house?: number | null): string => {
+    if (!lord) return tp('fusion.none');
+    const name = grahaName(tp, lord);
+    return house != null ? `${name} — ${tp('fusion.lord_house_from_moon', { house })}` : name;
+  };
   const fusion: ReportPdfLabeledValue[] = [
     {
       label: glyphSafe(tp('fusion.maha_lord')),
@@ -201,8 +207,23 @@ export function buildTransitsSection(
     },
     {
       label: glyphSafe(tp('fusion.antar_lord')),
-      value: glyphSafe(ctx.fusion.antar_lord ? grahaName(tp, ctx.fusion.antar_lord) : tp('fusion.none')),
+      value: glyphSafe(
+        formatSubLord(ctx.fusion.antar_lord, ctx.fusion.antar_lord_transit_house_from_moon),
+      ),
     },
+    ...(ctx.fusion.pratyantar_lord != null
+      ? [
+          {
+            label: glyphSafe(tp('fusion.pratyantar_lord')),
+            value: glyphSafe(
+              formatSubLord(
+                ctx.fusion.pratyantar_lord,
+                ctx.fusion.pratyantar_lord_transit_house_from_moon,
+              ),
+            ),
+          },
+        ]
+      : []),
     { label: glyphSafe(tp('fusion.reinforcing')), value: glyphSafe(list(ctx.fusion.reinforcing)) },
     { label: glyphSafe(tp('fusion.afflicting')), value: glyphSafe(list(ctx.fusion.afflicting)) },
   ];
@@ -223,7 +244,7 @@ export function buildTransitsSection(
 
   return {
     chrome: chrome(tr, 'transits', 'transits.heading'),
-    asOf: glyphSafe(tr('transits.as_of', { date: formatReferenceDay(ctx.gochara.instant) })),
+    asOf: glyphSafe(tr('transits.as_of', { date: formatTransitInstant(ctx.gochara.instant) })),
     gochara,
     sadeSatiHeading: glyphSafe(tr('transits.sade_sati_heading')),
     sadeSati,

@@ -341,8 +341,11 @@ export interface DashaTransitFusionData {
   instant: string;
   maha_lord: PlanetName;
   antar_lord: PlanetName | null;
+  pratyantar_lord?: PlanetName | null;
   maha_lord_transit_house_from_moon: number;
   maha_lord_transit_house_from_lagna: number;
+  antar_lord_transit_house_from_moon?: number | null;
+  pratyantar_lord_transit_house_from_moon?: number | null;
   reinforcing: PlanetName[];
   afflicting: PlanetName[];
   net_weight: number;

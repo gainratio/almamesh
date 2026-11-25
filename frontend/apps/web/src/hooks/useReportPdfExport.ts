@@ -25,6 +25,7 @@ import {
   predictiveRequestKey,
   useAyanamsaStore,
   useChartLibraryStore,
+  useInterpretationStore,
   useLifeEventsStore,
   usePredictiveStore,
   useProfilesStore,
@@ -36,6 +37,7 @@ import { safeError } from '@almamesh/shared-types';
 import type { LagnaData } from '@almamesh/browser/types';
 import type { ProcessedBirthData, RectificationRecord } from '@almamesh/shared-types';
 import { useStreamingInterpretation } from './useStreamingInterpretation';
+import { awaitInFlightEvidenceAnnotations } from './evidenceAnnotations';
 import { useDailyReferenceInstant } from './useDailyReferenceInstant';
 import {
   buildEnsurePredictiveInput,
@@ -60,6 +62,7 @@ import { buildEvidenceSection } from '../components/report-pdf/buildEvidenceSect
 import { buildRectificationPdf } from '../components/report-pdf/buildRectificationPdf';
 import { glyphSafe } from '../components/report-pdf/glyphSafe';
 import { ayanamsaDisplayName } from '../lib/reportData';
+import { formatYogaActivation } from '../lib/yogaActivation';
 import type { ReportAudience } from '../lib/reportSelectors';
 
 /** A short ISO date (YYYY-MM-DD) for the PDF file/title. */
@@ -92,10 +95,19 @@ async function awaitInFlightKey(expectedKey: string, signal: AbortSignal): Promi
   });
 }
 
+function hasCurrentBootProof(
+  snap: ReturnType<typeof usePredictiveStore.getState>,
+): boolean {
+  return Boolean(
+    snap.rawContexts?.domain_strength_receipts && snap.rawContexts?.strength_signer_public_key,
+  );
+}
+
 /**
- * Ensure the deterministic predictive superset (Sections IX–XII) is computed
- * for this exact chart + reference instant before assembling the PDF, whenever
- * an on-device engine provider is mounted. Preemption-safe and abort-safe.
+ * Ensure the deterministic predictive superset (Sections IX–XII) AND its
+ * current-boot Ed25519 Avow receipts are computed for this exact chart +
+ * reference instant before assembling the PDF, whenever an on-device engine
+ * provider is mounted. Preemption-safe and abort-safe.
  */
 async function ensurePredictiveForExport(
   engineCtx: ChartEngineContextValue | null,
@@ -105,7 +117,13 @@ async function ensurePredictiveForExport(
   if (!predictiveInput || !engineCtx || signal.aborted) return;
   const expectedKey = predictiveRequestKey(predictiveInput);
   const initial = usePredictiveStore.getState();
-  if (initial.requestKey === expectedKey && initial.status === 'ready') return;
+  if (
+    initial.requestKey === expectedKey &&
+    initial.status === 'ready' &&
+    hasCurrentBootProof(initial)
+  ) {
+    return;
+  }
 
   if (initial.requestKey === expectedKey && initial.status === 'loading') {
     await awaitInFlightKey(expectedKey, signal);
@@ -113,7 +131,11 @@ async function ensurePredictiveForExport(
   if (signal.aborted) return;
 
   const afterWait = usePredictiveStore.getState();
-  if (afterWait.requestKey === expectedKey && (afterWait.status === 'ready' || afterWait.status === 'error')) {
+  if (
+    afterWait.requestKey === expectedKey &&
+    (afterWait.status === 'error' ||
+      (afterWait.status === 'ready' && hasCurrentBootProof(afterWait)))
+  ) {
     return;
   }
 
@@ -122,12 +144,23 @@ async function ensurePredictiveForExport(
   if (signal.aborted) return;
 
   const afterBoot = usePredictiveStore.getState();
-  if (afterBoot.requestKey === expectedKey && afterBoot.status === 'ready') return;
-  if (afterBoot.requestKey === expectedKey && afterBoot.status === 'loading') {
-    await awaitInFlightKey(expectedKey, signal);
+  if (
+    afterBoot.requestKey === expectedKey &&
+    afterBoot.status === 'ready' &&
+    hasCurrentBootProof(afterBoot)
+  ) {
     return;
   }
-  await afterBoot.ensurePredictive(engine, predictiveInput);
+  if (afterBoot.requestKey === expectedKey && afterBoot.status === 'loading') {
+    await awaitInFlightKey(expectedKey, signal);
+    const afterSecondWait = usePredictiveStore.getState();
+    if (afterSecondWait.requestKey !== expectedKey || hasCurrentBootProof(afterSecondWait)) {
+      return;
+    }
+  }
+  await usePredictiveStore.getState().ensurePredictive(engine, predictiveInput, {
+    requireProof: true,
+  });
 }
 
 export interface UseReportPdfExportResult {
@@ -163,7 +196,8 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
   // `status === 'complete'` gate: that extra condition is what silently dropped
   // a perfectly valid natal-only reading from the export the moment the
   // predictive layer computed and turned its status stale.
-  const { interpretation, evidenceAnnotations } = useStreamingInterpretation(chartId);
+  const { interpretation, evidenceAnnotations, evidenceAnnotationError } =
+    useStreamingInterpretation(chartId);
   // The current timeline is intentionally dashboard-only for now. Flattening
   // it into the report would discard its independent generated/as-of date and
   // could present retained timing prose as freshly generated.
@@ -194,11 +228,13 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
     chartId,
     interpretation: reportInterpretation,
     evidenceAnnotations,
+    evidenceAnnotationError,
   });
   latestProseRef.current = {
     chartId,
     interpretation: reportInterpretation,
     evidenceAnnotations,
+    evidenceAnnotationError,
   };
 
   useEffect(
@@ -222,6 +258,7 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
     const targetProfileId = profileId;
     const initialInterpretation = reportInterpretation;
     const initialAnnotations = evidenceAnnotations;
+    const initialAnnotationError = evidenceAnnotationError;
 
     void (async () => {
       try {
@@ -244,6 +281,11 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
           return;
         }
 
+        await awaitInFlightEvidenceAnnotations(targetChartId, controller.signal);
+        if (controller.signal.aborted) {
+          return;
+        }
+
         const expectedKey = predictiveInput ? predictiveRequestKey(predictiveInput) : undefined;
         const settledPredictive = usePredictiveStore.getState();
         const hasPredictive = Boolean(
@@ -256,10 +298,21 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
             settledPredictive.domainsCtx,
         );
 
-        const freshProse =
+        const storeEntry = useInterpretationStore.getState().byChart[targetChartId];
+        const refProse =
           latestProseRef.current.chartId === targetChartId
             ? latestProseRef.current
-            : { interpretation: initialInterpretation, evidenceAnnotations: initialAnnotations };
+            : {
+                interpretation: initialInterpretation,
+                evidenceAnnotations: initialAnnotations,
+                evidenceAnnotationError: initialAnnotationError,
+              };
+        const freshProse = {
+          interpretation: storeEntry?.interpretation ?? refProse.interpretation,
+          evidenceAnnotations: storeEntry?.evidenceAnnotations ?? refProse.evidenceAnnotations,
+          evidenceAnnotationError:
+            storeEntry?.evidenceAnnotationError ?? refProse.evidenceAnnotationError,
+        };
         const liveRectification = targetProfileId
           ? useRectificationRecordsStore.getState().recordsByProfile[targetProfileId]
           : rectificationRecord;
@@ -311,6 +364,7 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
             note: ({ planet, separation, orb }) =>
               t('pdf.combustion_note', { planet, separation, orb }),
           },
+          formatYogaActivation: (yoga) => formatYogaActivation(yoga, t, tp),
           chartCaptions: {
             rasi: t('charts.rasi_caption'),
             navamsa: t('charts.navamsa_caption'),
@@ -473,6 +527,10 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
             buildEvidenceLedger(sidereal, freshProse.evidenceAnnotations),
             t,
             glyphSafe,
+            {
+              hasReading: Boolean(freshProse.interpretation),
+              annotationError: freshProse.evidenceAnnotationError,
+            },
           ),
           fileBaseName: t('pdf_title', { name: personName, date: isoDate(new Date()) }),
           locale: i18n.language,
@@ -503,6 +561,7 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
     engineCtx,
     reportInterpretation,
     evidenceAnnotations,
+    evidenceAnnotationError,
     audience,
     rectificationRecord,
     storedEvents,

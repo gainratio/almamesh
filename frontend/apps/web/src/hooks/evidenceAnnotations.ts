@@ -29,8 +29,9 @@ import {
   type RawEvidenceAnnotationPayload,
 } from '@almamesh/llm';
 import { safeError } from '@almamesh/shared-types';
-import type { SiderealChart } from '@almamesh/browser/types';
+import type { SiderealChart, YogaDashaActivation } from '@almamesh/browser/types';
 
+import { aiErrorRegistry } from '../lib/errors';
 import { buildObservations, type ChartFactor, type Observation } from '../lib/evidence';
 
 /** The engine's observation prompts plus the exhaustive citation allowlist. */
@@ -116,7 +117,7 @@ function evidenceOf(factor: ChartFactor): string {
     case 'dasha':
       return `${factor.startIso} to ${factor.endIso}, ${num(factor.durationYears)} years, convention=${factor.convention}`;
     case 'yoga':
-      return `grade=${factor.grade}, category=${factor.category}, houses ${listOr(factor.housesInvolved)}, planets ${listOr(factor.planetsInvolved)}`;
+      return `grade=${factor.grade}, category=${factor.category}, houses ${listOr(factor.housesInvolved)}, planets ${listOr(factor.planetsInvolved)}${activationEvidence(factor.dashaActivation)}`;
     case 'yogaStrength':
       return `net marks ${factor.netMarks} (max favorable ${factor.maxFavorable}, max unfavorable ${factor.maxUnfavorable})`;
   }
@@ -132,6 +133,30 @@ function cuspEvidence(distanceDeg: number | null, adjacentSign: string | null): 
 
 function listOr(values: readonly (string | number)[]): string {
   return values.length > 0 ? values.join('/') : 'none';
+}
+
+function activationEvidence(activation: YogaDashaActivation | null | undefined): string {
+  if (!activation) return '';
+  const direct = activation.direct_lords.map((d) => `${d.level}:${d.lord}`).join('/');
+  const chains = activation.dispositor_chains
+    .map((c) => `${c.level}:${c.chain.join('->')}`)
+    .join('/');
+  const aspects = activation.aspect_links
+    .map((a) => `${a.level}:${a.lord}->${a.target}(h${a.house_offset})`)
+    .join('/');
+  const mitigating = activation.mitigating_factors
+    .map((m) =>
+      m.kind === 'lagna_near_cusp'
+        ? m.kind
+        : `${m.planet ?? ''}:${m.kind}${m.house != null ? `(h${m.house})` : ''}`,
+    )
+    .join('/');
+  const parts = [`dasha_activation=${activation.status}`];
+  if (direct) parts.push(`direct=${direct}`);
+  if (chains) parts.push(`dispositor=${chains}`);
+  if (aspects) parts.push(`aspect=${aspects}`);
+  if (mitigating) parts.push(`mitigating=${mitigating}`);
+  return `, ${parts.join(', ')}`;
 }
 
 /** One observation as prompt input: its own numbers, then its support's. */
@@ -161,6 +186,92 @@ export function buildObservationPrompts(chart: SiderealChart): ObservationPrompt
   };
 }
 
+export type EvidenceAnnotationOutcome =
+  | { readonly kind: 'skipped' }
+  | { readonly kind: 'ok'; readonly payload: RawEvidenceAnnotationPayload }
+  | { readonly kind: 'failed'; readonly errorCode: string };
+
+const inFlightAnnotations = new Map<string, Promise<void>>();
+
+/** Register an in-flight evidence-annotation run so PDF export can await it cleanly. */
+export function trackEvidenceAnnotationFlight(chartId: string, task: Promise<void>): Promise<void> {
+  const settled = task.finally(() => {
+    if (inFlightAnnotations.get(chartId) === settled) {
+      inFlightAnnotations.delete(chartId);
+    }
+  });
+  inFlightAnnotations.set(chartId, settled);
+  return settled;
+}
+
+const MAX_EXPORT_ANNOTATION_WAIT_MS = 15_000;
+
+/** Wait (up to 15s) for any in-flight evidence-annotation call on `chartId` (or exit on abort). */
+export async function awaitInFlightEvidenceAnnotations(
+  chartId: string,
+  signal?: AbortSignal,
+): Promise<void> {
+  const pending = inFlightAnnotations.get(chartId);
+  if (!pending || signal?.aborted) return;
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, MAX_EXPORT_ANNOTATION_WAIT_MS);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      resolve();
+    };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    void pending.finally(() => {
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    });
+  });
+}
+
+/**
+ * Ask the model to annotate this chart's observations, distinguishing a skipped
+ * keyless run from a provider/parse failure.
+ */
+export async function fetchEvidenceAnnotationsOutcome(
+  request: EvidenceAnnotationRequest,
+): Promise<EvidenceAnnotationOutcome> {
+  if (!canRequestEvidenceAnnotations(request.config)) {
+    return { kind: 'skipped' };
+  }
+  let built: ObservationPrompts;
+  try {
+    built = buildObservationPrompts(request.chart);
+  } catch (err) {
+    safeError('report.evidence_annotation_failed', err);
+    return { kind: 'skipped' };
+  }
+  if (built.observations.length === 0) {
+    return { kind: 'skipped' };
+  }
+  try {
+    const payload = await requestEvidenceAnnotations({
+      chart: sanitizeChartForLlm(request.chart, request.asOf),
+      observations: built.observations,
+      factorIds: built.factorIds,
+      config: request.config,
+      language: request.language,
+      signal: request.signal,
+    });
+    return { kind: 'ok', payload };
+  } catch (err) {
+    if (request.signal.aborted) {
+      return { kind: 'skipped' };
+    }
+    // Only an allowlisted diagnostic code: a provider error can carry the
+    // endpoint or prompt-adjacent data and must never be serialized to console.
+    safeError('report.evidence_annotation_failed', err);
+    return { kind: 'failed', errorCode: aiErrorRegistry.classify(err) };
+  }
+}
+
 /**
  * Ask the model to annotate this chart's observations.
  *
@@ -171,26 +282,6 @@ export function buildObservationPrompts(chart: SiderealChart): ObservationPrompt
 export async function fetchEvidenceAnnotations(
   request: EvidenceAnnotationRequest,
 ): Promise<RawEvidenceAnnotationPayload | null> {
-  if (!canRequestEvidenceAnnotations(request.config)) {
-    return null;
-  }
-  try {
-    const { observations, factorIds } = buildObservationPrompts(request.chart);
-    if (observations.length === 0) {
-      return null;
-    }
-    return await requestEvidenceAnnotations({
-      chart: sanitizeChartForLlm(request.chart, request.asOf),
-      observations,
-      factorIds,
-      config: request.config,
-      language: request.language,
-      signal: request.signal,
-    });
-  } catch (err) {
-    // Only an allowlisted diagnostic code: a provider error can carry the
-    // endpoint or prompt-adjacent data and must never be serialized to console.
-    safeError('report.evidence_annotation_failed', err);
-    return null;
-  }
+  const outcome = await fetchEvidenceAnnotationsOutcome(request);
+  return outcome.kind === 'ok' ? outcome.payload : null;
 }

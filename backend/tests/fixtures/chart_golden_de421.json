@@ -978,6 +978,22 @@
     "yogas": [
       {
         "category": "auspicious",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [
+            {
+              "level": "maha",
+              "lord": "jupiter"
+            },
+            {
+              "level": "antar",
+              "lord": "jupiter"
+            }
+          ],
+          "dispositor_chains": [],
+          "mitigating_factors": [],
+          "status": "direct"
+        },
         "description": "Jupiter in a kendra from the Moon",
         "display_name": "Gajakesari Yoga (Jupiter in the 1st from the Moon)",
         "effects": "Lasting reputation, intelligence and virtuous standing",
@@ -1043,6 +1059,26 @@
       },
       {
         "category": "dosha",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 1,
+              "level": "maha",
+              "lord": "jupiter",
+              "target": "moon"
+            },
+            {
+              "house_offset": 1,
+              "level": "antar",
+              "lord": "jupiter",
+              "target": "moon"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [],
+          "mitigating_factors": [],
+          "status": "indirect"
+        },
         "description": "No planet (other than the Sun) in the 2nd or 12th from the Moon",
         "display_name": "Kemadruma Yoga (No planet (other than the Sun) in the 2nd or 12th from the Moon)",
         "effects": "An unsupported Moon: struggles unless cancelled elsewhere",
@@ -1092,6 +1128,22 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [
+            {
+              "level": "maha",
+              "lord": "jupiter"
+            },
+            {
+              "level": "antar",
+              "lord": "jupiter"
+            }
+          ],
+          "dispositor_chains": [],
+          "mitigating_factors": [],
+          "status": "direct"
+        },
         "description": "A kendra lord and a trikona lord in sambandha",
         "display_name": "Raja Yoga (Moon (kendra lord) and Jupiter (trikona lord) in conjunction)",
         "effects": "Authority, rise and recognition",
@@ -1159,6 +1211,43 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 5,
+              "level": "maha",
+              "lord": "jupiter",
+              "target": "mars"
+            },
+            {
+              "house_offset": 5,
+              "level": "maha",
+              "lord": "jupiter",
+              "target": "venus"
+            },
+            {
+              "house_offset": 5,
+              "level": "antar",
+              "lord": "jupiter",
+              "target": "mars"
+            },
+            {
+              "house_offset": 5,
+              "level": "antar",
+              "lord": "jupiter",
+              "target": "venus"
+            }
+          ],
+          "direct_lords": [
+            {
+              "level": "pratyantar",
+              "lord": "mars"
+            }
+          ],
+          "dispositor_chains": [],
+          "mitigating_factors": [],
+          "status": "direct"
+        },
         "description": "A kendra lord and a trikona lord in sambandha",
         "display_name": "Raja Yoga (Venus (kendra lord) and Mars (trikona lord) in conjunction)",
         "effects": "Authority, rise and recognition",
@@ -1226,6 +1315,31 @@
       },
       {
         "category": "mahapurusha",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 5,
+              "level": "maha",
+              "lord": "jupiter",
+              "target": "mars"
+            },
+            {
+              "house_offset": 5,
+              "level": "antar",
+              "lord": "jupiter",
+              "target": "mars"
+            }
+          ],
+          "direct_lords": [
+            {
+              "level": "pratyantar",
+              "lord": "mars"
+            }
+          ],
+          "dispositor_chains": [],
+          "mitigating_factors": [],
+          "status": "direct"
+        },
         "description": "Pancha Mahapurusha: the graha in a kendra from lagna in own/exaltation sign",
         "display_name": "Ruchaka Yoga (Mars own in the 1st)",
         "effects": "Courage, command and martial accomplishment",
@@ -1275,6 +1389,13 @@
       },
       {
         "category": "dhana",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [],
+          "dispositor_chains": [],
+          "mitigating_factors": [],
+          "status": "dormant"
+        },
         "description": "11th lord Saturn in the 2nd",
         "display_name": "Dhana Yoga (11th lord Saturn in the 2nd)",
         "effects": "Wealth accumulation through the linked houses",
@@ -1326,6 +1447,13 @@
       },
       {
         "category": "dhana",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [],
+          "dispositor_chains": [],
+          "mitigating_factors": [],
+          "status": "dormant"
+        },
         "description": "5th lord Sun in the 11th",
         "display_name": "Dhana Yoga (5th lord Sun in the 11th)",
         "effects": "Wealth accumulation through the linked houses",
@@ -1377,6 +1505,35 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 1,
+              "level": "pratyantar",
+              "lord": "mars",
+              "target": "venus"
+            }
+          ],
+          "direct_lords": [
+            {
+              "level": "maha",
+              "lord": "jupiter"
+            },
+            {
+              "level": "antar",
+              "lord": "jupiter"
+            }
+          ],
+          "dispositor_chains": [],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "mercury"
+            }
+          ],
+          "status": "direct"
+        },
         "description": "Debilitation of Mercury is cancelled",
         "display_name": "Neecha Bhanga Raja Yoga (debilitated Mercury cancelled: 2 condition(s))",
         "effects": "Weakness transformed into eventual rise",
@@ -1473,6 +1630,13 @@
       },
       {
         "category": "surya",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [],
+          "dispositor_chains": [],
+          "mitigating_factors": [],
+          "status": "dormant"
+        },
         "description": "Planets (other than the Moon) in the 2nd from the Sun",
         "display_name": "Vesi Yoga (Planets (other than the Moon) in the 2nd from the Sun)",
         "effects": "Balanced fortunes, eloquence and supportive circumstances",
@@ -1540,6 +1704,13 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [],
+          "dispositor_chains": [],
+          "mitigating_factors": [],
+          "status": "dormant"
+        },
         "description": "Harsha: the 6th lord Mercury placed in the 12th (dusthana)",
         "display_name": "Vipareeta Raja Yoga (Harsha: the 6th lord Mercury placed in the 12th (dusthana))",
         "effects": "Rise precipitated through adversity and its reversal",
@@ -2582,6 +2753,54 @@
     "yogas": [
       {
         "category": "auspicious",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 5,
+              "level": "maha",
+              "lord": "jupiter",
+              "target": "venus"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "jupiter",
+                "saturn",
+                "venus"
+              ],
+              "level": "maha",
+              "lord": "jupiter"
+            },
+            {
+              "chain": [
+                "saturn",
+                "venus"
+              ],
+              "level": "pratyantar",
+              "lord": "saturn"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "jupiter"
+            },
+            {
+              "house": 6,
+              "kind": "dusthana",
+              "planet": "jupiter"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "indirect"
+        },
         "description": "The 10th from Lagna or Moon occupied by benefics alone",
         "display_name": "Amala Yoga (a stainless 10th: benefics only)",
         "effects": "Lasting, unblemished reputation through righteous deeds",
@@ -2631,6 +2850,54 @@
       },
       {
         "category": "mahapurusha",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 5,
+              "level": "maha",
+              "lord": "jupiter",
+              "target": "venus"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "jupiter",
+                "saturn",
+                "venus"
+              ],
+              "level": "maha",
+              "lord": "jupiter"
+            },
+            {
+              "chain": [
+                "saturn",
+                "venus"
+              ],
+              "level": "pratyantar",
+              "lord": "saturn"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "jupiter"
+            },
+            {
+              "house": 6,
+              "kind": "dusthana",
+              "planet": "jupiter"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "indirect"
+        },
         "description": "Pancha Mahapurusha: the graha in a kendra from lagna in own/exaltation sign",
         "display_name": "Malavya Yoga (Venus own in the 10th)",
         "effects": "Refinement, comforts and artistic grace",
@@ -2680,6 +2947,54 @@
       },
       {
         "category": "chandra",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 9,
+              "level": "maha",
+              "lord": "jupiter",
+              "target": "moon"
+            }
+          ],
+          "direct_lords": [
+            {
+              "level": "antar",
+              "lord": "mercury"
+            },
+            {
+              "level": "pratyantar",
+              "lord": "saturn"
+            }
+          ],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "jupiter",
+                "saturn"
+              ],
+              "level": "maha",
+              "lord": "jupiter"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "jupiter"
+            },
+            {
+              "house": 6,
+              "kind": "dusthana",
+              "planet": "jupiter"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "direct"
+        },
         "description": "Planets (other than the Sun) on both sides of the Moon",
         "display_name": "Durudhara Yoga (Planets (other than the Sun) on both sides of the Moon)",
         "effects": "Resources and supportive company on both sides",
@@ -2772,6 +3087,60 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 7,
+              "level": "maha",
+              "lord": "jupiter",
+              "target": "mars"
+            }
+          ],
+          "direct_lords": [
+            {
+              "level": "pratyantar",
+              "lord": "saturn"
+            }
+          ],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "jupiter",
+                "saturn"
+              ],
+              "level": "maha",
+              "lord": "jupiter"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "mars"
+            },
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "mars"
+            },
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "jupiter"
+            },
+            {
+              "house": 6,
+              "kind": "dusthana",
+              "planet": "jupiter"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "direct"
+        },
         "description": "A kendra lord and a trikona lord in sambandha",
         "display_name": "Raja Yoga (Saturn (kendra lord) and Mars (trikona lord) in mutual_aspect)",
         "effects": "Authority, rise and recognition",
@@ -2859,6 +3228,47 @@
       },
       {
         "category": "surya",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 7,
+              "level": "maha",
+              "lord": "jupiter",
+              "target": "sun"
+            },
+            {
+              "house_offset": 10,
+              "level": "pratyantar",
+              "lord": "saturn",
+              "target": "sun"
+            }
+          ],
+          "direct_lords": [
+            {
+              "level": "antar",
+              "lord": "mercury"
+            }
+          ],
+          "dispositor_chains": [],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "jupiter"
+            },
+            {
+              "house": 6,
+              "kind": "dusthana",
+              "planet": "jupiter"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "direct"
+        },
         "description": "Planets (other than the Moon) in the 2nd from the Sun",
         "display_name": "Vesi Yoga (Planets (other than the Moon) in the 2nd from the Sun)",
         "effects": "Balanced fortunes, eloquence and supportive circumstances",
@@ -2926,6 +3336,68 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 7,
+              "level": "maha",
+              "lord": "jupiter",
+              "target": "mars"
+            },
+            {
+              "house_offset": 9,
+              "level": "maha",
+              "lord": "jupiter",
+              "target": "moon"
+            },
+            {
+              "house_offset": 10,
+              "level": "pratyantar",
+              "lord": "saturn",
+              "target": "mars"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "mercury",
+                "sun",
+                "moon"
+              ],
+              "level": "antar",
+              "lord": "mercury"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "mars"
+            },
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "mars"
+            },
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "jupiter"
+            },
+            {
+              "house": 6,
+              "kind": "dusthana",
+              "planet": "jupiter"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "indirect"
+        },
         "description": "Debilitation of Mars is cancelled",
         "display_name": "Neecha Bhanga Raja Yoga (debilitated Mars cancelled: 1 condition(s))",
         "effects": "Weakness transformed into eventual rise",
@@ -3000,6 +3472,46 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 10,
+              "level": "pratyantar",
+              "lord": "saturn",
+              "target": "mars"
+            }
+          ],
+          "direct_lords": [
+            {
+              "level": "maha",
+              "lord": "jupiter"
+            }
+          ],
+          "dispositor_chains": [],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "jupiter"
+            },
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "mars"
+            },
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "mars"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "direct"
+        },
         "description": "A kendra lord and a trikona lord in sambandha",
         "display_name": "Raja Yoga (Mars (kendra lord) and Jupiter (trikona lord) in mutual_aspect)",
         "effects": "Authority, rise and recognition",
@@ -3087,6 +3599,45 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 10,
+              "level": "pratyantar",
+              "lord": "saturn",
+              "target": "sun"
+            }
+          ],
+          "direct_lords": [
+            {
+              "level": "maha",
+              "lord": "jupiter"
+            }
+          ],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "mercury",
+                "sun"
+              ],
+              "level": "antar",
+              "lord": "mercury"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "jupiter"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "direct"
+        },
         "description": "A kendra lord and a trikona lord in sambandha",
         "display_name": "Raja Yoga (Sun (kendra lord) and Jupiter (trikona lord) in mutual_aspect)",
         "effects": "Authority, rise and recognition",
@@ -3165,6 +3716,73 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 7,
+              "level": "maha",
+              "lord": "jupiter",
+              "target": "mars"
+            },
+            {
+              "house_offset": 7,
+              "level": "maha",
+              "lord": "jupiter",
+              "target": "sun"
+            },
+            {
+              "house_offset": 10,
+              "level": "pratyantar",
+              "lord": "saturn",
+              "target": "mars"
+            },
+            {
+              "house_offset": 10,
+              "level": "pratyantar",
+              "lord": "saturn",
+              "target": "sun"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "mercury",
+                "sun"
+              ],
+              "level": "antar",
+              "lord": "mercury"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "mars"
+            },
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "mars"
+            },
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "jupiter"
+            },
+            {
+              "house": 6,
+              "kind": "dusthana",
+              "planet": "jupiter"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "indirect"
+        },
         "description": "A kendra lord and a trikona lord in sambandha",
         "display_name": "Raja Yoga (Sun (kendra lord) and Mars (trikona lord) in conjunction)",
         "effects": "Authority, rise and recognition",
@@ -3243,6 +3861,29 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [
+            {
+              "level": "maha",
+              "lord": "jupiter"
+            }
+          ],
+          "dispositor_chains": [],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "jupiter"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "direct"
+        },
         "description": "Sarala: the 8th lord Jupiter placed in the 6th (dusthana)",
         "display_name": "Vipareeta Raja Yoga (Sarala: the 8th lord Jupiter placed in the 6th (dusthana))",
         "effects": "Rise precipitated through adversity and its reversal",
@@ -3301,6 +3942,57 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 7,
+              "level": "maha",
+              "lord": "jupiter",
+              "target": "mars"
+            },
+            {
+              "house_offset": 10,
+              "level": "pratyantar",
+              "lord": "saturn",
+              "target": "mars"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "mars"
+            },
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "mars"
+            },
+            {
+              "house": 12,
+              "kind": "dusthana",
+              "planet": "mars"
+            },
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "jupiter"
+            },
+            {
+              "house": 6,
+              "kind": "dusthana",
+              "planet": "jupiter"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "indirect"
+        },
         "description": "Mars lords both a kendra and a trikona (4th and 9th)",
         "display_name": "Mars is Yogakaraka (Mars lords both a kendra and a trikona (4th and 9th))",
         "effects": "A single graha empowered to confer rank and fortune",
@@ -4338,6 +5030,34 @@
     "yogas": [
       {
         "category": "auspicious",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [
+            {
+              "level": "maha",
+              "lord": "jupiter"
+            }
+          ],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "rahu",
+                "saturn",
+                "jupiter"
+              ],
+              "level": "antar",
+              "lord": "rahu"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "direct"
+        },
         "description": "The 10th from Lagna or Moon occupied by benefics alone",
         "display_name": "Amala Yoga (a stainless 10th: benefics only)",
         "effects": "Lasting, unblemished reputation through righteous deeds",
@@ -4387,6 +5107,43 @@
       },
       {
         "category": "chandra",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [
+            {
+              "level": "maha",
+              "lord": "jupiter"
+            },
+            {
+              "level": "pratyantar",
+              "lord": "moon"
+            }
+          ],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "rahu",
+                "saturn",
+                "jupiter"
+              ],
+              "level": "antar",
+              "lord": "rahu"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "mercury"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "direct"
+        },
         "description": "Planets (other than the Sun) on both sides of the Moon",
         "display_name": "Durudhara Yoga (Planets (other than the Sun) on both sides of the Moon)",
         "effects": "Resources and supportive company on both sides",
@@ -4479,6 +5236,45 @@
       },
       {
         "category": "surya",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 1,
+              "level": "pratyantar",
+              "lord": "moon",
+              "target": "venus"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "jupiter",
+                "venus"
+              ],
+              "level": "maha",
+              "lord": "jupiter"
+            },
+            {
+              "chain": [
+                "rahu",
+                "saturn",
+                "jupiter",
+                "venus"
+              ],
+              "level": "antar",
+              "lord": "rahu"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "indirect"
+        },
         "description": "Planets (other than the Moon) in the 12th from the Sun",
         "display_name": "Vasi Yoga (Planets (other than the Moon) in the 12th from the Sun)",
         "effects": "Balanced fortunes, eloquence and supportive circumstances",
@@ -4546,6 +5342,53 @@
       },
       {
         "category": "auspicious",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "jupiter",
+                "venus",
+                "mercury"
+              ],
+              "level": "maha",
+              "lord": "jupiter"
+            },
+            {
+              "chain": [
+                "rahu",
+                "saturn",
+                "jupiter",
+                "venus",
+                "mercury"
+              ],
+              "level": "antar",
+              "lord": "rahu"
+            },
+            {
+              "chain": [
+                "moon",
+                "mercury"
+              ],
+              "level": "pratyantar",
+              "lord": "moon"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "mercury"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "indirect"
+        },
         "description": "Sun-Mercury conjunction",
         "display_name": "Budha-Aditya Yoga (Sun and Mercury conjunct in Cancer (the 12th))",
         "effects": "Sharp intellect, administrative and communicative skill",
@@ -4618,6 +5461,50 @@
       },
       {
         "category": "special",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [
+            {
+              "level": "pratyantar",
+              "lord": "moon"
+            }
+          ],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "jupiter",
+                "venus",
+                "mercury"
+              ],
+              "level": "maha",
+              "lord": "jupiter"
+            },
+            {
+              "chain": [
+                "rahu",
+                "saturn",
+                "jupiter",
+                "venus",
+                "mercury"
+              ],
+              "level": "antar",
+              "lord": "rahu"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "mercury"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "direct"
+        },
         "description": "Dainya Parivartana: Moon and Mercury exchange signs (houses 11th and 12th)",
         "display_name": "Parivartana Yoga (Dainya Parivartana: Moon and Mercury exchange signs (houses 11th and 12th))",
         "effects": "The two houses' agendas become interlocked and mutually felt",
@@ -4692,6 +5579,13 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [],
+          "dispositor_chains": [],
+          "mitigating_factors": [],
+          "status": "dormant"
+        },
         "description": "Mars lords both a kendra and a trikona (4th and 9th)",
         "display_name": "Mars is Yogakaraka (Mars lords both a kendra and a trikona (4th and 9th))",
         "effects": "A single graha empowered to confer rank and fortune",
@@ -5710,6 +6604,65 @@
     "yogas": [
       {
         "category": "special",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 7,
+              "level": "antar",
+              "lord": "saturn",
+              "target": "jupiter"
+            },
+            {
+              "house_offset": 1,
+              "level": "antar",
+              "lord": "saturn",
+              "target": "mercury"
+            }
+          ],
+          "direct_lords": [
+            {
+              "level": "pratyantar",
+              "lord": "jupiter"
+            }
+          ],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "rahu",
+                "saturn",
+                "jupiter"
+              ],
+              "level": "maha",
+              "lord": "rahu"
+            },
+            {
+              "chain": [
+                "saturn",
+                "jupiter"
+              ],
+              "level": "antar",
+              "lord": "saturn"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": 8,
+              "kind": "dusthana",
+              "planet": "rahu"
+            },
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "saturn"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "direct"
+        },
         "description": "Maha Parivartana: Mercury and Jupiter exchange signs (houses 1st and 7th)",
         "display_name": "Parivartana Yoga (Maha Parivartana: Mercury and Jupiter exchange signs (houses 1st and 7th))",
         "effects": "The two houses' agendas become interlocked and mutually felt",
@@ -5791,6 +6744,65 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 7,
+              "level": "antar",
+              "lord": "saturn",
+              "target": "jupiter"
+            },
+            {
+              "house_offset": 1,
+              "level": "antar",
+              "lord": "saturn",
+              "target": "mercury"
+            }
+          ],
+          "direct_lords": [
+            {
+              "level": "pratyantar",
+              "lord": "jupiter"
+            }
+          ],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "rahu",
+                "saturn",
+                "jupiter"
+              ],
+              "level": "maha",
+              "lord": "rahu"
+            },
+            {
+              "chain": [
+                "saturn",
+                "jupiter"
+              ],
+              "level": "antar",
+              "lord": "saturn"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": 8,
+              "kind": "dusthana",
+              "planet": "rahu"
+            },
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "saturn"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "direct"
+        },
         "description": "A kendra lord and a trikona lord in sambandha",
         "display_name": "Raja Yoga (Jupiter (kendra lord) and Mercury (trikona lord) in exchange)",
         "effects": "Authority, rise and recognition",
@@ -5876,6 +6888,13 @@
       },
       {
         "category": "dosha",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [],
+          "dispositor_chains": [],
+          "mitigating_factors": [],
+          "status": "dormant"
+        },
         "description": "No planet (other than the Sun) in the 2nd or 12th from the Moon",
         "display_name": "Kemadruma Yoga (No planet (other than the Sun) in the 2nd or 12th from the Moon)",
         "effects": "An unsupported Moon: struggles unless cancelled elsewhere",
@@ -5925,6 +6944,47 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [
+            {
+              "level": "antar",
+              "lord": "saturn"
+            },
+            {
+              "level": "pratyantar",
+              "lord": "jupiter"
+            }
+          ],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "rahu",
+                "saturn"
+              ],
+              "level": "maha",
+              "lord": "rahu"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "saturn"
+            },
+            {
+              "house": 8,
+              "kind": "dusthana",
+              "planet": "rahu"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "direct"
+        },
         "description": "A kendra lord and a trikona lord in sambandha",
         "display_name": "Raja Yoga (Jupiter (kendra lord) and Saturn (trikona lord) in mutual_aspect)",
         "effects": "Authority, rise and recognition",
@@ -6010,6 +7070,64 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 7,
+              "level": "pratyantar",
+              "lord": "jupiter",
+              "target": "mercury"
+            },
+            {
+              "house_offset": 7,
+              "level": "pratyantar",
+              "lord": "jupiter",
+              "target": "saturn"
+            }
+          ],
+          "direct_lords": [
+            {
+              "level": "antar",
+              "lord": "saturn"
+            }
+          ],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "rahu",
+                "saturn"
+              ],
+              "level": "maha",
+              "lord": "rahu"
+            },
+            {
+              "chain": [
+                "jupiter",
+                "mercury"
+              ],
+              "level": "pratyantar",
+              "lord": "jupiter"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "saturn"
+            },
+            {
+              "house": 8,
+              "kind": "dusthana",
+              "planet": "rahu"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "direct"
+        },
         "description": "A kendra lord and a trikona lord in sambandha",
         "display_name": "Raja Yoga (Mercury (kendra lord) and Saturn (trikona lord) in conjunction)",
         "effects": "Authority, rise and recognition",
@@ -6095,6 +7213,65 @@
       },
       {
         "category": "surya",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 1,
+              "level": "maha",
+              "lord": "rahu",
+              "target": "sun"
+            },
+            {
+              "house_offset": 7,
+              "level": "pratyantar",
+              "lord": "jupiter",
+              "target": "mercury"
+            },
+            {
+              "house_offset": 7,
+              "level": "pratyantar",
+              "lord": "jupiter",
+              "target": "saturn"
+            }
+          ],
+          "direct_lords": [
+            {
+              "level": "antar",
+              "lord": "saturn"
+            }
+          ],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "rahu",
+                "saturn"
+              ],
+              "level": "maha",
+              "lord": "rahu"
+            },
+            {
+              "chain": [
+                "jupiter",
+                "mercury"
+              ],
+              "level": "pratyantar",
+              "lord": "jupiter"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "saturn"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "direct"
+        },
         "description": "Planets (other than the Moon) in the 12th from the Sun",
         "display_name": "Vasi Yoga (Planets (other than the Moon) in the 12th from the Sun)",
         "effects": "Balanced fortunes, eloquence and supportive circumstances",
@@ -6192,6 +7369,13 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [],
+          "dispositor_chains": [],
+          "mitigating_factors": [],
+          "status": "dormant"
+        },
         "description": "Harsha: the 6th lord Mars placed in the 6th (dusthana)",
         "display_name": "Vipareeta Raja Yoga (Harsha: the 6th lord Mars placed in the 6th (dusthana))",
         "effects": "Rise precipitated through adversity and its reversal",
@@ -6241,6 +7425,31 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 1,
+              "level": "maha",
+              "lord": "rahu",
+              "target": "venus"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "venus"
+            },
+            {
+              "house": null,
+              "kind": "lagna_near_cusp",
+              "planet": null
+            }
+          ],
+          "status": "indirect"
+        },
         "description": "Vimala: the 12th lord Venus placed in the 8th (dusthana)",
         "display_name": "Vipareeta Raja Yoga (Vimala: the 12th lord Venus placed in the 8th (dusthana))",
         "effects": "Rise precipitated through adversity and its reversal",
@@ -7297,6 +8506,45 @@
     "yogas": [
       {
         "category": "dhana",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 1,
+              "level": "maha",
+              "lord": "saturn",
+              "target": "jupiter"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "rahu",
+                "mercury",
+                "jupiter"
+              ],
+              "level": "antar",
+              "lord": "rahu"
+            },
+            {
+              "chain": [
+                "rahu",
+                "mercury",
+                "jupiter"
+              ],
+              "level": "pratyantar",
+              "lord": "rahu"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": 12,
+              "kind": "dusthana",
+              "planet": "rahu"
+            }
+          ],
+          "status": "indirect"
+        },
         "description": "9th lord Jupiter in the 11th",
         "display_name": "Dhana Yoga (9th lord Jupiter in the 11th)",
         "effects": "Wealth accumulation through the linked houses",
@@ -7355,6 +8603,51 @@
       },
       {
         "category": "auspicious",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 1,
+              "level": "maha",
+              "lord": "saturn",
+              "target": "jupiter"
+            },
+            {
+              "house_offset": 10,
+              "level": "maha",
+              "lord": "saturn",
+              "target": "moon"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "rahu",
+                "mercury",
+                "jupiter"
+              ],
+              "level": "antar",
+              "lord": "rahu"
+            },
+            {
+              "chain": [
+                "rahu",
+                "mercury",
+                "jupiter"
+              ],
+              "level": "pratyantar",
+              "lord": "rahu"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": 12,
+              "kind": "dusthana",
+              "planet": "rahu"
+            }
+          ],
+          "status": "indirect"
+        },
         "description": "Jupiter in a kendra from the Moon",
         "display_name": "Gajakesari Yoga (Jupiter in the 4th from the Moon)",
         "effects": "Lasting reputation, intelligence and virtuous standing",
@@ -7429,6 +8722,20 @@
       },
       {
         "category": "dosha",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 10,
+              "level": "maha",
+              "lord": "saturn",
+              "target": "moon"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [],
+          "mitigating_factors": [],
+          "status": "indirect"
+        },
         "description": "No planet (other than the Sun) in the 2nd or 12th from the Moon",
         "display_name": "Kemadruma Yoga (No planet (other than the Sun) in the 2nd or 12th from the Moon)",
         "effects": "An unsupported Moon: struggles unless cancelled elsewhere",
@@ -7478,6 +8785,45 @@
       },
       {
         "category": "special",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [
+            {
+              "level": "maha",
+              "lord": "saturn"
+            }
+          ],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "rahu",
+                "mercury",
+                "jupiter",
+                "venus"
+              ],
+              "level": "antar",
+              "lord": "rahu"
+            },
+            {
+              "chain": [
+                "rahu",
+                "mercury",
+                "jupiter",
+                "venus"
+              ],
+              "level": "pratyantar",
+              "lord": "rahu"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": 12,
+              "kind": "dusthana",
+              "planet": "rahu"
+            }
+          ],
+          "status": "direct"
+        },
         "description": "Dainya Parivartana: Venus and Saturn exchange signs (houses 8th and 11th)",
         "display_name": "Parivartana Yoga (Dainya Parivartana: Venus and Saturn exchange signs (houses 8th and 11th))",
         "effects": "The two houses' agendas become interlocked and mutually felt",
@@ -7552,6 +8898,43 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [
+            {
+              "level": "maha",
+              "lord": "saturn"
+            }
+          ],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "rahu",
+                "mercury",
+                "jupiter"
+              ],
+              "level": "antar",
+              "lord": "rahu"
+            },
+            {
+              "chain": [
+                "rahu",
+                "mercury",
+                "jupiter"
+              ],
+              "level": "pratyantar",
+              "lord": "rahu"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": 12,
+              "kind": "dusthana",
+              "planet": "rahu"
+            }
+          ],
+          "status": "direct"
+        },
         "description": "A kendra lord and a trikona lord in sambandha",
         "display_name": "Raja Yoga (Saturn (kendra lord) and Jupiter (trikona lord) in conjunction)",
         "effects": "Authority, rise and recognition",
@@ -7635,6 +9018,13 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [],
+          "dispositor_chains": [],
+          "mitigating_factors": [],
+          "status": "dormant"
+        },
         "description": "Mars lords both a kendra and a trikona (5th and 10th)",
         "display_name": "Mars is Yogakaraka (Mars lords both a kendra and a trikona (5th and 10th))",
         "effects": "A single graha empowered to confer rank and fortune",
@@ -7686,6 +9076,66 @@
       },
       {
         "category": "auspicious",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 7,
+              "level": "antar",
+              "lord": "rahu",
+              "target": "mercury"
+            },
+            {
+              "house_offset": 7,
+              "level": "antar",
+              "lord": "rahu",
+              "target": "sun"
+            },
+            {
+              "house_offset": 7,
+              "level": "pratyantar",
+              "lord": "rahu",
+              "target": "mercury"
+            },
+            {
+              "house_offset": 7,
+              "level": "pratyantar",
+              "lord": "rahu",
+              "target": "sun"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "rahu",
+                "mercury"
+              ],
+              "level": "antar",
+              "lord": "rahu"
+            },
+            {
+              "chain": [
+                "rahu",
+                "mercury"
+              ],
+              "level": "pratyantar",
+              "lord": "rahu"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "mercury"
+            },
+            {
+              "house": 12,
+              "kind": "dusthana",
+              "planet": "rahu"
+            }
+          ],
+          "status": "indirect"
+        },
         "description": "Sun-Mercury conjunction",
         "display_name": "Budha-Aditya Yoga (Sun and Mercury conjunct in Sagittarius (the 6th))",
         "effects": "Sharp intellect, administrative and communicative skill",
@@ -7758,6 +9208,61 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 10,
+              "level": "maha",
+              "lord": "saturn",
+              "target": "moon"
+            },
+            {
+              "house_offset": 10,
+              "level": "maha",
+              "lord": "saturn",
+              "target": "venus"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "saturn",
+                "venus"
+              ],
+              "level": "maha",
+              "lord": "saturn"
+            },
+            {
+              "chain": [
+                "rahu",
+                "mercury",
+                "jupiter",
+                "venus"
+              ],
+              "level": "antar",
+              "lord": "rahu"
+            },
+            {
+              "chain": [
+                "rahu",
+                "mercury",
+                "jupiter",
+                "venus"
+              ],
+              "level": "pratyantar",
+              "lord": "rahu"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": 12,
+              "kind": "dusthana",
+              "planet": "rahu"
+            }
+          ],
+          "status": "indirect"
+        },
         "description": "A kendra lord and a trikona lord in sambandha",
         "display_name": "Raja Yoga (Venus (kendra lord) and Moon (trikona lord) in conjunction)",
         "effects": "Authority, rise and recognition",
@@ -7827,6 +9332,49 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 7,
+              "level": "antar",
+              "lord": "rahu",
+              "target": "mercury"
+            },
+            {
+              "house_offset": 7,
+              "level": "pratyantar",
+              "lord": "rahu",
+              "target": "mercury"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "rahu",
+                "mercury"
+              ],
+              "level": "antar",
+              "lord": "rahu"
+            },
+            {
+              "chain": [
+                "rahu",
+                "mercury"
+              ],
+              "level": "pratyantar",
+              "lord": "rahu"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "mercury"
+            }
+          ],
+          "status": "indirect"
+        },
         "description": "Vimala: the 12th lord Mercury placed in the 6th (dusthana)",
         "display_name": "Vipareeta Raja Yoga (Vimala: the 12th lord Mercury placed in the 6th (dusthana))",
         "effects": "Rise precipitated through adversity and its reversal",
@@ -8882,6 +10430,38 @@
     "yogas": [
       {
         "category": "auspicious",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 5,
+              "level": "maha",
+              "lord": "jupiter",
+              "target": "venus"
+            },
+            {
+              "house_offset": 5,
+              "level": "antar",
+              "lord": "jupiter",
+              "target": "venus"
+            },
+            {
+              "house_offset": 5,
+              "level": "pratyantar",
+              "lord": "jupiter",
+              "target": "venus"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [],
+          "mitigating_factors": [
+            {
+              "house": 12,
+              "kind": "dusthana",
+              "planet": "jupiter"
+            }
+          ],
+          "status": "indirect"
+        },
         "description": "The 10th from Lagna or Moon occupied by benefics alone",
         "display_name": "Amala Yoga (a stainless 10th: benefics only)",
         "effects": "Lasting, unblemished reputation through righteous deeds",
@@ -8931,6 +10511,38 @@
       },
       {
         "category": "chandra",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 7,
+              "level": "maha",
+              "lord": "jupiter",
+              "target": "saturn"
+            },
+            {
+              "house_offset": 7,
+              "level": "antar",
+              "lord": "jupiter",
+              "target": "saturn"
+            },
+            {
+              "house_offset": 7,
+              "level": "pratyantar",
+              "lord": "jupiter",
+              "target": "saturn"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [],
+          "mitigating_factors": [
+            {
+              "house": 12,
+              "kind": "dusthana",
+              "planet": "jupiter"
+            }
+          ],
+          "status": "indirect"
+        },
         "description": "A planet (other than the Sun) in the 12th from the Moon",
         "display_name": "Anapha Yoga (A planet (other than the Sun) in the 12th from the Moon)",
         "effects": "Health, character and renown",
@@ -8998,6 +10610,38 @@
       },
       {
         "category": "special",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 5,
+              "level": "maha",
+              "lord": "jupiter",
+              "target": "venus"
+            },
+            {
+              "house_offset": 5,
+              "level": "antar",
+              "lord": "jupiter",
+              "target": "venus"
+            },
+            {
+              "house_offset": 5,
+              "level": "pratyantar",
+              "lord": "jupiter",
+              "target": "venus"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [],
+          "mitigating_factors": [
+            {
+              "house": 12,
+              "kind": "dusthana",
+              "planet": "jupiter"
+            }
+          ],
+          "status": "indirect"
+        },
         "description": "Maha Parivartana: Moon and Venus exchange signs (houses 4th and 7th)",
         "display_name": "Parivartana Yoga (Maha Parivartana: Moon and Venus exchange signs (houses 4th and 7th))",
         "effects": "The two houses' agendas become interlocked and mutually felt",
@@ -9065,6 +10709,26 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [
+            {
+              "level": "maha",
+              "lord": "jupiter"
+            },
+            {
+              "level": "antar",
+              "lord": "jupiter"
+            },
+            {
+              "level": "pratyantar",
+              "lord": "jupiter"
+            }
+          ],
+          "dispositor_chains": [],
+          "mitigating_factors": [],
+          "status": "direct"
+        },
         "description": "A kendra lord and a trikona lord in sambandha",
         "display_name": "Raja Yoga (Saturn (kendra lord) and Jupiter (trikona lord) in mutual_aspect)",
         "effects": "Authority, rise and recognition",
@@ -9136,6 +10800,32 @@
       },
       {
         "category": "auspicious",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [
+            {
+              "level": "maha",
+              "lord": "jupiter"
+            },
+            {
+              "level": "antar",
+              "lord": "jupiter"
+            },
+            {
+              "level": "pratyantar",
+              "lord": "jupiter"
+            }
+          ],
+          "dispositor_chains": [],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "mercury"
+            }
+          ],
+          "status": "direct"
+        },
         "description": "The lagna hemmed: only benefics occupy the 12th and 2nd",
         "display_name": "Shubha Kartari Yoga (The lagna hemmed: only benefics occupy the 12th and 2nd)",
         "effects": "Protection and support around the self",
@@ -9210,6 +10900,43 @@
       },
       {
         "category": "surya",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 5,
+              "level": "maha",
+              "lord": "jupiter",
+              "target": "venus"
+            },
+            {
+              "house_offset": 5,
+              "level": "antar",
+              "lord": "jupiter",
+              "target": "venus"
+            },
+            {
+              "house_offset": 5,
+              "level": "pratyantar",
+              "lord": "jupiter",
+              "target": "venus"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "mercury"
+            },
+            {
+              "house": 12,
+              "kind": "dusthana",
+              "planet": "jupiter"
+            }
+          ],
+          "status": "indirect"
+        },
         "description": "Planets (other than the Moon) in the 2nd and 12th from the Sun",
         "display_name": "Ubhayachari Yoga (Planets (other than the Moon) in the 2nd and 12th from the Sun)",
         "effects": "Balanced fortunes, eloquence and supportive circumstances",
@@ -9302,6 +11029,26 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [
+            {
+              "level": "maha",
+              "lord": "jupiter"
+            },
+            {
+              "level": "antar",
+              "lord": "jupiter"
+            },
+            {
+              "level": "pratyantar",
+              "lord": "jupiter"
+            }
+          ],
+          "dispositor_chains": [],
+          "mitigating_factors": [],
+          "status": "direct"
+        },
         "description": "Vimala: the 12th lord Jupiter placed in the 12th (dusthana)",
         "display_name": "Vipareeta Raja Yoga (Vimala: the 12th lord Jupiter placed in the 12th (dusthana))",
         "effects": "Rise precipitated through adversity and its reversal",
@@ -10342,6 +12089,35 @@
     "yogas": [
       {
         "category": "auspicious",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 7,
+              "level": "antar",
+              "lord": "rahu",
+              "target": "jupiter"
+            },
+            {
+              "house_offset": 1,
+              "level": "pratyantar",
+              "lord": "saturn",
+              "target": "jupiter"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "saturn",
+                "jupiter"
+              ],
+              "level": "pratyantar",
+              "lord": "saturn"
+            }
+          ],
+          "mitigating_factors": [],
+          "status": "indirect"
+        },
         "description": "Jupiter in a kendra from the Moon",
         "display_name": "Gajakesari Yoga (Jupiter in the 10th from the Moon)",
         "effects": "Lasting reputation, intelligence and virtuous standing",
@@ -10409,6 +12185,35 @@
       },
       {
         "category": "mahapurusha",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 7,
+              "level": "antar",
+              "lord": "rahu",
+              "target": "jupiter"
+            },
+            {
+              "house_offset": 1,
+              "level": "pratyantar",
+              "lord": "saturn",
+              "target": "jupiter"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "saturn",
+                "jupiter"
+              ],
+              "level": "pratyantar",
+              "lord": "saturn"
+            }
+          ],
+          "mitigating_factors": [],
+          "status": "indirect"
+        },
         "description": "Pancha Mahapurusha: the graha in a kendra from lagna in own/exaltation sign",
         "display_name": "Hamsa Yoga (Jupiter own in the 4th)",
         "effects": "Wisdom, virtue and respect",
@@ -10458,6 +12263,13 @@
       },
       {
         "category": "dosha",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [],
+          "dispositor_chains": [],
+          "mitigating_factors": [],
+          "status": "dormant"
+        },
         "description": "No planet (other than the Sun) in the 2nd or 12th from the Moon",
         "display_name": "Kemadruma Yoga (No planet (other than the Sun) in the 2nd or 12th from the Moon)",
         "effects": "An unsupported Moon: struggles unless cancelled elsewhere",
@@ -10507,6 +12319,31 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 7,
+              "level": "antar",
+              "lord": "rahu",
+              "target": "jupiter"
+            },
+            {
+              "house_offset": 7,
+              "level": "antar",
+              "lord": "rahu",
+              "target": "saturn"
+            }
+          ],
+          "direct_lords": [
+            {
+              "level": "pratyantar",
+              "lord": "saturn"
+            }
+          ],
+          "dispositor_chains": [],
+          "mitigating_factors": [],
+          "status": "direct"
+        },
         "description": "A kendra lord and a trikona lord in sambandha",
         "display_name": "Raja Yoga (Jupiter (kendra lord) and Saturn (trikona lord) in conjunction)",
         "effects": "Authority, rise and recognition",
@@ -10576,6 +12413,38 @@
       },
       {
         "category": "auspicious",
+        "dasha_activation": {
+          "aspect_links": [],
+          "direct_lords": [
+            {
+              "level": "maha",
+              "lord": "mercury"
+            }
+          ],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "rahu",
+                "mercury"
+              ],
+              "level": "antar",
+              "lord": "rahu"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "mercury"
+            },
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "sun"
+            }
+          ],
+          "status": "direct"
+        },
         "description": "Sun-Mercury conjunction",
         "display_name": "Budha-Aditya Yoga (Sun and Mercury conjunct in Libra (the 2nd))",
         "effects": "Sharp intellect, administrative and communicative skill",
@@ -10655,6 +12524,42 @@
       },
       {
         "category": "raja",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 1,
+              "level": "maha",
+              "lord": "mercury",
+              "target": "sun"
+            },
+            {
+              "house_offset": 7,
+              "level": "antar",
+              "lord": "rahu",
+              "target": "saturn"
+            }
+          ],
+          "direct_lords": [
+            {
+              "level": "pratyantar",
+              "lord": "saturn"
+            }
+          ],
+          "dispositor_chains": [],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "sun"
+            },
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "mercury"
+            }
+          ],
+          "status": "direct"
+        },
         "description": "Debilitation of Sun is cancelled",
         "display_name": "Neecha Bhanga Raja Yoga (debilitated Sun cancelled: 1 condition(s))",
         "effects": "Weakness transformed into eventual rise",
@@ -10722,6 +12627,55 @@
       },
       {
         "category": "surya",
+        "dasha_activation": {
+          "aspect_links": [
+            {
+              "house_offset": 1,
+              "level": "maha",
+              "lord": "mercury",
+              "target": "sun"
+            },
+            {
+              "house_offset": 10,
+              "level": "pratyantar",
+              "lord": "saturn",
+              "target": "mars"
+            }
+          ],
+          "direct_lords": [],
+          "dispositor_chains": [
+            {
+              "chain": [
+                "mercury",
+                "venus"
+              ],
+              "level": "maha",
+              "lord": "mercury"
+            },
+            {
+              "chain": [
+                "rahu",
+                "mercury",
+                "venus"
+              ],
+              "level": "antar",
+              "lord": "rahu"
+            }
+          ],
+          "mitigating_factors": [
+            {
+              "house": null,
+              "kind": "debilitated",
+              "planet": "sun"
+            },
+            {
+              "house": null,
+              "kind": "combust",
+              "planet": "mercury"
+            }
+          ],
+          "status": "indirect"
+        },
         "description": "Planets (other than the Moon) in the 2nd and 12th from the Sun",
         "display_name": "Ubhayachari Yoga (Planets (other than the Moon) in the 2nd and 12th from the Sun)",
         "effects": "Balanced fortunes, eloquence and supportive circumstances",

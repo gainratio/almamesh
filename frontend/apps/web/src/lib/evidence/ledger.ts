@@ -14,7 +14,12 @@
  * empty. The deterministic report loses nothing by having no model.
  */
 
-import { validateAnnotations, type RawAnnotationPayload, type RejectedAnnotation } from './annotations';
+import {
+  validateAnnotations,
+  type RawAnnotationPayload,
+  type RejectedAnnotation,
+  type RejectionReason,
+} from './annotations';
 import { buildObservations, type Observation } from './observations';
 
 import type { AlternateLagna, LagnaSensitivity } from './alternateLagna';
@@ -29,6 +34,8 @@ export interface EvidenceRow {
   readonly interpretation: string | null;
   /** Extra factor ids the model cited, all verified present in this chart. */
   readonly alsoCites: readonly string[];
+  /** Specific validation rejection reason when this row's statement was discarded. */
+  readonly rejectionReason?: RejectionReason;
 }
 
 export interface EvidenceLedger {
@@ -271,13 +278,22 @@ export function buildEvidenceLedger(
   const byObservation = new Map(
     validated.accepted.map((annotation) => [annotation.observationId, annotation]),
   );
+  const rejectedByObservation = new Map<string, RejectionReason>();
+  for (const item of validated.rejected) {
+    if (item.observationId && !rejectedByObservation.has(item.observationId)) {
+      rejectedByObservation.set(item.observationId, item.reason);
+    }
+  }
 
   const rows: EvidenceRow[] = ledger.observations.map((observation) => {
     const annotation = byObservation.get(observation.id);
+    const rejectionReason =
+      annotation === undefined ? rejectedByObservation.get(observation.id) : undefined;
     return {
       observation,
       interpretation: annotation?.interpretation ?? null,
       alsoCites: annotation?.alsoCites ?? [],
+      ...(rejectionReason !== undefined ? { rejectionReason } : {}),
     };
   });
 

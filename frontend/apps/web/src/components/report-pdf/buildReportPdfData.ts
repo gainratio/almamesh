@@ -6,7 +6,7 @@
  * out of the PDF layer).
  */
 
-import type { LagnaData, SiderealChart } from '@almamesh/browser/types';
+import type { LagnaData, SiderealChart, YogaData } from '@almamesh/browser/types';
 import type {
   DomainsCtx,
   ProcessedBirthData,
@@ -155,6 +155,8 @@ export interface BuildReportPdfDataInput {
    * defect (a dimmed row) this replaced.
    */
   readonly formatCombustion?: CombustionCopy;
+  /** Optional localized formatter for `yoga.dasha_activation` (falls back to English). */
+  readonly formatYogaActivation?: (yoga: YogaData) => string | undefined;
   readonly detailLabels: BirthDetailLabels;
   readonly chromeLabels: ReportPdfLabels;
   /**
@@ -316,7 +318,7 @@ export function buildReportPdfData(input: BuildReportPdfDataInput): ReportPdfDat
       input.formatAntarHeading,
       input.formatPratyantarHeading,
     ),
-    yogas: buildYogas(input.sidereal, stabilityFlagFor),
+    yogas: buildYogas(input.sidereal, stabilityFlagFor, input.formatYogaActivation),
     yogaNarrative: input.interpretation
       ? buildYogaNarrative(input.interpretation, input.audience)
       : undefined,
