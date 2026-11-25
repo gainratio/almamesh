@@ -252,7 +252,13 @@
     "strengths": "Forças",
     "challenges": "Desafios",
     "life_themes": "Grandes temas de vida",
-    "road_ahead": "O caminho adiante"
+    "road_ahead": "O caminho adiante",
+    "section_unavailable": "Comentário reflexivo indisponível para esta subseção — retido por linguagem não reflexiva.",
+    "unfinished_notice_one": "Há uma seção incompleta nesta leitura ({{sections}}). Gere novamente apenas a seção afetada — o restante do relatório concluído e as anotações de evidência permanecem intactos.",
+    "unfinished_notice_other": "Há seções incompletas nesta leitura ({{sections}}). Gere novamente apenas as seções afetadas — o restante do relatório concluído e as anotações de evidência permanecem intactos.",
+    "retry_section_one": "Regenerar seção afetada",
+    "retry_section_other": "Regenerar seções afetadas",
+    "retrying_section": "Regenerando seção…"
   },
   "footer": {
     "provenance": "Calculado com o ayanamsa Lahiri · AlmaMesh"
@@ -312,8 +318,11 @@
     "no_interpretation_dasha_rollover": "O daśā ativo mudou desde que esta leitura foi gerada — volte a gerar a leitura para anotar este período.",
     "no_interpretation_withheld_reflection": "Frase retida por linguagem não reflexiva — volte a gerar a leitura para tentar novamente.",
     "no_interpretation_rejected_citation": "Frase rejeitada por citar um fator não calculado — consulte a proveniência abaixo.",
+    "no_interpretation_date_mismatch": "Frase retida porque uma data indicada divergia do limite calculado do período — atualize as anotações.",
     "no_interpretation_generation_failed": "O pedido de anotação não foi concluído — volte a gerar a leitura para tentar novamente.",
     "no_interpretation_omitted": "Nenhuma anotação individual foi devolvida para esta observação — volte a gerar a leitura para a preencher.",
+    "refresh_annotations": "Atualizar anotações de evidência",
+    "refreshing_annotations": "Atualizando anotações…",
     "guidance_heading": "Orientação geral — não derivada deste mapa",
     "guidance_note": "O modelo assinalou estas frases como não assentando em nenhum factor calculado deste mapa. São impressas à parte do registo acima e nada neste mapa as sustenta.",
     "rejected_generation_failed_note": "O pedido de anotações por observação não foi concluído ({{code}}) — volte a gerar a leitura para preencher as interpretações acima.",
@@ -323,6 +332,8 @@
     "rejected_reflection_note_other": "{{count}} frases do modelo foram retidas por linguagem não reflexiva.",
     "rejected_stale_dasha_note_one": "1 frase de um daśā anterior expirou após a mudança de período — volte a gerar a leitura para a atualizar.",
     "rejected_stale_dasha_note_other": "{{count}} frases de daśās anteriores expiraram após a mudança de período — volte a gerar a leitura para as atualizar.",
+    "rejected_date_mismatch_note_one": "1 frase do modelo foi retida porque a data indicada divergia do limite calculado do período.",
+    "rejected_date_mismatch_note_other": "{{count}} frases do modelo foram retidas porque as datas indicadas divergiam dos limites calculados dos períodos.",
     "rejected_other_note_one": "1 frase do modelo mal formada ou duplicada foi descartada.",
     "rejected_other_note_other": "{{count}} frases do modelo mal formadas ou duplicadas foram descartadas.",
     "class_arithmetic": "aritmética",

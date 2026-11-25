@@ -18,10 +18,10 @@
  */
 
 import type { TFunction } from 'i18next';
-import { viewerTimeZone } from '../../lib/analysisInstant';
 import {
   BOUNDARY_MARGIN_DEG,
   CUSP_THRESHOLD_DEG,
+  formatDashaBoundaryDay,
   type AlternateLagna,
   type Alternative,
   type ChartFactor,
@@ -68,34 +68,8 @@ function titleCase(value: string): string {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : '';
 }
 
-const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
-
-/**
- * The calendar day of an engine ISO value, following the Periods panel rule
- * (`formatPredictiveDate`): a date-only string keeps its written Y/M/D, while
- * a full instant formats in the viewer's timezone so Section VIII agrees with
- * the Dasha tables, Transits timeline, and Life Domains.
- */
 function isoDay(value: string): string {
-  if (DATE_ONLY.test(value)) {
-    return value;
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return value.slice(0, 10);
-  }
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-CA', {
-      calendar: 'iso8601',
-      timeZone: viewerTimeZone() || 'UTC',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    })
-      .formatToParts(parsed)
-      .map((part) => [part.type, part.value]),
-  );
-  return `${parts.year}-${parts.month}-${parts.day}`;
+  return formatDashaBoundaryDay(value);
 }
 
 function joinOr(copy: Copy, values: readonly (string | number)[]): string {
@@ -384,6 +358,9 @@ function emptyInterpretationCell(
   if (rejectionReason === 'unknown-factor' || rejectionReason === 'unknown-observation') {
     return line(copy, 'no_interpretation_rejected_citation');
   }
+  if (rejectionReason === 'date-mismatch') {
+    return line(copy, 'no_interpretation_date_mismatch');
+  }
   if (
     rejectionReason === 'stale-dasha' ||
     (observation.primary.kind === 'dasha' && staleDashaLevels.has(observation.primary.level))
@@ -503,6 +480,9 @@ function rejectedNote(
   }
   if (ledger.staleDashaCount > 0) {
     notes.push(line(copy, 'rejected_stale_dasha_note', { count: ledger.staleDashaCount }));
+  }
+  if (ledger.dateMismatchCount > 0) {
+    notes.push(line(copy, 'rejected_date_mismatch_note', { count: ledger.dateMismatchCount }));
   }
   if (ledger.otherRejectedCount > 0) {
     notes.push(line(copy, 'rejected_other_note', { count: ledger.otherRejectedCount }));

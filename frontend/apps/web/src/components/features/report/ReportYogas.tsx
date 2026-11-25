@@ -13,7 +13,11 @@ import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { YogaData } from '@almamesh/browser/types';
 import type { VedicInterpretation } from '@almamesh/shared-types';
-import { personaText, type ReportAudience } from '../../../lib/reportSelectors';
+import {
+  formatReportPersonaText,
+  personaText,
+  type ReportAudience,
+} from '../../../lib/reportSelectors';
 import { hasStrength, signedMark, yogaStrength } from '../../../lib/yogaStrength';
 import { formatYogaActivation } from '../../../lib/yogaActivation';
 import { yogaClaimId, type StabilityMarker } from '../../../lib/stability';
@@ -98,7 +102,10 @@ export function ReportYogas({
   const { t } = useTranslation('report');
   const { t: tp } = useTranslation('predictive');
   const narrative = interpretation
-    ? personaText(interpretation.integrated_yoga_narrative, audience)
+    ? formatReportPersonaText(
+        personaText(interpretation.integrated_yoga_narrative, audience),
+        t('interpretation.section_unavailable'),
+      )
     : '';
 
   if (!narrative && yogas.length === 0) {

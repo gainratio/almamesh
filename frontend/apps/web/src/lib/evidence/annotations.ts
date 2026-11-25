@@ -40,7 +40,10 @@
  * from raw model output to the document that does not pass through here.
  */
 
+import { extractExplicitCalendarDays } from '@almamesh/llm';
 import { reflectionIssues } from '@almamesh/llm/reflection';
+
+import { parentDashaFactorIds } from './dashaDates';
 
 /** Raw, untrusted model output. Every field is checked before it is believed. */
 export interface RawAnnotation {
@@ -66,6 +69,7 @@ export type RejectionReason =
   | 'unknown-observation'
   | 'unknown-factor'
   | 'stale-dasha'
+  | 'date-mismatch'
   | 'duplicate-observation'
   | 'malformed'
   | 'empty-interpretation'
@@ -97,6 +101,7 @@ function validateOne(
   observationIds: ReadonlySet<string>,
   factorIds: ReadonlySet<string>,
   priorDashaIds: ReadonlySet<string>,
+  dashaBoundaryDays?: ReadonlyMap<string, ReadonlySet<string>>,
 ): AcceptedAnnotation | RejectedAnnotation {
   const observationId = raw.observation_id;
   if (typeof observationId !== 'string' || observationId === '') {
@@ -128,6 +133,20 @@ function validateOne(
     }
     return { citedId: bogusFactors[0]!, observationId, reason: 'stale-dasha', staleIds: bogusFactors };
   }
+  if (dashaBoundaryDays !== undefined) {
+    const explicitDays = extractExplicitCalendarDays(interpretation);
+    if (explicitDays.length > 0) {
+      const allowedDays = new Set<string>();
+      for (const refId of [observationId, ...parentDashaFactorIds(observationId), ...alsoCites]) {
+        for (const day of dashaBoundaryDays.get(refId) ?? []) {
+          allowedDays.add(day);
+        }
+      }
+      if (explicitDays.some((day) => !allowedDays.has(day))) {
+        return { citedId: observationId, observationId, reason: 'date-mismatch' };
+      }
+    }
+  }
   return { observationId, interpretation: interpretation.trim(), alsoCites };
 }
 
@@ -153,6 +172,7 @@ export function validateAnnotations(
   observationIds: ReadonlySet<string>,
   factorIds: ReadonlySet<string>,
   priorDashaIds: ReadonlySet<string> = EMPTY_PRIOR_DASHAS,
+  dashaBoundaryDays?: ReadonlyMap<string, ReadonlySet<string>>,
 ): ValidatedAnnotations {
   if (payload == null || typeof payload !== 'object') {
     return { accepted: [], rejected: [], generalGuidance: [] };
@@ -167,7 +187,13 @@ export function validateAnnotations(
       rejected.push({ citedId: '', reason: 'malformed' });
       continue;
     }
-    const result = validateOne(row as RawAnnotation, observationIds, factorIds, priorDashaIds);
+    const result = validateOne(
+      row as RawAnnotation,
+      observationIds,
+      factorIds,
+      priorDashaIds,
+      dashaBoundaryDays,
+    );
     if (isRejection(result)) {
       rejected.push(result);
       continue;

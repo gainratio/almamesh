@@ -213,17 +213,31 @@ export interface InterpretationStore {
     runToken?: InterpretationRunToken,
   ) => Promise<void>;
   /**
+   * Patch one regenerated natal section in place while preserving all other
+   * completed sections, evidence annotations, predictiveAware provenance, and
+   * timeline state. When `expectedRunToken` is passed (`null` when no run has
+   * started in this session), refuses to clobber a newer `startInterpretation`.
+   */
+  patchInterpretationSection: (
+    chartId: string,
+    section: string,
+    patch: Partial<NatalInterpretation>,
+    updatedAt: string,
+    provenance?: ReadingProvenance,
+    expectedRunToken?: InterpretationRunToken | null,
+  ) => Promise<void>;
+  /**
    * Attach RAW evidence annotations to a chart's entry. Separate from
    * `setInterpretation` because the annotation call happens AFTER the reading is
    * already stored and shown: it is an enhancement, never a precondition, and a
    * failure to make it leaves the entry exactly as it is. Pass the `runToken`
-   * from `startInterpretation` so a slow call from a superseded run cannot land
-   * its prose on a newer reading.
+   * from `startInterpretation` (or `getActiveRunToken`) so a slow call from a
+   * superseded run cannot land its prose on a newer reading.
    */
   setEvidenceAnnotations: (
     chartId: string,
     annotations: RawEvidenceAnnotationPayload,
-    runToken?: InterpretationRunToken,
+    runToken?: InterpretationRunToken | null,
   ) => Promise<void>;
   /**
    * Record that the optional evidence-annotation call failed for this run so
@@ -232,8 +246,10 @@ export interface InterpretationStore {
   setEvidenceAnnotationError: (
     chartId: string,
     errorCode: string | undefined,
-    runToken?: InterpretationRunToken,
+    runToken?: InterpretationRunToken | null,
   ) => Promise<void>;
+  /** Ephemeral active run token for `chartId` in this session, or `null` if none. */
+  getActiveRunToken: (chartId: string) => InterpretationRunToken | null;
   /**
    * Record a failure: status -> 'error'. `kind` is the typed verdict behind the
    * message (omitted by legacy callers, which consumers read as unknown).
@@ -768,8 +784,9 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
   // Charts replaced by a regeneration: no write lands for them until a new
   // run starts for the same id.
   const forgotten = new Set<string>();
-  const acceptsRun = (chartId: string, runToken?: InterpretationRunToken): boolean =>
-    !forgotten.has(chartId) && (runToken === undefined || activeRuns.get(chartId) === runToken);
+  const acceptsRun = (chartId: string, runToken?: InterpretationRunToken | null): boolean =>
+    !forgotten.has(chartId) &&
+    (runToken === undefined || (activeRuns.get(chartId) ?? null) === runToken);
   const acceptsTimelineRun = (chartId: string, runToken?: InterpretationRunToken): boolean =>
     !forgotten.has(chartId) &&
     (runToken === undefined || activeTimelineRuns.get(chartId) === runToken);
@@ -893,12 +910,61 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
       await persistInterpretationSnapshot(get());
     },
 
+    patchInterpretationSection: async (
+      chartId,
+      section,
+      patch,
+      updatedAt,
+      provenance,
+      expectedRunToken,
+    ) => {
+      set((state) => {
+        if (!acceptsRun(chartId, expectedRunToken)) {
+          return state;
+        }
+        const current = entryOf(state.byChart, chartId);
+        if (!current.interpretation || current.status === 'generating') {
+          return state;
+        }
+        const { [section]: _cleared, ...remainingFailed } = current.failedSections ?? {};
+        const nextFailed =
+          Object.keys(remainingFailed).length > 0 ? remainingFailed : undefined;
+        const mergedProvenance =
+          provenance !== undefined
+            ? {
+                ...provenance,
+                predictiveAware:
+                  current.provenance?.predictiveAware ?? provenance.predictiveAware,
+              }
+            : current.provenance;
+        const entry: ChartInterpretationEntry = {
+          ...current,
+          status: 'complete',
+          interpretation: {
+            ...current.interpretation,
+            ...patch,
+          },
+          sections: { ...current.sections, [section]: true },
+          failedSections: nextFailed,
+          error: undefined,
+          errorKind: undefined,
+          updatedAt,
+          ...(mergedProvenance !== undefined ? { provenance: mergedProvenance } : {}),
+        };
+        return { byChart: withEntry(state.byChart, chartId, entry) };
+      });
+      await persistInterpretationSnapshot(get());
+    },
+
     setEvidenceAnnotations: async (chartId, annotations, runToken) => {
       set((state) => {
         if (!acceptsRun(chartId, runToken)) {
           return state;
         }
         const current = entryOf(state.byChart, chartId);
+        if (runToken === null && current.status === 'generating') {
+          return state;
+        }
         return {
           byChart: withEntry(state.byChart, chartId, {
             ...current,
@@ -916,6 +982,9 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
           return state;
         }
         const current = entryOf(state.byChart, chartId);
+        if (runToken === null && current.status === 'generating') {
+          return state;
+        }
         return {
           byChart: withEntry(state.byChart, chartId, {
             ...current,
@@ -926,6 +995,8 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
       });
       await persistInterpretationSnapshot(get());
     },
+
+    getActiveRunToken: (chartId) => activeRuns.get(chartId) ?? null,
 
     setError: (chartId, error, kind, runToken) => {
       set((state) => {

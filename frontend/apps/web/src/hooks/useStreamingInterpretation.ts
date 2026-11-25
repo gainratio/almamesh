@@ -24,12 +24,15 @@ import {
   configProvenance,
   LlmRequestError,
   PrivacyViolationError,
+  regenerateNatalSection,
   resolveProviderConfig,
   streamCurrentTimeline,
   streamNatalInterpretation,
+  withheldNatalSections,
   type CurrentTimelineSectionKey,
   type InterpretationSectionKey,
   type LlmEnv,
+  type NatalInterpretationSectionKey,
   type ProviderConfig,
   type RawEvidenceAnnotationPayload,
   type SectionProgressSnapshot,
@@ -128,6 +131,25 @@ export interface UseStreamingInterpretationResult {
   sections: readonly SectionProgress[];
   /** The keys of sections whose generation failed (degraded to empty). */
   failedSections: readonly InterpretationSectionKey[];
+  /** The keys of sections containing an unfinished `READING_WITHHELD` placeholder. */
+  withheldSections: readonly InterpretationSectionKey[];
+  /** Regenerate only the given natal section(s), preserving completed sections and evidence annotations. */
+  retrySections: (
+    chartId: string,
+    sections: readonly InterpretationSectionKey[],
+    options: StreamInterpretationOptions,
+  ) => Promise<void>;
+  /** True while targeted single-section regeneration is in flight. */
+  isRetryingSection: boolean;
+  /** Non-destructive error message if a targeted single-section retry failed. */
+  sectionRetryError: string | null;
+  /** Re-run only the optional evidence-annotation call without regenerating Sections VI & VII. */
+  refreshEvidenceAnnotations: (
+    chartId: string,
+    options: StreamInterpretationOptions,
+  ) => Promise<void>;
+  /** True while an evidence-annotation-only refresh is in flight. */
+  isRefreshingAnnotations: boolean;
   /** Failure message; present once `status === 'error'`. */
   error: string | null;
   /**
@@ -429,6 +451,7 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
   const markSectionComplete = useInterpretationStore((s) => s.markSectionComplete);
   const markSectionFailed = useInterpretationStore((s) => s.markSectionFailed);
   const setInterpretation = useInterpretationStore((s) => s.setInterpretation);
+  const patchInterpretationSection = useInterpretationStore((s) => s.patchInterpretationSection);
   const setEvidenceAnnotations = useInterpretationStore((s) => s.setEvidenceAnnotations);
   const setEvidenceAnnotationError = useInterpretationStore((s) => s.setEvidenceAnnotationError);
   const setError = useInterpretationStore((s) => s.setError);
@@ -450,17 +473,24 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
   const language = useLanguageStore((s) => s.language);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const sectionRetryAbortRef = useRef<AbortController | null>(null);
+  const annotationRefreshAbortRef = useRef<AbortController | null>(null);
   const timelineAbortControllerRef = useRef<AbortController | null>(null);
   const timelineRunRef = useRef<TimelineRun | null>(null);
   const progressBatcherRef = useRef<FrameBatcher<SectionProgressSnapshot> | null>(null);
   const [timelineProgress, setTimelineProgress] = useState<TimelineProgress>({});
+  const [sectionRetryError, setSectionRetryError] = useState<string | null>(null);
 
-  // Leaving the page cancels the timeline stream: nobody is watching it, and a
+  // Leaving the page cancels background streams: nobody is watching them, and a
   // slow model would otherwise keep a connection (and tokens) running for
-  // minutes. The store run is closed so it never reads as 'generating' again.
+  // minutes. The store timeline run is closed so it never reads as 'generating' again.
   useEffect(
     () => () => {
       progressBatcherRef.current?.cancel();
+      sectionRetryAbortRef.current?.abort();
+      sectionRetryAbortRef.current = null;
+      annotationRefreshAbortRef.current?.abort();
+      annotationRefreshAbortRef.current = null;
       const run = timelineRunRef.current;
       timelineAbortControllerRef.current?.abort();
       timelineAbortControllerRef.current = null;
@@ -480,6 +510,11 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    sectionRetryAbortRef.current?.abort();
+    sectionRetryAbortRef.current = null;
+    annotationRefreshAbortRef.current?.abort();
+    annotationRefreshAbortRef.current = null;
+    setSectionRetryError(null);
     if (timelineAbortControllerRef.current) {
       timelineAbortControllerRef.current.abort();
       timelineAbortControllerRef.current = null;
@@ -494,6 +529,10 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    sectionRetryAbortRef.current?.abort();
+    sectionRetryAbortRef.current = null;
+    annotationRefreshAbortRef.current?.abort();
+    annotationRefreshAbortRef.current = null;
   }, []);
 
   const cancelCurrentTimeline = useCallback(() => {
@@ -507,6 +546,8 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
   // or streaming attaches to it (see useSingleFlight).
   const natalFlight = useSingleFlight();
   const timelineFlight = useSingleFlight();
+  const sectionRetryFlight = useSingleFlight();
+  const annotationRefreshFlight = useSingleFlight();
 
   const runNatal = useCallback(
     async (id: string, options: StreamInterpretationOptions, release: () => void) => {
@@ -535,6 +576,11 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
       }
 
       const config = resolveInterpretationConfig();
+      sectionRetryAbortRef.current?.abort();
+      sectionRetryAbortRef.current = null;
+      annotationRefreshAbortRef.current?.abort();
+      annotationRefreshAbortRef.current = null;
+      setSectionRetryError(null);
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
@@ -615,6 +661,7 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
             config,
             language,
             signal: controller.signal,
+            timeZone: viewerTimeZone(),
           });
           if (controller.signal.aborted) return;
           if (outcome.kind === 'ok') {
@@ -761,6 +808,164 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
     [cancelCurrentTimeline, runTimeline, runTimelineFlight],
   );
 
+  const runSectionRetry = useCallback(
+    async (
+      id: string,
+      targetSections: readonly InterpretationSectionKey[],
+      options: StreamInterpretationOptions,
+    ) => {
+      const validTargets = targetSections.filter((s): s is NatalInterpretationSectionKey =>
+        (INTERPRETATION_SECTIONS as readonly string[]).includes(s),
+      );
+      if (validTargets.length === 0) return;
+      setSectionRetryError(null);
+      await whenDataLifecycleReady();
+      await whenInterpretationHydrated();
+      if (interpretationWriteRefusal() !== undefined) {
+        setSectionRetryError(SAVED_READINGS_UNREADABLE);
+        return;
+      }
+      const stored = useChartLibraryStore.getState().getChart(id);
+      const chart = stored?.sidereal_chart;
+      const storeState = useInterpretationStore.getState();
+      const currentEntry = storeState.getEntry(id);
+      if (!chart || !currentEntry?.interpretation || currentEntry.status === 'generating') {
+        return;
+      }
+
+      const tokenSnapshot = storeState.getActiveRunToken(id);
+      const config = resolveInterpretationConfig();
+      sectionRetryAbortRef.current?.abort();
+      const controller = new AbortController();
+      sectionRetryAbortRef.current = controller;
+      try {
+        for (const section of validTargets) {
+          if (controller.signal.aborted) return;
+          const latestState = useInterpretationStore.getState();
+          if (latestState.getActiveRunToken(id) !== tokenSnapshot) return;
+          const latestEntry = latestState.getEntry(id);
+          if (!latestEntry?.interpretation || latestEntry.status === 'generating') return;
+          const patch = await regenerateNatalSection(section, {
+            chart,
+            asOf: storedChartAnalysisInstant(stored),
+            config,
+            mode: options.view_mode === 'expert' ? 'expert' : 'layman',
+            language,
+            signal: controller.signal,
+            existing: latestEntry.interpretation,
+          });
+          if (controller.signal.aborted) return;
+          const prePatchEntry = useInterpretationStore.getState().getEntry(id);
+          await patchInterpretationSection(
+            id,
+            section,
+            patch,
+            new Date().toISOString(),
+            {
+              ...configProvenance(config),
+              predictiveAware: prePatchEntry?.provenance?.predictiveAware ?? false,
+            },
+            tokenSnapshot,
+          );
+        }
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') return;
+        const failure = describeError(err);
+        setSectionRetryError(
+          failure.message === READING_MODEL_UNAVAILABLE ? chatErrorMessage(err) : failure.message,
+        );
+      } finally {
+        if (sectionRetryAbortRef.current === controller) {
+          sectionRetryAbortRef.current = null;
+        }
+      }
+    },
+    [language, patchInterpretationSection],
+  );
+
+  const cancelSectionRetry = useCallback(() => {
+    sectionRetryAbortRef.current?.abort();
+    sectionRetryAbortRef.current = null;
+  }, []);
+
+  const runSectionRetryFlight = sectionRetryFlight.run;
+  const retrySections = useCallback(
+    (
+      id: string,
+      targetSections: readonly InterpretationSectionKey[],
+      options: StreamInterpretationOptions,
+    ): Promise<void> => {
+      if (options.intent !== 'user-request') return Promise.resolve();
+      return runSectionRetryFlight(
+        id,
+        () => runSectionRetry(id, targetSections, options),
+        cancelSectionRetry,
+      );
+    },
+    [cancelSectionRetry, runSectionRetry, runSectionRetryFlight],
+  );
+
+  const runAnnotationRefresh = useCallback(
+    async (id: string) => {
+      await whenDataLifecycleReady();
+      await whenInterpretationHydrated();
+      if (interpretationWriteRefusal() !== undefined) return;
+      const stored = useChartLibraryStore.getState().getChart(id);
+      const chart = stored?.sidereal_chart;
+      const storeState = useInterpretationStore.getState();
+      if (!chart || storeState.getEntry(id)?.status === 'generating') return;
+      const tokenSnapshot = storeState.getActiveRunToken(id);
+      const config = resolveInterpretationConfig();
+      annotationRefreshAbortRef.current?.abort();
+      const controller = new AbortController();
+      annotationRefreshAbortRef.current = controller;
+      try {
+        await trackEvidenceAnnotationFlight(
+          id,
+          (async () => {
+            const outcome = await fetchEvidenceAnnotationsOutcome({
+              chart,
+              asOf: storedChartAnalysisInstant(stored),
+              config,
+              language,
+              signal: controller.signal,
+              timeZone: viewerTimeZone(),
+            });
+            if (controller.signal.aborted) return;
+            if (outcome.kind === 'ok') {
+              await setEvidenceAnnotations(id, outcome.payload, tokenSnapshot);
+            } else if (outcome.kind === 'failed') {
+              await setEvidenceAnnotationError(id, outcome.errorCode, tokenSnapshot);
+            }
+          })(),
+        );
+      } finally {
+        if (annotationRefreshAbortRef.current === controller) {
+          annotationRefreshAbortRef.current = null;
+        }
+      }
+    },
+    [language, setEvidenceAnnotationError, setEvidenceAnnotations],
+  );
+
+  const cancelAnnotationRefresh = useCallback(() => {
+    annotationRefreshAbortRef.current?.abort();
+    annotationRefreshAbortRef.current = null;
+  }, []);
+
+  const runAnnotationRefreshFlight = annotationRefreshFlight.run;
+  const refreshEvidenceAnnotations = useCallback(
+    (id: string, options: StreamInterpretationOptions): Promise<void> => {
+      if (options.intent !== 'user-request') return Promise.resolve();
+      return runAnnotationRefreshFlight(
+        id,
+        () => runAnnotationRefresh(id),
+        cancelAnnotationRefresh,
+      );
+    },
+    [cancelAnnotationRefresh, runAnnotationRefresh, runAnnotationRefreshFlight],
+  );
+
   const storedStatus: InterpretationStatus = entry?.status ?? 'idle';
   const waitingForDurability = durabilityPendingRun !== null;
   const natalInFlight = chartId != null && natalFlight.activeKey === chartId;
@@ -800,6 +1005,12 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
     status,
     sections,
     failedSections: sections.filter((s) => s.failed).map((s) => s.key),
+    withheldSections: !waitingForDurability ? withheldNatalSections(entry?.interpretation) : [],
+    retrySections,
+    isRetryingSection: chartId != null && sectionRetryFlight.activeKey === chartId,
+    sectionRetryError,
+    refreshEvidenceAnnotations,
+    isRefreshingAnnotations: chartId != null && annotationRefreshFlight.activeKey === chartId,
     error: entry?.error ?? null,
     errorKind: entry?.errorKind ?? null,
     isStreaming: status === 'generating',

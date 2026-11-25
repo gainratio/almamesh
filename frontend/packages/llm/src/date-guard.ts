@@ -283,3 +283,53 @@ export function monthsIn(value: unknown): ReadonlySet<string> {
   for (const [, year, month] of JSON.stringify(value).matchAll(ENGINE_MONTH)) months.add(`${year}-${month}`);
   return months;
 }
+
+const ISO_EXPLICIT_DATE = new RegExp(
+  `(?<!\\d)(\\d{4})${DASH}(0?[1-9]|1[0-2])${DASH}(0?[1-9]|[12]\\d|3[01])(?!\\d)`,
+  "gu",
+);
+const MONTH_DAY_YEAR = new RegExp(
+  `(?<![\\p{L}\\p{M}])(${MONTH_NAMES})\\.?(?:\\s+de)?\\s+(0?[1-9]|[12]\\d|3[01])${DAY_SUFFIX}${TO_YEAR}(\\d{4})(?!\\d)`,
+  "giu",
+);
+const DAY_MONTH_YEAR = new RegExp(
+  `(?<![\\d\\p{L}\\p{M}])(0?[1-9]|[12]\\d|3[01])${DAY_SUFFIX}(?:\\s+(?:de|of))?\\s+(${MONTH_NAMES})\\.?${TO_YEAR}(\\d{4})(?!\\d)`,
+  "giu",
+);
+
+function formatValidCalendarDay(year: number, month: number, day: number): string | null {
+  if (year < 1800 || year > 2200 || month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const check = new Date(Date.UTC(year, month - 1, day));
+  if (
+    check.getUTCFullYear() !== year ||
+    check.getUTCMonth() !== month - 1 ||
+    check.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+/**
+ * Extract every explicit day-precision calendar date (`YYYY-MM-DD`, `Month D, YYYY`,
+ * `D Month YYYY`, `D de mes de YYYY`, `D महीना YYYY`) in `text` as canonical `YYYY-MM-DD`.
+ * Month-only references (`January 2027`) and bare years (`2027`) are ignored.
+ */
+export function extractExplicitCalendarDays(text: string): readonly string[] {
+  const found: string[] = [];
+  const push = (iso: string | null): void => {
+    if (iso !== null && !found.includes(iso)) found.push(iso);
+  };
+  for (const [, y, m, d] of text.matchAll(ISO_EXPLICIT_DATE)) {
+    push(formatValidCalendarDay(Number(y), Number(m), Number(d)));
+  }
+  for (const [, name, d, y] of text.matchAll(MONTH_DAY_YEAR)) {
+    const month = MONTH_NUMBER[name.toLowerCase()];
+    if (month !== undefined) push(formatValidCalendarDay(Number(y), month, Number(d)));
+  }
+  for (const [, d, name, y] of text.matchAll(DAY_MONTH_YEAR)) {
+    const month = MONTH_NUMBER[name.toLowerCase()];
+    if (month !== undefined) push(formatValidCalendarDay(Number(y), month, Number(d)));
+  }
+  return found;
+}

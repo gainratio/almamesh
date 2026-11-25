@@ -53,11 +53,14 @@ import { withLanguage, type PromptLanguage } from "./language";
 import { buildPredictiveFactsBlock, buildReportFactsBlock } from "./predictive-facts";
 import { OUTPUT_DISCIPLINE_RULES, PRIVACY_RULE, type ViewMode } from "./prompt";
 import {
+  isReadingWithheldText,
   jsonReflectionIssues,
+  mergeCleanJsonLeaves,
   READING_WITHHELD,
   REFLECTION_RULE,
   reflectionCorrection,
   reflectionGate,
+  reflectionIssues,
   reflectionRetry,
   rewordedOr,
   withholdFailingValues,
@@ -1722,7 +1725,9 @@ async function reflectedSection<Section extends AnySectionKey>(
   const retry = await rewordedOr(raw, params.signal, () =>
     requestCapped(section, [...messages, ...reflectionRetry(raw, issues)], params),
   );
-  const accepted = refusalError(section, retry, chart) === null ? retry : raw;
+  const candidate =
+    refusalError(section, retry, chart) === null ? mergeCleanJsonLeaves(raw, retry) : raw;
+  const accepted = refusalError(section, candidate, chart) === null ? candidate : raw;
   return withholdFailingValues(accepted, READING_WITHHELD[params.language ?? "en"]);
 }
 
@@ -1860,6 +1865,203 @@ export async function* streamNatalInterpretation(
 ): AsyncGenerator<NatalInterpretationEvent> {
   const results = yield* streamSections({ ...params, chart: stableNatalChart(params.chart) }, NATAL_SECTIONS);
   yield { type: "complete", interpretation: mergeNatalResults(results) };
+}
+
+function hasWithheldValue(value: unknown): boolean {
+  if (typeof value === "string") return isReadingWithheldText(value);
+  if (Array.isArray(value)) return value.some(hasWithheldValue);
+  if (value !== null && typeof value === "object") {
+    return Object.values(value).some(hasWithheldValue);
+  }
+  return false;
+}
+
+function natalSectionSlice(
+  section: NatalInterpretationSectionKey,
+  interpretation: NatalInterpretation,
+): Partial<NatalInterpretation> {
+  switch (section) {
+    case "core":
+      return {
+        summary: interpretation.summary,
+        strengths: interpretation.strengths,
+        challenges: interpretation.challenges,
+        life_themes: interpretation.life_themes,
+      };
+    case "yoga":
+      return { integrated_yoga_narrative: interpretation.integrated_yoga_narrative };
+    case "guidance1":
+      return {
+        health_guidance: interpretation.health_guidance,
+        education_guidance: interpretation.education_guidance,
+        career_guidance: interpretation.career_guidance,
+        relationship_guidance: interpretation.relationship_guidance,
+        ...(interpretation.family_guidance !== undefined
+          ? { family_guidance: interpretation.family_guidance }
+          : {}),
+      };
+    case "guidance2":
+      return {
+        finances_guidance: interpretation.finances_guidance,
+        spiritual_guidance: interpretation.spiritual_guidance,
+        life_evolution_guidance: interpretation.life_evolution_guidance,
+      };
+    case "remedial":
+      return { remedial_measures: interpretation.remedial_measures };
+  }
+}
+
+/** Return the ordered natal section keys whose prose still carries a `READING_WITHHELD` placeholder. */
+export function withheldNatalSections(
+  interpretation: NatalInterpretation | null | undefined,
+): readonly NatalInterpretationSectionKey[] {
+  if (!interpretation) return [];
+  return NATAL_SECTIONS.filter((section) => hasWithheldValue(natalSectionSlice(section, interpretation)));
+}
+
+function isCleanLeaf(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.trim().length > 0 &&
+    !isReadingWithheldText(value) &&
+    reflectionIssues(value).length === 0
+  );
+}
+
+function isCleanSubtree(value: unknown): boolean {
+  if (typeof value === "string") return isCleanLeaf(value);
+  if (Array.isArray(value)) return value.length > 0 && value.every(isCleanSubtree);
+  if (value !== null && typeof value === "object") {
+    const vals = Object.values(value);
+    return vals.length > 0 && vals.every(isCleanSubtree);
+  }
+  return false;
+}
+
+function isPersonaRecord(value: unknown): value is Persona {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    typeof (value as { layman?: unknown }).layman === "string" &&
+    typeof (value as { technical?: unknown }).technical === "string"
+  );
+}
+
+function healPersonaRecord(prior: Persona, next: Persona): Persona {
+  return {
+    layman: isCleanLeaf(prior.layman) ? prior.layman : next.layman,
+    technical: isCleanLeaf(prior.technical) ? prior.technical : next.technical,
+  };
+}
+
+function normTitle(title: string | undefined): string {
+  return (title ?? "").trim().toLowerCase();
+}
+
+function pickReplacementTitledItem(
+  priorItem: TitledPersona,
+  priorIdx: number,
+  nextArr: readonly TitledPersona[],
+  usedNext: Set<number>,
+  usedTitles: Set<string>,
+): TitledPersona {
+  const targetTitle = normTitle(priorItem.title);
+  const sameTitleIdx = nextArr.findIndex(
+    (item, idx) => !usedNext.has(idx) && targetTitle !== "" && normTitle(item.title) === targetTitle,
+  );
+  if (sameTitleIdx >= 0) {
+    const matched = nextArr[sameTitleIdx]!;
+    usedNext.add(sameTitleIdx);
+    return isCleanSubtree(matched)
+      ? matched
+      : { title: priorItem.title, ...healPersonaRecord(priorItem, matched) };
+  }
+  const canUse = (idx: number): boolean =>
+    idx >= 0 &&
+    idx < nextArr.length &&
+    !usedNext.has(idx) &&
+    isCleanSubtree(nextArr[idx]) &&
+    !usedTitles.has(normTitle(nextArr[idx]!.title));
+  const chosenIdx = canUse(priorIdx)
+    ? priorIdx
+    : nextArr.findIndex((_, idx) => canUse(idx));
+  if (chosenIdx >= 0) {
+    const chosen = nextArr[chosenIdx]!;
+    usedNext.add(chosenIdx);
+    usedTitles.add(normTitle(chosen.title));
+    return chosen;
+  }
+  return priorItem;
+}
+
+function healTitledPersonaArray(
+  priorArr: readonly TitledPersona[],
+  nextArr: readonly TitledPersona[],
+): TitledPersona[] {
+  if (priorArr.length === 0) return [...nextArr];
+  if (isCleanSubtree(priorArr)) return [...priorArr];
+  const usedNext = new Set<number>();
+  const usedTitles = new Set<string>(
+    priorArr.filter(isCleanSubtree).map((item) => normTitle(item.title)),
+  );
+  return priorArr.map((item, idx) =>
+    isCleanSubtree(item)
+      ? item
+      : pickReplacementTitledItem(item, idx, nextArr, usedNext, usedTitles),
+  );
+}
+
+function healSectionSlice(
+  priorSlice: Partial<NatalInterpretation>,
+  freshSlice: Partial<NatalInterpretation>,
+): Partial<NatalInterpretation> {
+  const priorObj = priorSlice as Record<string, unknown>;
+  const freshObj = freshSlice as Record<string, unknown>;
+  const keys = new Set([...Object.keys(priorObj), ...Object.keys(freshObj)]);
+  const out: Record<string, unknown> = {};
+  for (const key of keys) {
+    const priorVal = priorObj[key];
+    const freshVal = freshObj[key];
+    if (priorVal !== undefined && isCleanSubtree(priorVal)) {
+      out[key] = priorVal;
+    } else if (Array.isArray(freshVal)) {
+      out[key] = healTitledPersonaArray(
+        Array.isArray(priorVal) ? (priorVal as TitledPersona[]) : [],
+        freshVal as TitledPersona[],
+      );
+    } else if (isPersonaRecord(priorVal) && isPersonaRecord(freshVal)) {
+      out[key] = healPersonaRecord(priorVal, freshVal);
+    } else {
+      out[key] = freshVal ?? priorVal;
+    }
+  }
+  return out as Partial<NatalInterpretation>;
+}
+
+export interface RegenerateNatalSectionParams extends NatalInterpretationParams {
+  /** Existing natal reading whose already-clean subsections and items stay intact. */
+  readonly existing?: NatalInterpretation;
+}
+
+/**
+ * Regenerate a single natal section (`core`, `yoga`, `guidance1`, `guidance2`, or `remedial`)
+ * without touching any other completed section or evidence annotations.
+ */
+export async function regenerateNatalSection(
+  section: NatalInterpretationSectionKey,
+  params: RegenerateNatalSectionParams,
+): Promise<Partial<NatalInterpretation>> {
+  const gen = streamSections({ ...params, chart: stableNatalChart(params.chart) }, [section]);
+  let step = await gen.next();
+  while (!step.done) {
+    step = await gen.next();
+  }
+  const freshSlice = natalSectionSlice(section, mergeNatalResults(step.value));
+  if (!params.existing) {
+    return freshSlice;
+  }
+  return healSectionSlice(natalSectionSlice(section, params.existing), freshSlice);
 }
 
 /**

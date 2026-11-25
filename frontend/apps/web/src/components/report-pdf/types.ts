@@ -184,6 +184,8 @@ export interface ReportPdfNarrativeTitles {
   readonly lifeThemes: string;
   /** `report:interpretation.road_ahead`. */
   readonly roadAhead: string;
+  /** `report:interpretation.section_unavailable` — formal notice for withheld paragraphs. */
+  readonly sectionUnavailable?: string;
 }
 
 /** One interpretation block — an optional heading + ordered prose paragraphs. */

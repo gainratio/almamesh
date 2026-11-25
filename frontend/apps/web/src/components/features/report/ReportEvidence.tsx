@@ -41,6 +41,9 @@ interface ReportEvidenceProps {
   readonly hasReading?: boolean;
   /** Canonical error code when the optional evidence-annotation request failed. */
   readonly annotationError?: string | null;
+  /** Optional on-screen action to re-run only evidence annotations without touching Sections VI & VII. */
+  readonly onRefreshAnnotations?: () => void;
+  readonly isRefreshingAnnotations?: boolean;
 }
 
 /** One five-cell row of the ledger, keyed by the observation's factor id. */
@@ -154,6 +157,8 @@ export function ReportEvidence({
   annotations,
   hasReading,
   annotationError,
+  onRefreshAnnotations,
+  isRefreshingAnnotations,
 }: ReportEvidenceProps): ReactElement {
   const { t } = useTranslation('report');
   // Pure and input-shaped; rebuild only when the chart or the stored reading moves.
@@ -179,12 +184,27 @@ export function ReportEvidence({
       </div>
       <EvidenceGuidance section={section} />
       {section.rejectedNote ? (
-        <p
-          className="report-evidence-rejected whitespace-pre-line"
-          data-testid="report-evidence-rejected"
-        >
-          {section.rejectedNote}
-        </p>
+        <div className="space-y-2">
+          <p
+            className="report-evidence-rejected whitespace-pre-line"
+            data-testid="report-evidence-rejected"
+          >
+            {section.rejectedNote}
+          </p>
+          {onRefreshAnnotations ? (
+            <button
+              type="button"
+              className="report-toolbar-button no-print"
+              onClick={onRefreshAnnotations}
+              disabled={isRefreshingAnnotations}
+              data-testid="report-refresh-annotations"
+            >
+              {isRefreshingAnnotations
+                ? t('evidence.refreshing_annotations')
+                : t('evidence.refresh_annotations')}
+            </button>
+          ) : null}
+        </div>
       ) : null}
     </section>
   );

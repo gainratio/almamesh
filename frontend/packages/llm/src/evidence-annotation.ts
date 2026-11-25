@@ -26,11 +26,13 @@
 
 import { chatCompletionJson, LlmRequestError, type ChatMessage } from "./client";
 import { ensurePrivacy, type ProviderConfig } from "./config";
+import { extractExplicitCalendarDays } from "./date-guard";
 import { withLanguage, type PromptLanguage } from "./language";
 import { OUTPUT_DISCIPLINE_RULES, PRIVACY_RULE } from "./prompt";
 import { SECTION_REASONING_MAX_TOKENS } from "./reasoning";
 import {
   REFLECTION_RULE,
+  reflectionCorrection,
   reflectionIssues,
   reflectionRetry,
   rewordedOr,
@@ -57,6 +59,8 @@ export interface EvidenceAnnotationParams {
   readonly observations: readonly EvidenceObservationPrompt[];
   /** Every citable factor id in this chart — the ONLY ids the model may cite. */
   readonly factorIds: readonly string[];
+  /** Optional canonical YYYY-MM-DD boundary dates per factor/observation id. */
+  readonly factorBoundaryDays?: Readonly<Record<string, readonly string[]>>;
   readonly config: ProviderConfig;
   readonly language?: string;
   readonly signal?: AbortSignal;
@@ -121,6 +125,9 @@ const NO_PARAPHRASE_BLOCK = [
   "  attention on something they have already read. Begin where the numbers stop:",
   "  what this pattern asks of the person, how it tends to feel from the inside,",
   "  what can be done with it.",
+  "  Never repeat or reformat period start/end dates already printed above; if a",
+  "  boundary date is ever named, it must match that observation's YYYY-MM-DD date",
+  "  verbatim (never shifted by a day or converted to another timezone).",
   '  WRONG (a restatement): "Venus is debilitated in Virgo and combust the Sun."',
   '  RIGHT (a meaning): "Affection here gets audited before it is offered, so warmth',
   '  arrives late but lands honestly; it helps to say the kind thing before it feels',
@@ -320,16 +327,119 @@ function isObjectWithStringId(entry: unknown): entry is IdentifiableReading {
   );
 }
 
+interface DateMismatchIssue {
+  readonly observationId: string;
+  readonly wrongDays: readonly string[];
+  readonly allowedDays: readonly string[];
+}
+
+function parentDashaIds(id: string): readonly string[] {
+  if (id.startsWith("dasha:pratyantar:")) {
+    const [maha, antar] = id.slice("dasha:pratyantar:".length).split("/");
+    return maha && antar ? [`dasha:maha:${maha}`, `dasha:antar:${maha}/${antar}`] : [];
+  }
+  if (id.startsWith("dasha:antar:")) {
+    const [maha] = id.slice("dasha:antar:".length).split("/");
+    return maha ? [`dasha:maha:${maha}`] : [];
+  }
+  return [];
+}
+
+function buildAllowedDaysByObservation(
+  observations: readonly EvidenceObservationPrompt[],
+  factorBoundaryDays?: Readonly<Record<string, readonly string[]>>,
+): {
+  readonly observationIds: ReadonlySet<string>;
+  readonly daysById: ReadonlyMap<string, ReadonlySet<string>>;
+} {
+  const daysById = new Map<string, Set<string>>();
+  for (const [id, days] of Object.entries(factorBoundaryDays ?? {})) {
+    daysById.set(id, new Set(days));
+  }
+  const observationIds = new Set<string>();
+  for (const obs of observations) {
+    observationIds.add(obs.id);
+    const bucket = daysById.get(obs.id) ?? new Set<string>();
+    for (const day of extractExplicitCalendarDays(`${obs.statement} ${obs.evidence}`)) {
+      bucket.add(day);
+    }
+    daysById.set(obs.id, bucket);
+  }
+  return { observationIds, daysById };
+}
+
+function rowDateMismatch(
+  entry: IdentifiableReading,
+  observationIds: ReadonlySet<string>,
+  daysById: ReadonlyMap<string, ReadonlySet<string>>,
+): DateMismatchIssue | null {
+  if (!observationIds.has(entry.observation_id) || typeof entry.interpretation !== "string") {
+    return null;
+  }
+  const explicitDays = extractExplicitCalendarDays(entry.interpretation);
+  if (explicitDays.length === 0) return null;
+  const cites = Array.isArray(entry.also_cites)
+    ? entry.also_cites.filter((c): c is string => typeof c === "string")
+    : [];
+  const allowed = new Set<string>();
+  for (const refId of [entry.observation_id, ...parentDashaIds(entry.observation_id), ...cites]) {
+    for (const day of daysById.get(refId) ?? []) allowed.add(day);
+  }
+  const wrongDays = explicitDays.filter((day) => !allowed.has(day));
+  return wrongDays.length > 0
+    ? { observationId: entry.observation_id, wrongDays, allowedDays: [...allowed] }
+    : null;
+}
+
+function annotationDateMismatches(
+  payload: RawEvidenceAnnotationPayload,
+  observationIds: ReadonlySet<string>,
+  daysById: ReadonlyMap<string, ReadonlySet<string>>,
+): readonly DateMismatchIssue[] {
+  if (!Array.isArray(payload.readings)) return [];
+  return payload.readings.flatMap((entry) => {
+    if (!isObjectWithStringId(entry)) return [];
+    const mismatch = rowDateMismatch(entry, observationIds, daysById);
+    return mismatch ? [mismatch] : [];
+  });
+}
+
+function dateMismatchCorrection(mismatches: readonly DateMismatchIssue[]): string {
+  const details = mismatches
+    .map(
+      (m) =>
+        `${m.observationId} stated ${m.wrongDays.join(", ")} (canonical boundaries: ${m.allowedDays.join(", ") || "none"})`,
+    )
+    .join("; ");
+  return (
+    `Your last reply stated calendar date(s) that disagree with the computed observation boundaries (${details}). ` +
+    "Remove repeated calendar dates or use ONLY the exact YYYY-MM-DD boundary dates printed in each observation's evidence line."
+  );
+}
+
+function isCleanEntry(
+  entry: IdentifiableReading,
+  observationIds: ReadonlySet<string>,
+  daysById: ReadonlyMap<string, ReadonlySet<string>>,
+): boolean {
+  return (
+    isNonEmptyCleanString(entry.interpretation) &&
+    rowDateMismatch(entry, observationIds, daysById) === null
+  );
+}
+
 /**
- * Merge a reflection-retry payload onto the initial payload without filtering:
+ * Merge a reflection/date-retry payload onto the initial payload without filtering:
  * clean rows from `first` survive even if the retry omits them, while rows that
- * failed reflection adopt the retry's clean non-empty rewording while preserving
- * `first`'s sibling metadata (`also_cites`, etc.). Malformed retry rows never
- * overwrite structurally valid rows from `first`.
+ * failed reflection or date-consistency adopt the retry's clean non-empty rewording
+ * while preserving `first`'s sibling metadata (`also_cites`, etc.). Malformed retry
+ * rows never overwrite structurally valid rows from `first`.
  */
 function mergeRewordedPayload(
   first: RawEvidenceAnnotationPayload,
   retried: RawEvidenceAnnotationPayload,
+  observationIds: ReadonlySet<string>,
+  daysById: ReadonlyMap<string, ReadonlySet<string>>,
 ): RawEvidenceAnnotationPayload {
   const retriedById = new Map<string, IdentifiableReading>();
   if (Array.isArray(retried.readings)) {
@@ -347,8 +457,10 @@ function mergeRewordedPayload(
       if (!isObjectWithStringId(entry)) return entry;
       seenIds.add(entry.observation_id);
       const replacement = retriedById.get(entry.observation_id);
-      const firstBroken = proseIssuesOf(entry.interpretation).length > 0;
-      if (!firstBroken || !replacement || !isNonEmptyCleanString(replacement.interpretation)) {
+      const firstBroken =
+        proseIssuesOf(entry.interpretation).length > 0 ||
+        rowDateMismatch(entry, observationIds, daysById) !== null;
+      if (!firstBroken || !replacement || !isCleanEntry(replacement, observationIds, daysById)) {
         return entry;
       }
       return {
@@ -361,7 +473,7 @@ function mergeRewordedPayload(
       if (
         isObjectWithStringId(extra) &&
         !seenIds.has(extra.observation_id) &&
-        isNonEmptyCleanString(extra.interpretation)
+        isCleanEntry(extra, observationIds, daysById)
       ) {
         seenIds.add(extra.observation_id);
         merged.push(extra);
@@ -483,19 +595,39 @@ export async function requestEvidenceAnnotations(
     first = parsePayload(raw);
   }
 
+  const { observationIds, daysById } = buildAllowedDaysByObservation(
+    params.observations,
+    params.factorBoundaryDays,
+  );
   const issues = annotationReflectionIssues(first);
-  if (issues.length === 0) {
+  const dateMismatches = annotationDateMismatches(first, observationIds, daysById);
+  if (issues.length === 0 && dateMismatches.length === 0) {
     return first;
   }
 
+  const retryMessages =
+    issues.length > 0 && dateMismatches.length === 0
+      ? reflectionRetry(raw, issues)
+      : [
+          { role: "assistant" as const, content: raw },
+          {
+            role: "user" as const,
+            content: [
+              ...(issues.length > 0 ? [reflectionCorrection(issues)] : []),
+              ...(dateMismatches.length > 0 ? [dateMismatchCorrection(dateMismatches)] : []),
+              "Return the same JSON shape, updating only the offending observation(s).",
+            ].join(" "),
+          },
+        ];
+
   const retriedRaw = await rewordedOr(raw, params.signal, () =>
-    request([...baseMessages, ...reflectionRetry(raw, issues)]),
+    request([...baseMessages, ...retryMessages]),
   );
   if (retriedRaw === raw) {
     return first;
   }
   try {
-    return mergeRewordedPayload(first, parsePayload(retriedRaw));
+    return mergeRewordedPayload(first, parsePayload(retriedRaw), observationIds, daysById);
   } catch {
     return first;
   }
