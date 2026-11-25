@@ -394,6 +394,23 @@ describe("usePredictiveStore — raw contexts persistence (Spec 062 delta 1)", (
     );
   });
 
+  it("preserves UI-only ready contexts (rawContexts undefined) even when requireProof is requested", async () => {
+    await usePredictiveStore.getState().ensurePredictive(makeRuntime(), INPUT);
+    const blob = JSON.parse(memMap.get(PREDICTIVE_PERSIST_NAME)!);
+    delete blob.state.rawContexts;
+    usePredictiveStore.getState().reset();
+    memMap.set(PREDICTIVE_PERSIST_NAME, JSON.stringify(blob));
+    await usePredictiveStore.persist.rehydrate();
+
+    expect(usePredictiveStore.getState().status).toBe("ready");
+    expect(usePredictiveStore.getState().rawContexts).toBeUndefined();
+
+    const fresh = makeRuntime();
+    await usePredictiveStore.getState().ensurePredictive(fresh, INPUT, { requireProof: true });
+    expect(fresh.computePredictive).not.toHaveBeenCalled();
+    expect(usePredictiveStore.getState().strengthCtx?.ashtakavarga.sarva.total).toBe(337);
+  });
+
   it.each([1, 2, 3, 4, 5, 6])(
     "drops a v%i ready snapshot: rehydrates idle and the same input recomputes",
     async (version) => {

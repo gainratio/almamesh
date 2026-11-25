@@ -92,6 +92,7 @@ export function useChartReanchor(): void {
   const storedYogas = chart?.sidereal_chart?.yogas ?? [];
   const missingYogaActivation =
     chart !== undefined &&
+    chart.sidereal_chart?.snapshot != null &&
     storedYogas.length > 0 &&
     storedYogas.some((yoga) => yoga.dasha_activation == null);
   // A chart that records no instant at all (the oldest backups), uses a
@@ -112,7 +113,9 @@ export function useChartReanchor(): void {
       const secAyanamsa = (c.sidereal_chart?.snapshot?.ayanamsa ?? 'LAHIRI').toUpperCase();
       const secYogas = c.sidereal_chart?.yogas ?? [];
       const secMissingAct =
-        secYogas.length > 0 && secYogas.some((yoga) => yoga.dasha_activation == null);
+        c.sidereal_chart?.snapshot != null &&
+        secYogas.length > 0 &&
+        secYogas.some((yoga) => yoga.dasha_activation == null);
       return secAyanamsa !== ayanamsa || secMissingAct;
     })
     .map((c) => c.chart_id);

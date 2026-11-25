@@ -95,11 +95,12 @@ async function awaitInFlightKey(expectedKey: string, signal: AbortSignal): Promi
   });
 }
 
-function hasCurrentBootProof(
+function needsBootProofRefresh(
   snap: ReturnType<typeof usePredictiveStore.getState>,
 ): boolean {
-  return Boolean(
-    snap.rawContexts?.domain_strength_receipts && snap.rawContexts?.strength_signer_public_key,
+  return (
+    snap.rawContexts !== undefined &&
+    (!snap.rawContexts.domain_strength_receipts || !snap.rawContexts.strength_signer_public_key)
   );
 }
 
@@ -120,7 +121,7 @@ async function ensurePredictiveForExport(
   if (
     initial.requestKey === expectedKey &&
     initial.status === 'ready' &&
-    hasCurrentBootProof(initial)
+    !needsBootProofRefresh(initial)
   ) {
     return;
   }
@@ -134,7 +135,7 @@ async function ensurePredictiveForExport(
   if (
     afterWait.requestKey === expectedKey &&
     (afterWait.status === 'error' ||
-      (afterWait.status === 'ready' && hasCurrentBootProof(afterWait)))
+      (afterWait.status === 'ready' && !needsBootProofRefresh(afterWait)))
   ) {
     return;
   }
@@ -147,14 +148,18 @@ async function ensurePredictiveForExport(
   if (
     afterBoot.requestKey === expectedKey &&
     afterBoot.status === 'ready' &&
-    hasCurrentBootProof(afterBoot)
+    !needsBootProofRefresh(afterBoot)
   ) {
     return;
   }
   if (afterBoot.requestKey === expectedKey && afterBoot.status === 'loading') {
     await awaitInFlightKey(expectedKey, signal);
     const afterSecondWait = usePredictiveStore.getState();
-    if (afterSecondWait.requestKey !== expectedKey || hasCurrentBootProof(afterSecondWait)) {
+    if (
+      afterSecondWait.requestKey !== expectedKey ||
+      afterSecondWait.status === 'error' ||
+      (afterSecondWait.status === 'ready' && !needsBootProofRefresh(afterSecondWait))
+    ) {
       return;
     }
   }

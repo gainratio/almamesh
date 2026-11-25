@@ -357,11 +357,12 @@ export const predictiveStoreCreator: StateCreator<PredictiveStore> = (set, get) 
       if (status === 'loading' && requestKey === key) {
         return; // already computing this exact request
       }
-      const hasBootProof = Boolean(
-        rawContexts?.domain_strength_receipts && rawContexts?.strength_signer_public_key,
-      );
-      if (status === 'ready' && requestKey === key && (!options?.requireProof || hasBootProof)) {
-        return; // idempotent: already computed (and carries proof when requested)
+      const needsProofRefresh =
+        Boolean(options?.requireProof) &&
+        rawContexts !== undefined &&
+        (!rawContexts.domain_strength_receipts || !rawContexts.strength_signer_public_key);
+      if (status === 'ready' && requestKey === key && !needsProofRefresh) {
+        return; // idempotent: already computed (and carries proof when rawContexts exist)
       }
       if (inFlightProofRefresh?.key === key) {
         await inFlightProofRefresh.promise;
