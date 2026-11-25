@@ -62,6 +62,7 @@
     "timeline_writing": "Escrevendo… {{words}} palavras até agora",
     "timeline_thinking": "Pensando… {{words}} palavras de raciocínio até agora",
     "partial_failure": "Algumas seções não puderam ser geradas desta vez: {{sections}}. O restante da leitura está completo — gere novamente para preencher a lacuna.",
+    "withheld_sections": "Alguns parágrafos não puderam ser redigidos de forma reflexiva ({{sections}}). Tente novamente apenas essas seções — o restante da sua leitura permanece intacto.",
     "timeline_partial_failure": "Algumas seções da linha do tempo não puderam ser geradas: {{sections}}. Sua leitura natal salva não foi alterada.",
     "regen_failed": "Não foi possível regenerar a leitura ({{error}}). Sua leitura anterior está mantida abaixo."
   },

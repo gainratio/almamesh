@@ -442,6 +442,8 @@ describe('ReportView predictive sections', () => {
       challenges: 'Challenges',
       lifeThemes: 'Major Life Themes',
       roadAhead: 'The Road Ahead',
+      sectionUnavailable:
+        'Reflective commentary unavailable for this subsection — withheld for non-reflective phrasing.',
     });
 
     // One marker per engine yoga, and the formatter resolves the chip's wording.

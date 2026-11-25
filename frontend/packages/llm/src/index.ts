@@ -187,11 +187,13 @@ export {
   CURRENT_TIMELINE_SECTIONS,
   NATAL_SECTIONS,
   buildReportMessages,
+  regenerateNatalSection,
   streamCurrentTimeline,
   streamNatalInterpretation,
   streamReportTimeline,
   streamStructuredInterpretation,
   usesLitePrompt,
+  withheldNatalSections,
 } from "./structured-interpretation";
 export type {
   CurrentTimelineContent,
@@ -204,6 +206,7 @@ export type {
   NatalInterpretationEvent,
   NatalInterpretationParams,
   NatalInterpretationSectionKey,
+  RegenerateNatalSectionParams,
   ReportMessages,
   ReportMessagesInput,
   ReportMessagesOptions,
@@ -216,7 +219,8 @@ export type {
 // --- Report v2: sections, prompt set ---
 export { computeQuarters, quarterTitle } from "./quarters";
 export type { Quarter, QuarterKey } from "./quarters";
-export { monthsIn, validateTimelineDates } from "./date-guard";
+export { extractExplicitCalendarDays, monthsIn, validateTimelineDates } from "./date-guard";
+export { isReadingWithheldText, mergeCleanJsonLeaves, READING_WITHHELD } from "./reflection";
 export {
   currentPeriodSlice,
   LIFE_DOMAIN_ORDER,

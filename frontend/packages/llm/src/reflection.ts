@@ -512,6 +512,15 @@ export const READING_WITHHELD: Readonly<Record<ReflectionLanguage, string>> = {
   hi: "मैं इस भाग को आत्म-चिंतन के रूप में व्यक्त नहीं कर सका। पठन को फिर से जनरेट करें।",
 };
 
+const READING_WITHHELD_SET: ReadonlySet<string> = new Set(
+  Object.values(READING_WITHHELD).map((value) => value.trim()),
+);
+
+/** True when `text` is one of the localized `READING_WITHHELD` placeholders. */
+export function isReadingWithheldText(text: string): boolean {
+  return READING_WITHHELD_SET.has(text.trim());
+}
+
 /** The JSON value with every string value mapped; keys are structure and stay as they are. */
 function mapStrings(value: unknown, map: (text: string) => string): unknown {
   if (typeof value === "string") return map(value);
@@ -561,10 +570,53 @@ export async function rewordedOr(raw: string, signal: AbortSignal | undefined, r
   }
 }
 
+function mergeLeafValues(firstVal: unknown, retriedVal: unknown): unknown {
+  if (typeof firstVal === "string") {
+    if (firstVal.trim().length > 0 && reflectionIssues(firstVal).length === 0) {
+      return firstVal;
+    }
+    if (
+      typeof retriedVal === "string" &&
+      retriedVal.trim().length > 0 &&
+      reflectionIssues(retriedVal).length === 0
+    ) {
+      return retriedVal;
+    }
+    return firstVal;
+  }
+  if (Array.isArray(firstVal)) {
+    const retriedArr = Array.isArray(retriedVal) ? retriedVal : [];
+    return firstVal.map((item, idx) => mergeLeafValues(item, retriedArr[idx]));
+  }
+  if (firstVal !== null && typeof firstVal === "object") {
+    const retriedObj =
+      retriedVal !== null && typeof retriedVal === "object" && !Array.isArray(retriedVal)
+        ? (retriedVal as Record<string, unknown>)
+        : {};
+    return Object.fromEntries(
+      Object.entries(firstVal).map(([key, inner]) => [key, mergeLeafValues(inner, retriedObj[key])]),
+    );
+  }
+  return firstVal;
+}
+
+/**
+ * Merge a reflection retry onto the initial JSON document leaf-by-leaf:
+ * string leaves that already passed in `firstRaw` are preserved (so a retry can
+ * never corrupt a clean paragraph), while failing leaves adopt clean non-empty
+ * rewrites from `retriedRaw` without altering `firstRaw`'s structural shape.
+ */
+export function mergeCleanJsonLeaves(firstRaw: string, retriedRaw: string): string {
+  const firstParsed = parsedOrUndefined(firstRaw);
+  const retriedParsed = parsedOrUndefined(retriedRaw);
+  if (firstParsed === undefined || retriedParsed === undefined) return firstRaw;
+  return JSON.stringify(mergeLeafValues(firstParsed, retriedParsed));
+}
+
 /** The messages that send a failing JSON reading back once: the model's text, then the fix. */
 export function reflectionRetry(raw: string, issues: readonly ReflectionIssue[]): readonly { readonly role: "assistant" | "user"; readonly content: string }[] {
   return [
     { role: "assistant", content: raw },
-    { role: "user", content: `${reflectionCorrection(issues)} Return the same JSON shape with every value reworded.` },
+    { role: "user", content: `${reflectionCorrection(issues)} Return the same JSON shape, rewriting the offending value(s) while keeping already-reflective values intact.` },
   ];
 }

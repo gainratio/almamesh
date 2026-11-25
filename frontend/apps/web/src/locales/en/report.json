@@ -249,7 +249,13 @@
     "strengths": "Strengths",
     "challenges": "Challenges",
     "life_themes": "Major Life Themes",
-    "road_ahead": "The Road Ahead"
+    "road_ahead": "The Road Ahead",
+    "section_unavailable": "Reflective commentary unavailable for this subsection — withheld for non-reflective phrasing.",
+    "unfinished_notice_one": "Unfinished section in this reading ({{sections}}). Regenerate only the affected section — the rest of your completed report and evidence annotations remain intact.",
+    "unfinished_notice_other": "Unfinished sections in this reading ({{sections}}). Regenerate only the affected sections — the rest of your completed report and evidence annotations remain intact.",
+    "retry_section_one": "Regenerate affected section",
+    "retry_section_other": "Regenerate affected sections",
+    "retrying_section": "Regenerating section…"
   },
   "footer": {
     "provenance": "Calculated with the Lahiri Ayanamsa · AlmaMesh"
@@ -309,8 +315,11 @@
     "no_interpretation_dasha_rollover": "Active daśā changed since this reading was generated — regenerate the reading to annotate this period.",
     "no_interpretation_withheld_reflection": "Statement withheld for non-reflective phrasing — regenerate the reading to retry.",
     "no_interpretation_rejected_citation": "Statement rejected for citing an uncomputed factor — see provenance below.",
+    "no_interpretation_date_mismatch": "Statement withheld because a stated date disagreed with the computed period boundary — refresh annotations to update.",
     "no_interpretation_generation_failed": "Observation annotation request did not complete — regenerate the reading to retry.",
     "no_interpretation_omitted": "No separate annotation was returned for this observation — regenerate the reading to populate it.",
+    "refresh_annotations": "Refresh evidence annotations",
+    "refreshing_annotations": "Refreshing annotations…",
     "guidance_heading": "General guidance — not derived from this chart",
     "guidance_note": "The model marked these statements as resting on no computed factor in this chart. They are printed apart from the ledger above, and nothing in this chart backs them.",
     "rejected_generation_failed_note": "The observation-level annotation request did not complete ({{code}}) — regenerate the reading to populate the interpretations above.",
@@ -320,6 +329,8 @@
     "rejected_reflection_note_other": "{{count}} model statements were withheld for non-reflective phrasing.",
     "rejected_stale_dasha_note_one": "1 earlier daśā statement expired after a period rollover — regenerate the reading to update it.",
     "rejected_stale_dasha_note_other": "{{count}} earlier daśā statements expired after a period rollover — regenerate the reading to update them.",
+    "rejected_date_mismatch_note_one": "1 model statement was withheld because its stated date disagreed with the computed period boundary.",
+    "rejected_date_mismatch_note_other": "{{count}} model statements were withheld because their stated dates disagreed with the computed period boundaries.",
     "rejected_other_note_one": "1 malformed or duplicate model statement was discarded.",
     "rejected_other_note_other": "{{count}} malformed or duplicate model statements were discarded.",
     "class_arithmetic": "arithmetic",

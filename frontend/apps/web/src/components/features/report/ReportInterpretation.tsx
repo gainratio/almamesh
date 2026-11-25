@@ -11,7 +11,12 @@
 import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TitledPersona, VedicInterpretation } from '@almamesh/shared-types';
-import { buildGuidanceSections, personaText, type ReportAudience } from '../../../lib/reportSelectors';
+import {
+  buildGuidanceSections,
+  formatReportPersonaText,
+  personaText,
+  type ReportAudience,
+} from '../../../lib/reportSelectors';
 import { ReportProse } from './ReportProse';
 import { ReportSectionHeading } from './ReportSectionHeading';
 import { sectionNumeral } from '../../../lib/reportSections';
@@ -21,15 +26,20 @@ function TitledBlock({
   title,
   items,
   audience,
+  unavailableNotice,
   testid,
 }: {
   title: string;
   items: readonly TitledPersona[];
   audience: ReportAudience;
+  unavailableNotice: string;
   testid: string;
 }): ReactElement | null {
   const resolved = items
-    .map((item) => ({ title: item.title ?? '', text: personaText(item, audience) }))
+    .map((item) => ({
+      title: item.title ?? '',
+      text: formatReportPersonaText(personaText(item, audience), unavailableNotice),
+    }))
     .filter((item) => item.text.length > 0);
 
   if (resolved.length === 0) {
@@ -67,8 +77,9 @@ export function ReportInterpretation({
   audience,
 }: ReportInterpretationProps): ReactElement {
   const { t } = useTranslation('report');
+  const unavailable = t('interpretation.section_unavailable');
   const guidance = buildGuidanceSections(interpretation, audience);
-  const summary = personaText(interpretation.summary, audience);
+  const summary = formatReportPersonaText(personaText(interpretation.summary, audience), unavailable);
 
   return (
     <section className="report-section report-interpretation" data-testid="report-interpretation">
@@ -88,6 +99,7 @@ export function ReportInterpretation({
         title={t('interpretation.current_sky')}
         items={interpretation.current_sky ?? []}
         audience={audience}
+        unavailableNotice={unavailable}
         testid="report-current-sky"
       />
 
@@ -95,18 +107,21 @@ export function ReportInterpretation({
         title={t('interpretation.strengths')}
         items={interpretation.strengths}
         audience={audience}
+        unavailableNotice={unavailable}
         testid="report-strengths"
       />
       <TitledBlock
         title={t('interpretation.challenges')}
         items={interpretation.challenges}
         audience={audience}
+        unavailableNotice={unavailable}
         testid="report-challenges"
       />
       <TitledBlock
         title={t('interpretation.life_themes')}
         items={interpretation.life_themes}
         audience={audience}
+        unavailableNotice={unavailable}
         testid="report-life-themes"
       />
 
@@ -117,7 +132,7 @@ export function ReportInterpretation({
           data-testid={`report-guidance-${section.key}`}
         >
           <h3 className="report-subsection-title">{section.title}</h3>
-          <ReportProse text={section.text} />
+          <ReportProse text={formatReportPersonaText(section.text, unavailable)} />
         </div>
       ))}
 
@@ -128,6 +143,7 @@ export function ReportInterpretation({
         title={t('interpretation.road_ahead')}
         items={interpretation.upcoming_periods ?? []}
         audience={audience}
+        unavailableNotice={unavailable}
         testid="report-road-ahead"
       />
     </section>

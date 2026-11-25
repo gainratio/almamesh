@@ -23,6 +23,8 @@ export type {
 
 export { COMBUSTION_ORBS_DEG, RETROGRADE_COMBUSTION_ORBS_DEG, combustionOrbDeg } from './combustionOrbs';
 
+export { formatDashaBoundaryDay, parentDashaFactorIds } from './dashaDates';
+
 export { assessConfidence, BOUNDARY_MARGIN_DEG, CUSP_THRESHOLD_DEG } from './confidence';
 export type { ConfidenceDeduction, ConfidenceLevel, ConfidenceVerdict, DeductionCode } from './confidence';
 
@@ -35,7 +37,7 @@ export {
 } from './factors';
 export type { ChartFactor, FactorClass } from './factors';
 
-export { buildEvidenceLedger } from './ledger';
+export { buildDashaBoundaryDays, buildEvidenceLedger } from './ledger';
 export type { EvidenceLedger, EvidenceRow } from './ledger';
 
 export { buildObservations } from './observations';

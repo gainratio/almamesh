@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next';
 import type { TitledPersona, VedicInterpretation } from '@almamesh/shared-types';
 import {
   buildGuidanceSections,
+  formatReportPersonaText,
   personaText,
   type ReportAudience,
 } from '../../../lib/reportSelectors';
@@ -37,9 +38,13 @@ interface ResolvedItem {
 function resolveTitledItems(
   items: readonly TitledPersona[],
   audience: ReportAudience,
+  unavailableText: string,
 ): readonly ResolvedItem[] {
   return items
-    .map((item) => ({ title: item.title ?? '', text: personaText(item, audience) }))
+    .map((item) => ({
+      title: item.title ?? '',
+      text: formatReportPersonaText(personaText(item, audience), unavailableText),
+    }))
     .filter((item) => item.text.length > 0);
 }
 
@@ -132,14 +137,21 @@ export function DashboardInterpretation({
   interpretation,
   audience,
 }: DashboardInterpretationProps): ReactElement | null {
-  const { t } = useTranslation('dashboard');
+  const { t } = useTranslation(['dashboard', 'report']);
+  const unavailableText = t('report:interpretation.section_unavailable');
 
-  const strengths = resolveTitledItems(interpretation.strengths, audience);
-  const challenges = resolveTitledItems(interpretation.challenges, audience);
-  const themes = resolveTitledItems(interpretation.life_themes, audience);
+  const strengths = resolveTitledItems(interpretation.strengths, audience, unavailableText);
+  const challenges = resolveTitledItems(interpretation.challenges, audience, unavailableText);
+  const themes = resolveTitledItems(interpretation.life_themes, audience, unavailableText);
 
-  const yogaText = personaText(interpretation.integrated_yoga_narrative, audience);
-  const guidance = buildGuidanceSections(interpretation, audience);
+  const yogaText = formatReportPersonaText(
+    personaText(interpretation.integrated_yoga_narrative, audience),
+    unavailableText,
+  );
+  const guidance = buildGuidanceSections(interpretation, audience).map((section) => ({
+    ...section,
+    text: formatReportPersonaText(section.text, unavailableText),
+  }));
 
   const hasCore = strengths.length > 0 || challenges.length > 0 || themes.length > 0;
   const hasDepth = Boolean(yogaText) || guidance.length > 0;
@@ -220,9 +232,10 @@ export function DashboardCurrentTimeline({
   audience,
   caption,
 }: DashboardCurrentTimelineProps): ReactElement | null {
-  const { t } = useTranslation('dashboard');
-  const resolvedSky = resolveTitledItems(currentSky, audience);
-  const resolvedPeriods = resolveTitledItems(upcomingPeriods, audience);
+  const { t } = useTranslation(['dashboard', 'report']);
+  const unavailableText = t('report:interpretation.section_unavailable');
+  const resolvedSky = resolveTitledItems(currentSky, audience, unavailableText);
+  const resolvedPeriods = resolveTitledItems(upcomingPeriods, audience, unavailableText);
   if (resolvedSky.length === 0 && resolvedPeriods.length === 0) return null;
 
   return (

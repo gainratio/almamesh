@@ -20,6 +20,8 @@ import {
   type RejectedAnnotation,
   type RejectionReason,
 } from './annotations';
+import { formatDashaBoundaryDay, parentDashaFactorIds } from './dashaDates';
+import { chartFactors } from './factors';
 import { buildObservations, type Observation } from './observations';
 
 import type { AlternateLagna, LagnaSensitivity } from './alternateLagna';
@@ -63,6 +65,8 @@ export interface EvidenceLedger {
   readonly staleDashaCount: number;
   /** The specific daśā level(s) (`maha` / `antar` / `pratyantar`) that rolled over. */
   readonly staleDashaLevels: readonly DashaLevel[];
+  /** Statements rejected because an explicit calendar date disagreed with the computed period boundary. */
+  readonly dateMismatchCount: number;
   /** Malformed, empty, or duplicate statements discarded. */
   readonly otherRejectedCount: number;
   /** True when a model reading was applied to at least one row. */
@@ -216,6 +220,7 @@ interface RejectionCounts {
   readonly reflectionRejectedCount: number;
   readonly staleDashaCount: number;
   readonly staleDashaLevels: readonly DashaLevel[];
+  readonly dateMismatchCount: number;
   readonly otherRejectedCount: number;
 }
 
@@ -224,6 +229,7 @@ function partitionRejections(rejected: readonly RejectedAnnotation[]): Rejection
   let reflectionRejectedCount = 0;
   let staleDashaCount = 0;
   const staleLevels = new Set<DashaLevel>();
+  let dateMismatchCount = 0;
   let otherRejectedCount = 0;
 
   for (const item of rejected) {
@@ -243,6 +249,9 @@ function partitionRejections(rejected: readonly RejectedAnnotation[]): Rejection
         }
         break;
       }
+      case 'date-mismatch':
+        dateMismatchCount += 1;
+        break;
       case 'malformed':
       case 'empty-interpretation':
       case 'duplicate-observation':
@@ -260,8 +269,40 @@ function partitionRejections(rejected: readonly RejectedAnnotation[]): Rejection
     reflectionRejectedCount,
     staleDashaCount,
     staleDashaLevels: [...staleLevels],
+    dateMismatchCount,
     otherRejectedCount,
   };
+}
+
+export function buildDashaBoundaryDays(
+  chart: SiderealChart,
+  observations: readonly Observation[],
+  timeZone?: string,
+): ReadonlyMap<string, ReadonlySet<string>> {
+  const map = new Map<string, Set<string>>();
+  for (const factor of chartFactors(chart)) {
+    if (factor.kind === 'dasha') {
+      map.set(
+        factor.id,
+        new Set([
+          formatDashaBoundaryDay(factor.startIso, timeZone),
+          formatDashaBoundaryDay(factor.endIso, timeZone),
+        ]),
+      );
+    }
+  }
+  for (const obs of observations) {
+    const merged = new Set<string>(map.get(obs.id) ?? []);
+    for (const refId of [...obs.supporting.map((f) => f.id), ...parentDashaFactorIds(obs.id)]) {
+      for (const day of map.get(refId) ?? []) {
+        merged.add(day);
+      }
+    }
+    if (merged.size > 0) {
+      map.set(obs.id, merged);
+    }
+  }
+  return map;
 }
 
 /**
@@ -271,10 +312,18 @@ function partitionRejections(rejected: readonly RejectedAnnotation[]): Rejection
 export function buildEvidenceLedger(
   chart: SiderealChart,
   payload?: RawAnnotationPayload | null,
+  timeZone?: string,
 ): EvidenceLedger {
   const ledger = buildObservations(chart);
   const priorDashas = priorChartDashaIds(chart);
-  const validated = validateAnnotations(payload, ledger.observationIds, ledger.factorIds, priorDashas);
+  const dashaBoundaryDays = buildDashaBoundaryDays(chart, ledger.observations, timeZone);
+  const validated = validateAnnotations(
+    payload,
+    ledger.observationIds,
+    ledger.factorIds,
+    priorDashas,
+    dashaBoundaryDays,
+  );
   const byObservation = new Map(
     validated.accepted.map((annotation) => [annotation.observationId, annotation]),
   );
@@ -312,6 +361,7 @@ export function buildEvidenceLedger(
     reflectionRejectedCount: counts.reflectionRejectedCount,
     staleDashaCount: counts.staleDashaCount,
     staleDashaLevels: counts.staleDashaLevels,
+    dateMismatchCount: counts.dateMismatchCount,
     otherRejectedCount: counts.otherRejectedCount,
     annotated: validated.accepted.length > 0,
   };

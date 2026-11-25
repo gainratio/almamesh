@@ -252,7 +252,13 @@
     "strengths": "Fortalezas",
     "challenges": "Desafíos",
     "life_themes": "Grandes temas de vida",
-    "road_ahead": "El camino por delante"
+    "road_ahead": "El camino por delante",
+    "section_unavailable": "Comentario reflexivo no disponible para esta subsección: retenido por tono no reflexivo.",
+    "unfinished_notice_one": "Hay una sección incompleta en esta lectura ({{sections}}). Regenera únicamente la sección afectada: el resto del informe completado y las anotaciones de evidencia permanecen intactos.",
+    "unfinished_notice_other": "Hay secciones incompletas en esta lectura ({{sections}}). Regenera únicamente las secciones afectadas: el resto del informe completado y las anotaciones de evidencia permanecen intactos.",
+    "retry_section_one": "Regenerar sección afectada",
+    "retry_section_other": "Regenerar secciones afectadas",
+    "retrying_section": "Regenerando sección…"
   },
   "footer": {
     "provenance": "Calculado con el ayanamsa Lahiri · AlmaMesh"
@@ -312,8 +318,11 @@
     "no_interpretation_dasha_rollover": "El daśā activo cambió desde que se generó esta lectura: vuelve a generarla para anotar este período.",
     "no_interpretation_withheld_reflection": "Frase retenida por tono no reflexivo: vuelve a generar la lectura para reintentarlo.",
     "no_interpretation_rejected_citation": "Frase rechazada por citar un factor no calculado: consulta la procedencia abajo.",
+    "no_interpretation_date_mismatch": "Frase retenida porque una fecha indicada discrepaba del límite calculado del período: actualiza las anotaciones.",
     "no_interpretation_generation_failed": "La solicitud de anotación no se completó: vuelve a generar la lectura para reintentarlo.",
     "no_interpretation_omitted": "No se devolvió una anotación individual para esta observación: vuelve a generar la lectura para completarla.",
+    "refresh_annotations": "Actualizar anotaciones de evidencia",
+    "refreshing_annotations": "Actualizando anotaciones…",
     "guidance_heading": "Orientación general, no derivada de esta carta",
     "guidance_note": "El modelo marcó estas frases como no apoyadas en ningún factor calculado de esta carta. Se imprimen aparte del registro anterior y nada en esta carta las respalda.",
     "rejected_generation_failed_note": "La solicitud de anotaciones por observación no se completó ({{code}}): vuelve a generar la lectura para completar las interpretaciones anteriores.",
@@ -323,6 +332,8 @@
     "rejected_reflection_note_other": "Se retuvieron {{count}} frases del modelo por emplear un tono no reflexivo.",
     "rejected_stale_dasha_note_one": "1 frase de un daśā anterior caducó tras el cambio de período: vuelve a generar la lectura para actualizarla.",
     "rejected_stale_dasha_note_other": "{{count}} frases de daśās anteriores caducaron tras el cambio de período: vuelve a generar la lectura para actualizarlas.",
+    "rejected_date_mismatch_note_one": "Se retuvo 1 frase del modelo porque la fecha indicada discrepaba del límite calculado del período.",
+    "rejected_date_mismatch_note_other": "Se retuvieron {{count}} frases del modelo porque las fechas indicadas discrepaban de los límites calculados de los períodos.",
     "rejected_other_note_one": "Se descartó 1 frase del modelo mal formada o duplicada.",
     "rejected_other_note_other": "Se descartaron {{count}} frases del modelo mal formadas o duplicadas.",
     "class_arithmetic": "aritmética",

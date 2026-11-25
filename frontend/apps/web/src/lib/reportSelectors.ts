@@ -8,7 +8,21 @@
  * dumping BOTH layman and technical copy into one column.
  */
 
+import { isReadingWithheldText } from '@almamesh/llm';
 import type { Persona, VedicInterpretation } from '@almamesh/shared-types';
+
+/** Default formal availability marker when a subsection's prose was withheld by the reflection check. */
+export const DEFAULT_SECTION_UNAVAILABLE_NOTICE =
+  'Reflective commentary unavailable for this subsection — withheld for non-reflective phrasing.';
+
+/** Replace interactive `READING_WITHHELD` retry copy with a clean report availability notice. */
+export function formatReportPersonaText(
+  text: string,
+  unavailableNotice: string = DEFAULT_SECTION_UNAVAILABLE_NOTICE,
+): string {
+  if (!text) return '';
+  return isReadingWithheldText(text) ? unavailableNotice : text;
+}
 
 /** The two audiences a report can be rendered for. */
 export type ReportAudience = 'you' | 'astrologer';

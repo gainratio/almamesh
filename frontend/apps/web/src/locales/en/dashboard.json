@@ -59,6 +59,7 @@
     "timeline_writing": "Writing… {{words}} words so far",
     "timeline_thinking": "Thinking… {{words}} words of reasoning so far",
     "partial_failure": "Some sections could not be generated this time: {{sections}}. The rest of the reading is complete — regenerate to fill the gap.",
+    "withheld_sections": "Some paragraphs could not be phrased reflectively ({{sections}}). Retry only those sections — the rest of your reading stays intact.",
     "timeline_partial_failure": "Some timeline sections could not be generated: {{sections}}. Your saved natal reading is unchanged.",
     "regen_failed": "The reading could not be regenerated ({{error}}). Your previous reading is kept below."
   },

@@ -32,12 +32,19 @@ import { safeError } from '@almamesh/shared-types';
 import type { SiderealChart, YogaDashaActivation } from '@almamesh/browser/types';
 
 import { aiErrorRegistry } from '../lib/errors';
-import { buildObservations, type ChartFactor, type Observation } from '../lib/evidence';
+import {
+  buildDashaBoundaryDays,
+  buildObservations,
+  formatDashaBoundaryDay,
+  type ChartFactor,
+  type Observation,
+} from '../lib/evidence';
 
 /** The engine's observation prompts plus the exhaustive citation allowlist. */
 export interface ObservationPrompts {
   readonly observations: readonly EvidenceObservationPrompt[];
   readonly factorIds: readonly string[];
+  readonly factorBoundaryDays: Readonly<Record<string, readonly string[]>>;
 }
 
 export interface EvidenceAnnotationRequest {
@@ -51,6 +58,8 @@ export interface EvidenceAnnotationRequest {
   readonly language: string;
   /** The reading's abort signal, so cancelling the reading cancels this too. */
   readonly signal: AbortSignal;
+  /** Optional explicit IANA timezone (defaults via `formatDashaBoundaryDay` to `viewerTimeZone()`). */
+  readonly timeZone?: string;
 }
 
 /**
@@ -98,7 +107,7 @@ function statementOf(factor: ChartFactor): string {
 }
 
 /** The computed values behind a factor — the numbers, verbatim from the engine. */
-function evidenceOf(factor: ChartFactor): string {
+function evidenceOf(factor: ChartFactor, timeZone?: string): string {
   switch (factor.kind) {
     case 'lagna':
       return `${num(factor.signDegrees)}deg ${factor.sign}${cuspEvidence(factor.cuspDistanceDeg, factor.adjacentSign)}`;
@@ -115,7 +124,7 @@ function evidenceOf(factor: ChartFactor): string {
     case 'rulership':
       return `houses ruled ${factor.housesRuled.join(', ')}, yogakaraka=${factor.yogakaraka}`;
     case 'dasha':
-      return `${factor.startIso} to ${factor.endIso}, ${num(factor.durationYears)} years, convention=${factor.convention}`;
+      return `${formatDashaBoundaryDay(factor.startIso, timeZone)} to ${formatDashaBoundaryDay(factor.endIso, timeZone)}, ${num(factor.durationYears)} years, convention=${factor.convention}`;
     case 'yoga':
       return `grade=${factor.grade}, category=${factor.category}, houses ${listOr(factor.housesInvolved)}, planets ${listOr(factor.planetsInvolved)}${activationEvidence(factor.dashaActivation)}`;
     case 'yogaStrength':
@@ -160,14 +169,14 @@ function activationEvidence(activation: YogaDashaActivation | null | undefined):
 }
 
 /** One observation as prompt input: its own numbers, then its support's. */
-function promptFor(observation: Observation): EvidenceObservationPrompt {
+function promptFor(observation: Observation, timeZone?: string): EvidenceObservationPrompt {
   const support = observation.supporting
     .slice(1)
-    .map((factor) => `${factor.id} (${statementOf(factor)}: ${evidenceOf(factor)})`);
+    .map((factor) => `${factor.id} (${statementOf(factor)}: ${evidenceOf(factor, timeZone)})`);
   return {
     id: observation.id,
     statement: statementOf(observation.primary),
-    evidence: [evidenceOf(observation.primary), ...support].join(' | '),
+    evidence: [evidenceOf(observation.primary, timeZone), ...support].join(' | '),
   };
 }
 
@@ -178,11 +187,20 @@ function promptFor(observation: Observation): EvidenceObservationPrompt {
  * reads it. A second list built for the prompt would drift from the one the
  * ledger validates against, and every drifted id would be silently rejected.
  */
-export function buildObservationPrompts(chart: SiderealChart): ObservationPrompts {
+export function buildObservationPrompts(
+  chart: SiderealChart,
+  timeZone?: string,
+): ObservationPrompts {
   const ledger = buildObservations(chart);
+  const boundaryMap = buildDashaBoundaryDays(chart, ledger.observations, timeZone);
+  const factorBoundaryDays: Record<string, readonly string[]> = {};
+  for (const [id, days] of boundaryMap.entries()) {
+    factorBoundaryDays[id] = [...days];
+  }
   return {
-    observations: ledger.observations.map(promptFor),
+    observations: ledger.observations.map((obs) => promptFor(obs, timeZone)),
     factorIds: [...ledger.factorIds],
+    factorBoundaryDays,
   };
 }
 
@@ -243,7 +261,7 @@ export async function fetchEvidenceAnnotationsOutcome(
   }
   let built: ObservationPrompts;
   try {
-    built = buildObservationPrompts(request.chart);
+    built = buildObservationPrompts(request.chart, request.timeZone);
   } catch (err) {
     safeError('report.evidence_annotation_failed', err);
     return { kind: 'skipped' };
@@ -256,6 +274,7 @@ export async function fetchEvidenceAnnotationsOutcome(
       chart: sanitizeChartForLlm(request.chart, request.asOf),
       observations: built.observations,
       factorIds: built.factorIds,
+      factorBoundaryDays: built.factorBoundaryDays,
       config: request.config,
       language: request.language,
       signal: request.signal,

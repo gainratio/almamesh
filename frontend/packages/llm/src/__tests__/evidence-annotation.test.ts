@@ -17,6 +17,7 @@ import {
   requestEvidenceAnnotations,
   type EvidenceObservationPrompt,
 } from "../evidence-annotation";
+import { extractExplicitCalendarDays } from "../date-guard";
 import { sanitizeChartForLlm } from "../sanitize";
 
 const NOW = new Date("2030-01-01T00:00:00.000Z");
@@ -135,6 +136,90 @@ describe("requestEvidenceAnnotations", () => {
     expect(body).toContain("readings");
     expect(body).toContain("also_cites");
     expect(body.toLowerCase()).toContain("discarded");
+  });
+
+  it("extracts explicit calendar days across en/es/pt/hi while ignoring month-only and bare years", () => {
+    expect(
+      extractExplicitCalendarDays(
+        "The Ketu pratyantar dasha (November 24, 2026 to January 31, 2027) runs through 2027 and January 2027.",
+      ),
+    ).toEqual(["2026-11-24", "2027-01-31"]);
+    expect(extractExplicitCalendarDays("Del 1 de diciembre de 2023 al 30 de enero de 2027.")).toEqual([
+      "2023-12-01",
+      "2027-01-30",
+    ]);
+    expect(extractExplicitCalendarDays("De 24 de novembro de 2026 até 30 de janeiro de 2027.")).toEqual([
+      "2026-11-24",
+      "2027-01-30",
+    ]);
+    expect(extractExplicitCalendarDays("24 नवंबर 2026 से 30 जनवरी, 2027 तक और 2027-02-09।")).toEqual([
+      "2027-02-09",
+      "2026-11-24",
+      "2027-01-30",
+    ]);
+  });
+
+  it("retries once and heals a dasha annotation whose stated date disagrees with canonical YYYY-MM-DD boundaries", async () => {
+    const dashaObs: readonly EvidenceObservationPrompt[] = [
+      ...OBSERVATIONS,
+      {
+        id: "dasha:pratyantar:saturn/venus/ketu",
+        statement: "pratyantar dasha of ketu (running)",
+        evidence: "2026-11-24 to 2027-01-30, 0.18 years, convention=julian_365_25",
+      },
+    ];
+    const first = JSON.stringify({
+      readings: [
+        {
+          observation_id: "dignity:venus",
+          interpretation: "Warmth here is earned through effort rather than handed over.",
+        },
+        {
+          observation_id: "dasha:pratyantar:saturn/venus/ketu",
+          interpretation:
+            "The Ketu pratyantar dasha (November 24, 2026 to January 31, 2027) narrows attention to selective work.",
+        },
+      ],
+      general_guidance: [],
+    });
+    const retried = JSON.stringify({
+      readings: [
+        {
+          observation_id: "dasha:pratyantar:saturn/venus/ketu",
+          interpretation:
+            "The Ketu pratyantar dasha (November 24, 2026 to January 30, 2027) narrows attention to selective work.",
+        },
+      ],
+      general_guidance: [],
+    });
+    const fetchImpl = vi
+      .fn<() => Promise<Response>>()
+      .mockResolvedValueOnce(jsonResponse(first))
+      .mockResolvedValueOnce(jsonResponse(retried));
+
+    const payload = await requestEvidenceAnnotations({
+      chart: CHART,
+      observations: dashaObs,
+      factorIds: [...FACTOR_IDS, "dasha:pratyantar:saturn/venus/ketu"],
+      config: LOCAL_CONFIG,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(payload).toEqual({
+      readings: [
+        {
+          observation_id: "dignity:venus",
+          interpretation: "Warmth here is earned through effort rather than handed over.",
+        },
+        {
+          observation_id: "dasha:pratyantar:saturn/venus/ketu",
+          interpretation:
+            "The Ketu pratyantar dasha (November 24, 2026 to January 30, 2027) narrows attention to selective work.",
+        },
+      ],
+      general_guidance: [],
+    });
   });
 
   it("passes a well-formed payload through untouched — a bogus id SURVIVES parsing", async () => {

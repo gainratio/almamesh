@@ -10,10 +10,16 @@ import type { SiderealChart } from "@almamesh/browser/types";
 import golden from "../../../../../backend/tests/fixtures/chart_golden_de421.json";
 import meshGolden from "../../../../../backend/tests/fixtures/mesh_golden_de421.json";
 import type { ProviderConfig } from "../config";
-import { streamCurrentTimeline, type CurrentTimelineEvent } from "../index";
+import {
+  regenerateNatalSection,
+  streamCurrentTimeline,
+  withheldNatalSections,
+  type CurrentTimelineEvent,
+  type NatalInterpretation,
+} from "../index";
 import { streamMeshReading, type MeshReadingEvent, type MeshReadingSectionKey } from "../mesh-reading";
 import type { MeshEdgeContext } from "../mesh-types";
-import { READING_WITHHELD, REFLECTION_RULE } from "../reflection";
+import { mergeCleanJsonLeaves, READING_WITHHELD, REFLECTION_RULE } from "../reflection";
 
 const chart = (golden as Record<string, SiderealChart>)[Object.keys(golden)[0]];
 const config: ProviderConfig = {
@@ -171,5 +177,104 @@ describe("the mesh reading", () => {
     const reading = await meshReading(streamMeshReading({ edge: SPOUSE, config, fetchImpl }));
     expect(timingCalls()).toBe(2);
     expect(reading.timing_together).toEqual(MESH_CLEAN);
+  });
+
+  it("merges clean leaves so a retry never corrupts an already-clean paragraph", () => {
+    const first = JSON.stringify({
+      life_themes: [
+        { title: "Making Home Dependable", layman: CLEAN, technical: "4th lord Venus." },
+        { title: "Career Shift", layman: FORETELLS, technical: "10th lord Mars." },
+      ],
+    });
+    const retryThatRegressedFirst = JSON.stringify({
+      life_themes: [
+        { title: "Making Home Dependable", layman: "You will buy a house soon.", technical: "4th lord Venus." },
+        { title: "Career Shift", layman: "Steady craft builds clear boundaries.", technical: "10th lord Mars." },
+      ],
+    });
+    const merged = JSON.parse(mergeCleanJsonLeaves(first, retryThatRegressedFirst)) as {
+      life_themes: Array<{ title: string; layman: string }>;
+    };
+    expect(merged.life_themes[0]?.layman).toBe(CLEAN);
+    expect(merged.life_themes[1]?.layman).toBe("Steady craft builds clear boundaries.");
+  });
+
+  it("identifies withheld natal sections and regenerates only the requested section", async () => {
+    const existing: NatalInterpretation = {
+      summary: { layman: CLEAN, technical: CLEAN },
+      strengths: [{ title: "Focus", layman: CLEAN, technical: CLEAN }],
+      challenges: [{ title: "Limits", layman: CLEAN, technical: CLEAN }],
+      life_themes: [{ title: "Home", layman: READING_WITHHELD.en, technical: CLEAN }],
+      integrated_yoga_narrative: { layman: "Existing yoga prose.", technical: "Existing yoga prose." },
+      health_guidance: { layman: CLEAN, technical: CLEAN },
+      education_guidance: { layman: CLEAN, technical: CLEAN },
+      career_guidance: { layman: CLEAN, technical: CLEAN },
+      relationship_guidance: { layman: CLEAN, technical: CLEAN },
+      finances_guidance: { layman: CLEAN, technical: CLEAN },
+      spiritual_guidance: { layman: CLEAN, technical: CLEAN },
+      life_evolution_guidance: { layman: CLEAN, technical: CLEAN },
+      remedial_measures: { layman: CLEAN, technical: CLEAN },
+    };
+    expect(withheldNatalSections(existing)).toEqual(["core"]);
+
+    const healedCore = JSON.stringify({
+      summary: { layman: CLEAN, technical: CLEAN },
+      strengths: [{ title: "Focus", layman: CLEAN, technical: CLEAN }],
+      challenges: [{ title: "Limits", layman: CLEAN, technical: CLEAN }],
+      life_themes: [{ title: "Home", layman: "Give home routines a steady rhythm.", technical: CLEAN }],
+    });
+    const fetchImpl = vi.fn(async () => jsonOf(healedCore)) as unknown as typeof fetch;
+    const patch = await regenerateNatalSection("core", { chart, config, fetchImpl, existing });
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(patch.life_themes?.[0]?.layman).toBe("Give home routines a steady rhythm.");
+    expect(patch).not.toHaveProperty("integrated_yoga_narrative");
+  });
+
+  it("preserves clean subsections and avoids title/body chimeras when healing an array item", async () => {
+    const existing: NatalInterpretation = {
+      summary: { layman: "Original summary.", technical: "Original technical summary." },
+      strengths: [{ title: "Original Strength", layman: "Steady discipline.", technical: "Saturn." }],
+      challenges: [{ title: "Original Challenge", layman: "Pacing effort.", technical: "Mars." }],
+      life_themes: [
+        { title: "Clean First Theme", layman: "Already reflective prose.", technical: "1st house." },
+        { title: "Making Home Dependable", layman: READING_WITHHELD.en, technical: "4th house." },
+      ],
+      integrated_yoga_narrative: { layman: CLEAN, technical: CLEAN },
+      health_guidance: { layman: CLEAN, technical: CLEAN },
+      education_guidance: { layman: CLEAN, technical: CLEAN },
+      career_guidance: { layman: CLEAN, technical: CLEAN },
+      relationship_guidance: { layman: CLEAN, technical: CLEAN },
+      finances_guidance: { layman: CLEAN, technical: CLEAN },
+      spiritual_guidance: { layman: CLEAN, technical: CLEAN },
+      life_evolution_guidance: { layman: CLEAN, technical: CLEAN },
+      remedial_measures: { layman: CLEAN, technical: CLEAN },
+    };
+
+    // LLM returns completely different titles and fails reflection on index 0, while index 1 is clean.
+    const reorderedFresh = JSON.stringify({
+      summary: { layman: "Different summary.", technical: "Different summary." },
+      strengths: [{ title: "Different Strength", layman: "Different.", technical: "Sun." }],
+      challenges: [{ title: "Different Challenge", layman: "Different.", technical: "Moon." }],
+      life_themes: [
+        { title: "Public Authority", layman: FORETELLS, technical: "10th house." },
+        { title: "Grounded Domestic Rhythm", layman: "Small steady habits anchor home life.", technical: "4th house Venus." },
+      ],
+    });
+    const fetchImpl = vi.fn(async () => jsonOf(reorderedFresh)) as unknown as typeof fetch;
+    const patch = await regenerateNatalSection("core", { chart, config, fetchImpl, existing });
+
+    expect(patch.summary?.layman).toBe("Original summary.");
+    expect(patch.strengths?.[0]?.title).toBe("Original Strength");
+    expect(patch.challenges?.[0]?.title).toBe("Original Challenge");
+    expect(patch.life_themes?.[0]).toEqual({
+      title: "Clean First Theme",
+      layman: "Already reflective prose.",
+      technical: "1st house.",
+    });
+    expect(patch.life_themes?.[1]).toEqual({
+      title: "Grounded Domestic Rhythm",
+      layman: "Small steady habits anchor home life.",
+      technical: "4th house Venus.",
+    });
   });
 });

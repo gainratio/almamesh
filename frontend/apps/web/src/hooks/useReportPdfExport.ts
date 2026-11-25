@@ -500,6 +500,7 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
             challenges: t('interpretation.challenges'),
             lifeThemes: t('interpretation.life_themes'),
             roadAhead: t('interpretation.road_ahead'),
+            sectionUnavailable: t('interpretation.section_unavailable'),
           },
           stability,
           formatStability: (marker) =>

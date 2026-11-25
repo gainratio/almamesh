@@ -37,6 +37,7 @@ import {
 import type { LagnaData } from '@almamesh/browser/types';
 import type { ProcessedBirthData, RectificationRecord } from '@almamesh/shared-types';
 import { useStreamingInterpretation } from '../hooks/useStreamingInterpretation';
+import { useLlmStatus } from '../hooks/useLlmStatus';
 import { usePredictiveLayer, type PredictiveLayer } from '../hooks/usePredictiveLayer';
 import { useElapsedSeconds, formatElapsed } from '../hooks/useElapsedSeconds';
 import { useContentModeStore } from '../stores/contentMode';
@@ -154,8 +155,18 @@ export default function ReportView(): ReactElement {
   const charts = useChartLibraryStore((s) => s.charts);
   const storedChart = selectPrimaryStoredChart(charts, activeProfileId);
   const chartId = storedChart?.chart_id ?? null;
-  const { interpretation, evidenceAnnotations, evidenceAnnotationError } =
-    useStreamingInterpretation(chartId);
+  const aiConfigured = useLlmStatus().configured;
+  const {
+    interpretation,
+    evidenceAnnotations,
+    evidenceAnnotationError,
+    withheldSections = [],
+    retrySections,
+    isRetryingSection = false,
+    sectionRetryError = null,
+    refreshEvidenceAnnotations,
+    isRefreshingAnnotations = false,
+  } = useStreamingInterpretation(chartId);
 
   // The lazy predictive layer (transits / vargas / strength / domains): auto-
   // kicks off on mount (matching Dashboard and Sky & Timing) so visiting
@@ -272,6 +283,40 @@ export default function ReportView(): ReactElement {
         <div className="report-pending no-print" data-testid="report-narrative-hint">
           <p>{t('narrative_hint')}</p>
         </div>
+      ) : withheldSections.length > 0 ? (
+        <div className="report-pending no-print" data-testid="report-unfinished-section">
+          <p>
+            {t('interpretation.unfinished_notice', {
+              count: withheldSections.length,
+              sections: withheldSections
+                .map((key) => t(`dashboard:sections.${key}`))
+                .join(', '),
+            })}
+          </p>
+          {sectionRetryError ? (
+            <p role="alert" data-testid="report-section-retry-error">
+              {sectionRetryError}
+            </p>
+          ) : null}
+          {aiConfigured && chartId ? (
+            <button
+              type="button"
+              className="report-toolbar-button"
+              disabled={isRetryingSection}
+              onClick={() => {
+                void retrySections(chartId, withheldSections, {
+                  intent: 'user-request',
+                  view_mode: audience === 'astrologer' ? 'expert' : 'layman',
+                });
+              }}
+              data-testid="report-retry-section"
+            >
+              {isRetryingSection
+                ? t('interpretation.retrying_section')
+                : t('interpretation.retry_section', { count: withheldSections.length })}
+            </button>
+          ) : null}
+        </div>
       ) : null}
 
       {/* Compute-before-printing affordance for the predictive sections. */}
@@ -316,6 +361,14 @@ export default function ReportView(): ReactElement {
           annotations={evidenceAnnotations}
           hasReading={Boolean(readyInterpretation)}
           annotationError={evidenceAnnotationError}
+          onRefreshAnnotations={
+            aiConfigured && chartId && readyInterpretation
+              ? () => {
+                  void refreshEvidenceAnnotations(chartId, { intent: 'user-request' });
+                }
+              : undefined
+          }
+          isRefreshingAnnotations={isRefreshingAnnotations}
         />
         {/* Predictive sections — rendered only when the lazy contexts are
             computed. Their numerals come from the registry, so a section that

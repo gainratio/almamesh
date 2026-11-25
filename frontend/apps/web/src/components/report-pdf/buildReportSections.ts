@@ -19,7 +19,13 @@ import { planetInk } from '../chart/chartTheme';
 import { resolvedViewerTimeZone } from '../../lib/dates';
 import { combustionOrbDeg } from '../../lib/evidence/combustionOrbs';
 import { formatDegree } from '../../lib/reportData';
-import { buildGuidanceSections, personaText, type ReportAudience } from '../../lib/reportSelectors';
+import {
+  buildGuidanceSections,
+  DEFAULT_SECTION_UNAVAILABLE_NOTICE,
+  formatReportPersonaText,
+  personaText,
+  type ReportAudience,
+} from '../../lib/reportSelectors';
 import { hasStrength, yogaStrength } from '../../lib/yogaStrength';
 import { formatYogaActivation } from '../../lib/yogaActivation';
 import { glyphSafe } from './glyphSafe';
@@ -501,13 +507,15 @@ function titledSection(
   title: string,
   items: ReadonlyArray<{ readonly title?: string; readonly layman?: string; readonly technical?: string }>,
   audience: ReportAudience,
+  unavailableNotice: string = DEFAULT_SECTION_UNAVAILABLE_NOTICE,
 ): ReportPdfNarrativeSection | null {
   const paragraphs = items
     .map((item) => {
-      const text = personaText(item, audience);
-      if (!text) {
+      const rawText = personaText(item, audience);
+      if (!rawText) {
         return '';
       }
+      const text = formatReportPersonaText(rawText, unavailableNotice);
       return item.title ? `${item.title}. ${text}` : text;
     })
     .filter((text) => text.length > 0)
@@ -541,8 +549,9 @@ export function buildNarrative(
   titles: ReportPdfNarrativeTitles = DEFAULT_NARRATIVE_TITLES,
 ): ReadonlyArray<ReportPdfNarrativeSection> {
   const sections: ReportPdfNarrativeSection[] = [];
+  const unavailable = titles.sectionUnavailable ?? DEFAULT_SECTION_UNAVAILABLE_NOTICE;
 
-  const summary = personaText(interpretation.summary, audience);
+  const summary = formatReportPersonaText(personaText(interpretation.summary, audience), unavailable);
   if (summary) {
     sections.push({ title: '', paragraphs: toParagraphs(summary) });
   }
@@ -551,21 +560,49 @@ export function buildNarrative(
   // differentiator leads the reading, right after the summary. Degrades
   // gracefully: absent/empty on a natal-only reading (honesty fence: never
   // invent timing) simply drops the section, same as every titledSection below.
-  const currentSky = titledSection(titles.currentSky, interpretation.current_sky ?? [], audience);
+  const currentSky = titledSection(
+    titles.currentSky,
+    interpretation.current_sky ?? [],
+    audience,
+    unavailable,
+  );
   if (currentSky) sections.push(currentSky);
 
-  const strengths = titledSection(titles.strengths, interpretation.strengths ?? [], audience);
+  const strengths = titledSection(
+    titles.strengths,
+    interpretation.strengths ?? [],
+    audience,
+    unavailable,
+  );
   if (strengths) sections.push(strengths);
-  const challenges = titledSection(titles.challenges, interpretation.challenges ?? [], audience);
+  const challenges = titledSection(
+    titles.challenges,
+    interpretation.challenges ?? [],
+    audience,
+    unavailable,
+  );
   if (challenges) sections.push(challenges);
-  const themes = titledSection(titles.lifeThemes, interpretation.life_themes ?? [], audience);
+  const themes = titledSection(
+    titles.lifeThemes,
+    interpretation.life_themes ?? [],
+    audience,
+    unavailable,
+  );
   if (themes) sections.push(themes);
 
   for (const guidance of buildGuidanceSections(interpretation, audience)) {
-    sections.push({ title: guidance.title, paragraphs: toParagraphs(guidance.text) });
+    sections.push({
+      title: guidance.title,
+      paragraphs: toParagraphs(formatReportPersonaText(guidance.text, unavailable)),
+    });
   }
 
-  const road = titledSection(titles.roadAhead, interpretation.upcoming_periods ?? [], audience);
+  const road = titledSection(
+    titles.roadAhead,
+    interpretation.upcoming_periods ?? [],
+    audience,
+    unavailable,
+  );
   if (road) sections.push(road);
 
   return sections;
@@ -580,11 +617,13 @@ export function buildNarrative(
 export function buildYogaNarrative(
   interpretation: VedicInterpretation,
   audience: ReportAudience,
+  unavailableNotice: string = DEFAULT_SECTION_UNAVAILABLE_NOTICE,
 ): ReadonlyArray<string> | undefined {
-  const text = personaText(interpretation.integrated_yoga_narrative, audience);
-  if (!text) {
+  const rawText = personaText(interpretation.integrated_yoga_narrative, audience);
+  if (!rawText) {
     return undefined;
   }
+  const text = formatReportPersonaText(rawText, unavailableNotice);
   const paragraphs = toParagraphs(text);
   return paragraphs.length > 0 ? paragraphs : undefined;
 }

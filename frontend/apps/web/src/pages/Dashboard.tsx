@@ -72,7 +72,7 @@ import { useLlmStatus } from "../hooks/useLlmStatus";
 import { AiSetupDialog, ConnectAiButton } from "../components/features/ai/AiSetupDialog";
 import { useReportPdfExport } from "../hooks/useReportPdfExport";
 import { isPlaceholderContent } from "./exportGate";
-import { personaText, resolveReportAudience } from "../lib/reportSelectors";
+import { formatReportPersonaText, personaText, resolveReportAudience } from "../lib/reportSelectors";
 import { rectificationDelta } from "../lib/rectification";
 import { birthYearOf, liveChartEngine } from "../lib/periodChart";
 import { lazyWithRetry } from "../lib/lazyWithRetry";
@@ -117,7 +117,7 @@ function readChatLlmEnv(): LlmEnv {
 }
 
 export default function DashboardPage() {
-  const { t, i18n } = useTranslation(["dashboard", "life", "predictive"]);
+  const { t, i18n } = useTranslation(["dashboard", "life", "predictive", "report"]);
   const chartEngineContext = useOptionalChartEngine();
   const chartEngineRef = useRef(chartEngineContext);
   chartEngineRef.current = chartEngineContext;
@@ -261,6 +261,10 @@ export default function DashboardPage() {
     interpretation,
     sections: interpretationSections,
     failedSections: failedInterpretationSections,
+    withheldSections = [],
+    retrySections,
+    isRetryingSection = false,
+    sectionRetryError = null,
     isStreaming: isStreamingInterpretation,
     status: interpretationStatus,
     error: streamingError,
@@ -577,7 +581,10 @@ export default function DashboardPage() {
 
   // The headline reading in the selected voice (jargon-free for "you",
   // placement-naming for "astrologer"). Re-derived on every contentMode change.
-  const summaryText = personaText(interpretation?.summary, audience);
+  const summaryText = formatReportPersonaText(
+    personaText(interpretation?.summary, audience),
+    t('report:interpretation.section_unavailable'),
+  );
   const summaryReady = Boolean(summaryText && !isPlaceholderContent(summaryText));
 
   // Quiet provenance caption under the reading: which model wrote it, when —
@@ -1100,6 +1107,40 @@ export default function DashboardPage() {
                   onClick={handleGenerateSeparatedInterpretation}
                   className="mt-1 underline hover:no-underline"
                   data-testid="interpretation-partial-retry"
+                >
+                  {t('dashboard:actions.retry')}
+                </button>
+              </div>
+            )}
+            {withheldSections.length > 0 && chartId && aiConfigured && (
+              <div
+                className="text-sm text-text-secondary"
+                role="status"
+                data-testid="interpretation-withheld-notice"
+              >
+                <p>
+                  {t('dashboard:generation.withheld_sections', {
+                    sections: withheldSections
+                      .map((key) => t(`dashboard:sections.${key}`))
+                      .join(', '),
+                  })}
+                </p>
+                {sectionRetryError ? (
+                  <p className="mt-1 text-status-error" role="alert" data-testid="interpretation-withheld-error">
+                    {sectionRetryError}
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={isRetryingSection}
+                  onClick={() => {
+                    void retrySections(chartId, withheldSections, {
+                      intent: 'user-request',
+                      view_mode: viewMode === 'astrologer' ? 'expert' : 'layman',
+                    });
+                  }}
+                  className="mt-1 underline hover:no-underline disabled:opacity-50"
+                  data-testid="interpretation-withheld-retry"
                 >
                   {t('dashboard:actions.retry')}
                 </button>

@@ -320,7 +320,11 @@ export function buildReportPdfData(input: BuildReportPdfDataInput): ReportPdfDat
     ),
     yogas: buildYogas(input.sidereal, stabilityFlagFor, input.formatYogaActivation),
     yogaNarrative: input.interpretation
-      ? buildYogaNarrative(input.interpretation, input.audience)
+      ? buildYogaNarrative(
+          input.interpretation,
+          input.audience,
+          input.narrativeTitles?.sectionUnavailable,
+        )
       : undefined,
     narrative: input.interpretation
       ? buildNarrative(input.interpretation, input.audience, input.narrativeTitles)
