@@ -255,7 +255,10 @@
     "time_rectified": "Introducida {{entered}} → carta calculada para {{rectified}}",
     "cusp_label": "Proximidad del ascendente a la cúspide",
     "cusp_near": "≈{{degrees}}° del límite de {{sign}}: las posiciones de casa son sensibles a la hora",
-    "cusp_clear": "Lejos de todo límite de signo: el signo ascendente es inequívoco"
+    "cusp_clear": "Lejos de todo límite de signo: el signo ascendente es inequívoco",
+    "omitted_label": "Secciones omitidas",
+    "omitted_predictive": "Secciones IX–XII (Tránsitos, cartas divisionales, fuerza planetaria y temas de vida: cálculo temporal en el dispositivo no completado)",
+    "omitted_rectification": "Sección XIII (Autoridad de la hora de nacimiento: sin rectificación confirmada)"
   },
   "evidence": {
     "heading": "Evidencia y confianza",

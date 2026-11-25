@@ -15,13 +15,19 @@ import type {
 } from '@almamesh/shared-types';
 import type { AyanamsaType } from '@almamesh/browser/types';
 import {
+  isSupportedAyanamsa,
   offsetMinutesAtInstant,
   type EnsurePredictiveInput,
   type StoredChart,
   type VargaChart,
   type VargaPlanet,
 } from '@almamesh/store';
-import { formatBirthDateForDisplay, formatDisplayDate, formatDisplayTime } from './dates';
+import {
+  formatBirthDateForDisplay,
+  formatDisplayDate,
+  formatDisplayTime,
+  resolvedViewerTimeZone,
+} from './dates';
 
 /**
  * The EXPLICIT reference instant for "what's happening now": UTC midnight of
@@ -49,11 +55,6 @@ export function predictiveReferenceInstant(
 
 const UTC_MIDNIGHT = /T00:00:00(?:\.0+)?(?:Z|\+00:00)$/;
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
-
-/** The viewer's resolved IANA timezone (explicit fallback to UTC). */
-function resolvedViewerTimeZone(): string {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-}
 
 /**
  * Display one analysis instant or day as the calendar day it names.
@@ -146,6 +147,20 @@ export function predictiveProfileKeyOf(
   return stored?.profile_id ?? activeProfileId ?? stored?.chart_id ?? chartId ?? 'primary';
 }
 
+/**
+ * Resolve the ayanamsa convention stamped on a stored chart's snapshot, falling
+ * back to `fallback` (the active preference) only on pre-snapshot charts.
+ * Keeping predictive requests pinned to the chart's own stamped ayanamsa avoids
+ * pairing a Lahiri natal chart with Raman transits while recomputation runs.
+ */
+export function storedChartAyanamsa(
+  stored: Pick<StoredChart, 'sidereal_chart'> | undefined,
+  fallback: AyanamsaType,
+): AyanamsaType {
+  const candidate = stored?.sidereal_chart?.snapshot?.ayanamsa?.toUpperCase();
+  return isSupportedAyanamsa(candidate) ? candidate : fallback;
+}
+
 /** "aries" → "Aries", "saturn" → "Saturn" (pure casing, no vocabulary). */
 export function titleCaseToken(value: string): string {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : '';
@@ -189,7 +204,12 @@ export function formatPredictiveDate(iso: string): string {
   if (Number.isNaN(parsed.getTime())) {
     return formatBirthDateForDisplay(iso.split('T')[0] ?? iso);
   }
-  return formatDisplayDate(parsed);
+  return formatDisplayDate(parsed, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    timeZone: resolvedViewerTimeZone(),
+  });
 }
 
 /**

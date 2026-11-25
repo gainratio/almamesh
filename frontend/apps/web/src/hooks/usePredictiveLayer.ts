@@ -38,6 +38,7 @@ import {
   buildEnsurePredictiveInput,
   predictiveProfileKeyOf,
   selectPrimaryStoredChart,
+  storedChartAyanamsa,
 } from '../lib/predictive';
 import { useRectificationGate } from '../lib/rectificationGate';
 import { storedChartReferenceInstant, viewerTimeZone } from '../lib/analysisInstant';
@@ -156,9 +157,10 @@ export function usePredictiveLayer({ auto = false }: UsePredictiveLayerOptions =
   const referenceInstant = storedChart
     ? storedChartReferenceInstant(storedChart, todayDay)
     : todayDay;
+  const chartAyanamsa = storedChartAyanamsa(storedChart, ayanamsa);
   const input = useMemo(
-    () => buildEnsurePredictiveInput(profileKey, birth, referenceInstant, {}, ayanamsa),
-    [profileKey, birth, referenceInstant, ayanamsa],
+    () => buildEnsurePredictiveInput(profileKey, birth, referenceInstant, {}, chartAyanamsa),
+    [profileKey, birth, referenceInstant, chartAyanamsa],
   );
   const expectedRequestKey = input ? predictiveRequestKey(input) : undefined;
   const cacheMatchesInput =

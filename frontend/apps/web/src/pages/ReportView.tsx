@@ -27,6 +27,7 @@ import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  useAyanamsaStore,
   useChartLibraryStore,
   useLifeEventsStore,
   useProfilesStore,
@@ -40,7 +41,7 @@ import { usePredictiveLayer, type PredictiveLayer } from '../hooks/usePredictive
 import { useElapsedSeconds, formatElapsed } from '../hooks/useElapsedSeconds';
 import { useContentModeStore } from '../stores/contentMode';
 import { resolveReportAudience } from '../lib/reportSelectors';
-import { selectPrimaryStoredChart } from '../lib/predictive';
+import { selectPrimaryStoredChart, storedChartAyanamsa } from '../lib/predictive';
 import { cuspInfo } from '../lib/lagnaCusp';
 import { yogaDependsOnHouses } from '../lib/evidence';
 import { rectificationDelta } from '../lib/rectification';
@@ -149,15 +150,16 @@ export default function ReportView(): ReactElement {
 
   // Subscribe to the chart map so the page re-renders once SQLite rehydrates.
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
+  const ayanamsa = useAyanamsaStore((s) => s.ayanamsa);
   const charts = useChartLibraryStore((s) => s.charts);
   const storedChart = selectPrimaryStoredChart(charts, activeProfileId);
   const chartId = storedChart?.chart_id ?? null;
   const { interpretation, evidenceAnnotations } = useStreamingInterpretation(chartId);
 
-  // The lazy predictive layer (transits / vargas / strength / domains): the
-  // report renders these sections only when computed; otherwise it offers an
-  // on-screen (never printed) affordance to compute before printing.
-  const predictive = usePredictiveLayer();
+  // The lazy predictive layer (transits / vargas / strength / domains): auto-
+  // kicks off on mount (matching Dashboard and Sky & Timing) so visiting
+  // `/report` computes Sections IX–XII automatically rather than dropping them.
+  const predictive = usePredictiveLayer({ auto: true });
 
   // Birth Time Authority: the profile's CONFIRMED rectification
   // record + its supporting life events, resolved in record order (read-only
@@ -182,7 +184,7 @@ export default function ReportView(): ReactElement {
   // dashboard's one-click Export PDF also uses — so the two entry points cannot
   // drift into two different documents. `pdfError` is on-screen only, never
   // printed, and clears at the start of every attempt.
-  const { exportPdf, pdfError } = useReportPdfExport(audience);
+  const { exportPdf, pdfError, canExport, isExporting } = useReportPdfExport(audience);
 
   const personName = storedChart?.person_name ?? '';
 
@@ -239,6 +241,8 @@ export default function ReportView(): ReactElement {
           type="button"
           className="report-toolbar-button report-toolbar-button-primary no-print"
           onClick={exportPdf}
+          disabled={!canExport || isExporting}
+          aria-busy={isExporting || undefined}
           data-testid="report-download-pdf"
         >
           {t('download_pdf')}
@@ -331,13 +335,24 @@ export default function ReportView(): ReactElement {
           <ReportRectification record={rectificationRecord} events={supportingEvents} />
         ) : null}
         {/* Assumptions & provenance — the four load-bearing choices every
-            verdict above rests on, assembled from existing provenance. */}
+            verdict above rests on, plus an explicit omitted-sections manifest
+            whenever optional chapters (IX–XIII) are absent. */}
         <ReportAssumptions
           lagna={lagna}
           rectification={birth ? rectificationDelta(birth) : null}
-          ayanamsa={sidereal.snapshot?.ayanamsa}
+          ayanamsa={storedChartAyanamsa(storedChart, ayanamsa)}
+          omittedSections={{
+            hasPredictive: Boolean(
+              predictive.status === 'ready' &&
+                predictive.transitCtx &&
+                predictive.vargaCtxFull &&
+                predictive.strengthCtx &&
+                predictive.domainsCtx,
+            ),
+            hasRectification: Boolean(rectificationRecord),
+          }}
         />
-        <ReportFooter personName={personName} ayanamsa={sidereal.snapshot?.ayanamsa} />
+        <ReportFooter personName={personName} ayanamsa={storedChartAyanamsa(storedChart, ayanamsa)} />
       </article>
     </div>
   );

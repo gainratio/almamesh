@@ -506,7 +506,7 @@ export default function DashboardPage() {
   // A missing interpretation just omits one optional section, and the PDF says
   // so in its own words. The assembly is shared with /report
   // (`useReportPdfExport`), so the two entry points cannot drift apart.
-  const { exportPdf, pdfError, canExport } = useReportPdfExport(
+  const { exportPdf, pdfError, canExport, isExporting } = useReportPdfExport(
     resolveReportAudience(viewMode === 'astrologer' ? 'astrologer' : 'you'),
   );
 
@@ -692,7 +692,8 @@ export default function DashboardPage() {
               <button
                 type="button"
                 onClick={exportPdf}
-                disabled={!canExport}
+                disabled={!canExport || isExporting}
+                aria-busy={isExporting || undefined}
                 data-testid="print-chart-button"
                 title={canExport ? t('dashboard:actions.export_pdf_title') : t('dashboard:actions.export_pdf_disabled_title')}
                 className="inline-flex items-center gap-1.5 rounded-md border border-ui-border px-3 py-1.5 text-sm text-text-secondary transition-colors hover:border-accent-gold/40 hover:text-text-primary disabled:cursor-not-allowed disabled:border-ui-border/60 disabled:text-text-tertiary disabled:hover:border-ui-border/60"

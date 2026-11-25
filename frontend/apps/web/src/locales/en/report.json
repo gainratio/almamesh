@@ -252,7 +252,10 @@
     "time_rectified": "Entered {{entered}} → chart computed for {{rectified}}",
     "cusp_label": "Ascendant cusp proximity",
     "cusp_near": "≈{{degrees}}° from the {{sign}} boundary — house placements are birth-time-sensitive",
-    "cusp_clear": "Clear of any sign boundary — the rising sign is unambiguous"
+    "cusp_clear": "Clear of any sign boundary — the rising sign is unambiguous",
+    "omitted_label": "Omitted sections",
+    "omitted_predictive": "Sections IX–XII (Transits, Divisional Charts, Planetary Strength & Life-Domain Themes — on-device timing calculation not completed)",
+    "omitted_rectification": "Section XIII (Birth Time Authority — no confirmed birth-time rectification)"
   },
   "evidence": {
     "heading": "Evidence & Confidence",

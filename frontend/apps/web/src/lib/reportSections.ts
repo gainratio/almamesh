@@ -235,3 +235,36 @@ export function sectionNumeral(key: string): string {
   }
   return spec.numeral;
 }
+
+export interface ReportSectionPresence {
+  /** Whether Sections IX–XII (transits, vargas, strength, domains) are included. */
+  readonly hasPredictive: boolean;
+  /** Whether Section XIII (Birth Time Authority) is included. */
+  readonly hasRectification: boolean;
+}
+
+export interface OmittedSectionsLabels {
+  readonly predictive: string;
+  readonly rectification: string;
+}
+
+/**
+ * Build the explicit omitted-sections manifest value for Section XIV
+ * (`Assumptions & Provenance`), or `null` when every chapter I–XIV is present.
+ *
+ * Keeping an explicit manifest prevents silent numeral jumps (`VIII → XIV` or
+ * `XII → XIV`) whenever optional chapters are legitimately absent.
+ */
+export function buildOmittedSectionsValue(
+  presence: ReportSectionPresence,
+  labels: OmittedSectionsLabels,
+): string | null {
+  const items: string[] = [];
+  if (!presence.hasPredictive) {
+    items.push(labels.predictive);
+  }
+  if (!presence.hasRectification) {
+    items.push(labels.rectification);
+  }
+  return items.length > 0 ? items.join('; ') : null;
+}

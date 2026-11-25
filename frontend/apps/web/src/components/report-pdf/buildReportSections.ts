@@ -16,6 +16,7 @@ import {
   type ChartPlanet,
 } from '@almamesh/store';
 import { planetInk } from '../chart/chartTheme';
+import { resolvedViewerTimeZone } from '../../lib/dates';
 import { combustionOrbDeg } from '../../lib/evidence/combustionOrbs';
 import { formatDegree } from '../../lib/reportData';
 import { buildGuidanceSections, personaText, type ReportAudience } from '../../lib/reportSelectors';
@@ -299,11 +300,18 @@ function shortMonthYear(iso: string): string {
     return '';
   }
   const instant = iso.includes('T') ? new Date(iso) : null;
-  const when =
-    instant !== null && !Number.isNaN(instant.getTime())
-      ? instant
-      : new Date(year, month - 1, day, 12, 0, 0);
-  return new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(when);
+  if (instant !== null && !Number.isNaN(instant.getTime())) {
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      year: 'numeric',
+      timeZone: resolvedViewerTimeZone(),
+    }).format(instant);
+  }
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(year, month - 1, day, 12, 0, 0)));
 }
 
 function spanLabel(years: number): string {
