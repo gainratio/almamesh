@@ -272,4 +272,72 @@ describe("requestEvidenceAnnotations", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(payload).toEqual(JSON.parse(firstCompletion));
   });
+
+  it("preserves sibling also_cites and clean general_guidance when a retry omits fields or returns empty guidance", async () => {
+    const firstCompletion = JSON.stringify({
+      readings: [
+        {
+          observation_id: "yoga:Gajakesari Yoga",
+          interpretation: "You will become famous in 2027.",
+          also_cites: ["dignity:venus"],
+        },
+        {
+          observation_id: "dignity:venus",
+          interpretation: "You will win a windfall.",
+        },
+      ],
+      general_guidance: [
+        "Rest is part of the work.",
+        "You will soon get promoted.",
+      ],
+    });
+    // Retry fixes yoga:Gajakesari Yoga without repeating also_cites, returns a
+    // malformed missing-interpretation row for dignity:venus, null garbage, and empty guidance [].
+    const retriedCompletion = JSON.stringify({
+      readings: [
+        null,
+        {
+          observation_id: "yoga:Gajakesari Yoga",
+          interpretation: "Highlights steady counsel and public stewardship.",
+        },
+        {
+          observation_id: "dignity:venus",
+        },
+      ],
+      general_guidance: [],
+    });
+    const fetchImpl = vi
+      .fn<() => Promise<Response>>()
+      .mockResolvedValueOnce(jsonResponse(firstCompletion))
+      .mockResolvedValueOnce(jsonResponse(retriedCompletion));
+
+    const payload = await requestEvidenceAnnotations({
+      chart: CHART,
+      observations: OBSERVATIONS,
+      factorIds: FACTOR_IDS,
+      config: LOCAL_CONFIG,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    expect(payload).toEqual({
+      readings: [
+        {
+          observation_id: "yoga:Gajakesari Yoga",
+          interpretation: "Highlights steady counsel and public stewardship.",
+          also_cites: ["dignity:venus"],
+        },
+        // Malformed retry row lacking string interpretation does NOT overwrite first's row
+        // (so validateAnnotations still classifies it accurately as not-reflection).
+        {
+          observation_id: "dignity:venus",
+          interpretation: "You will win a windfall.",
+        },
+      ],
+      // Empty retry guidance [] does NOT wipe out first.general_guidance.
+      general_guidance: [
+        "Rest is part of the work.",
+        "You will soon get promoted.",
+      ],
+    });
+  });
 });

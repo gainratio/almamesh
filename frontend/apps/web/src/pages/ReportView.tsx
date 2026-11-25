@@ -182,7 +182,7 @@ export default function ReportView(): ReactElement {
   // dashboard's one-click Export PDF also uses — so the two entry points cannot
   // drift into two different documents. `pdfError` is on-screen only, never
   // printed, and clears at the start of every attempt.
-  const { exportPdf, pdfError, isExporting } = useReportPdfExport(audience);
+  const { exportPdf, pdfError, canExport, isExporting } = useReportPdfExport(audience);
 
   const personName = storedChart?.person_name ?? '';
 
@@ -239,7 +239,7 @@ export default function ReportView(): ReactElement {
           type="button"
           className="report-toolbar-button report-toolbar-button-primary no-print"
           onClick={exportPdf}
-          disabled={isExporting}
+          disabled={!canExport || isExporting}
           aria-busy={isExporting || undefined}
           data-testid="report-download-pdf"
         >

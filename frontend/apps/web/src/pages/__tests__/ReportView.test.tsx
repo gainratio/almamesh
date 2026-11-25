@@ -530,6 +530,71 @@ describe('ReportView predictive sections', () => {
     }
   });
 
+  it('recovers without hanging when an in-flight predictive compute is preempted mid-export', async () => {
+    seed();
+    const todayDay = predictiveReferenceInstant(new Date(), viewerTimeZone());
+    const expectedKey = predictiveRequestKey({
+      profileKey: 'chart-1',
+      datetimeUtc: '1990-03-30T06:30:00Z',
+      latitude: 12.97,
+      longitude: 77.59,
+      referenceInstant: storedChartReferenceInstant(storedChart(), todayDay),
+      utcOffsetMinutes: 330,
+    });
+    // Start in-flight (`loading`) for `expectedKey`, then preempt it right after click!
+    usePredictiveStore.setState({
+      status: 'loading',
+      profileKey: 'chart-1',
+      requestKey: expectedKey,
+    });
+
+    const fakeEngine = { identity: () => 'test-bundle', computePredictive: vi.fn() };
+    const origEnsure = usePredictiveStore.getState().ensurePredictive;
+    const ensureSpy = vi.fn(async (_runtime: unknown, reqInput: Parameters<typeof origEnsure>[1]) => {
+      usePredictiveStore.setState({
+        status: 'ready',
+        transitCtx: TRANSIT_CTX,
+        vargaCtxFull: VARGA_CTX_FULL,
+        strengthCtx: STRENGTH_CTX,
+        domainsCtx: DOMAINS_CTX,
+        profileKey: reqInput.profileKey,
+        requestKey: predictiveRequestKey(reqInput),
+      });
+    });
+    usePredictiveStore.setState({ ensurePredictive: ensureSpy as typeof origEnsure });
+
+    try {
+      render(
+        <ChartEngineContext.Provider
+          value={{
+            engine: fakeEngine as never,
+            stage: null,
+            meta: null,
+            error: null,
+            startBootstrap: vi.fn(),
+            reboot: async () => fakeEngine as never,
+            whenReady: async () => fakeEngine as never,
+          }}
+        >
+          <MemoryRouter initialEntries={['/report?mode=astrologer']}>
+            <ReportView />
+          </MemoryRouter>
+        </ChartEngineContext.Provider>,
+      );
+
+      fireEvent.click(screen.getByTestId('report-download-pdf'));
+      // Simulate mid-flight reset/preemption on the next tick.
+      usePredictiveStore.setState({ status: 'idle', requestKey: undefined });
+
+      await waitFor(() => expect(downloadReportPdf).toHaveBeenCalledTimes(1));
+      expect(ensureSpy).toHaveBeenCalledTimes(1);
+      const [exported] = vi.mocked(downloadReportPdf).mock.calls[0];
+      expect(exported.comprehensive?.domainsCtx).toEqual(DOMAINS_CTX);
+    } finally {
+      usePredictiveStore.setState({ ensurePredictive: origEnsure });
+    }
+  });
+
   it('cites the dasha-year convention when the engine declares one', () => {
     const chart = storedChart();
     const withConvention: StoredChart = {

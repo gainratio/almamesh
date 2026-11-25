@@ -45,7 +45,7 @@ function isRealDate(date: Date): boolean {
 }
 
 /** Explicit IANA timezone of the viewer, falling back to `'UTC'` when unnamed. */
-function resolvedViewerTimeZone(): string {
+export function resolvedViewerTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 }
 
@@ -86,7 +86,8 @@ export function formatDisplayTime(date: Date, opts?: Intl.DateTimeFormatOptions)
   const options: Intl.DateTimeFormatOptions = base.timeZone
     ? base
     : { ...base, timeZone: resolvedViewerTimeZone() };
-  return new Intl.DateTimeFormat(activeLocale(), options).format(date);
+  const safe = isRealDate(date) ? date : new Date();
+  return new Intl.DateTimeFormat(activeLocale(), options).format(safe);
 }
 
 /**
@@ -128,9 +129,15 @@ export function parseLocalDate(dateString: string): Date {
  * keeps the date stable regardless of the viewer's timezone before Intl runs.
  */
 export function formatBirthDateForDisplay(local: string): string {
-  const datePart = local.split('T')[0];
+  const datePart = local.split('T')[0] ?? '';
   const [year, month, day] = datePart.split('-').map(Number);
+  if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day) || !year || !month || !day) {
+    return local;
+  }
   const safe = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  if (Number.isNaN(safe.getTime())) {
+    return local;
+  }
   return new Intl.DateTimeFormat(activeLocale(), {
     year: 'numeric',
     month: '2-digit',

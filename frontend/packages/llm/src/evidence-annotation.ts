@@ -296,12 +296,25 @@ function annotationReflectionIssues(
   return [...readingIssues, ...guidanceIssues];
 }
 
-function isObjectWithStringId(
-  entry: unknown,
-): entry is { readonly observation_id: string; readonly interpretation?: unknown } {
+function isNonEmptyCleanString(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.trim().length > 0 &&
+    reflectionIssues(value).length === 0
+  );
+}
+
+interface IdentifiableReading extends Record<string, unknown> {
+  readonly observation_id: string;
+  readonly interpretation?: unknown;
+  readonly also_cites?: unknown;
+}
+
+function isObjectWithStringId(entry: unknown): entry is IdentifiableReading {
   return (
     entry !== null &&
     typeof entry === "object" &&
+    !Array.isArray(entry) &&
     typeof (entry as { observation_id?: unknown }).observation_id === "string"
   );
 }
@@ -309,14 +322,15 @@ function isObjectWithStringId(
 /**
  * Merge a reflection-retry payload onto the initial payload without filtering:
  * clean rows from `first` survive even if the retry omits them, while rows that
- * failed reflection adopt the retry's clean rewording when provided. Any row
- * that still fails stays intact so `validateAnnotations` remains the sole gate.
+ * failed reflection adopt the retry's clean non-empty rewording while preserving
+ * `first`'s sibling metadata (`also_cites`, etc.). Malformed retry rows never
+ * overwrite structurally valid rows from `first`.
  */
 function mergeRewordedPayload(
   first: RawEvidenceAnnotationPayload,
   retried: RawEvidenceAnnotationPayload,
 ): RawEvidenceAnnotationPayload {
-  const retriedById = new Map<string, { readonly observation_id: string; readonly interpretation?: unknown }>();
+  const retriedById = new Map<string, IdentifiableReading>();
   if (Array.isArray(retried.readings)) {
     for (const entry of retried.readings) {
       if (isObjectWithStringId(entry) && !retriedById.has(entry.observation_id)) {
@@ -332,27 +346,39 @@ function mergeRewordedPayload(
       if (!isObjectWithStringId(entry)) return entry;
       seenIds.add(entry.observation_id);
       const replacement = retriedById.get(entry.observation_id);
-      if (!replacement) return entry;
-      const replacementClean = proseIssuesOf(replacement.interpretation).length === 0;
       const firstBroken = proseIssuesOf(entry.interpretation).length > 0;
-      return replacementClean && firstBroken ? replacement : entry;
+      if (!firstBroken || !replacement || !isNonEmptyCleanString(replacement.interpretation)) {
+        return entry;
+      }
+      return {
+        ...entry,
+        interpretation: replacement.interpretation,
+        ...(Array.isArray(replacement.also_cites) ? { also_cites: replacement.also_cites } : {}),
+      };
     });
     for (const extra of retried.readings) {
-      if (!isObjectWithStringId(extra) || !seenIds.has(extra.observation_id)) {
+      if (isObjectWithStringId(extra) && !seenIds.has(extra.observation_id)) {
+        seenIds.add(extra.observation_id);
         merged.push(extra);
       }
     }
     readings = merged;
   }
 
+  let general_guidance: unknown = first.general_guidance;
   const firstGuidanceBroken =
     Array.isArray(first.general_guidance) &&
     first.general_guidance.flatMap(proseIssuesOf).length > 0;
-  const retriedGuidanceClean =
+  if (
+    firstGuidanceBroken &&
+    Array.isArray(first.general_guidance) &&
     Array.isArray(retried.general_guidance) &&
-    retried.general_guidance.flatMap(proseIssuesOf).length === 0;
-  const general_guidance =
-    firstGuidanceBroken && retriedGuidanceClean ? retried.general_guidance : first.general_guidance;
+    retried.general_guidance.length > 0 &&
+    retried.general_guidance.every(isNonEmptyCleanString)
+  ) {
+    const cleanFromFirst = first.general_guidance.filter(isNonEmptyCleanString);
+    general_guidance = [...new Set([...cleanFromFirst, ...retried.general_guidance])];
+  }
 
   return {
     ...first,

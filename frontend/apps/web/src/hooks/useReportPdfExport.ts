@@ -19,7 +19,7 @@
  * the written interpretation appears once a reading has been generated.
  */
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   predictiveRequestKey,
@@ -41,6 +41,7 @@ import {
   buildEnsurePredictiveInput,
   predictiveProfileKeyOf,
   selectPrimaryStoredChart,
+  storedChartAyanamsa,
 } from '../lib/predictive';
 import { storedChartReferenceInstant, viewerTimeZone } from '../lib/analysisInstant';
 import { waitForPredictiveFacts } from '../lib/predictiveWait';
@@ -72,47 +73,61 @@ function titleCaseSign(sign: string): string {
 }
 
 /**
- * Ensure the deterministic predictive superset (Sections IX–XII) is computed
- * for this exact chart + reference instant before assembling the PDF, whenever
- * an on-device engine provider is mounted. Joins an already-in-flight compute
- * via `waitForPredictiveFacts` rather than exporting a truncated PDF.
+ * Wait on an already-in-flight `expectedKey` compute, exiting immediately if
+ * the store settles, resets to `'idle'`, or gets preempted by another key.
  */
-async function ensurePredictiveForExport(
-  engineCtx: ChartEngineContextValue | null,
-  predictiveInput: EnsurePredictiveInput | null,
-): Promise<void> {
-  if (!predictiveInput) return;
-  const expectedKey = predictiveRequestKey(predictiveInput);
-  const currentState = (): 'pending' | 'ready' | 'error' => {
+async function awaitInFlightKey(expectedKey: string, signal: AbortSignal): Promise<void> {
+  const inFlightState = (): 'pending' | 'ready' | 'error' => {
     const snap = usePredictiveStore.getState();
-    if (snap.requestKey !== expectedKey) return 'pending';
+    if (snap.requestKey !== expectedKey || snap.status === 'idle') return 'error';
     if (snap.status === 'ready') return 'ready';
     if (snap.status === 'error') return 'error';
     return 'pending';
   };
-  if (currentState() === 'ready' || !engineCtx) return;
+  await waitForPredictiveFacts({
+    state: inFlightState,
+    subscribe: usePredictiveStore.subscribe,
+    signal,
+    onWaiting: () => {},
+  });
+}
 
+/**
+ * Ensure the deterministic predictive superset (Sections IX–XII) is computed
+ * for this exact chart + reference instant before assembling the PDF, whenever
+ * an on-device engine provider is mounted. Preemption-safe and abort-safe.
+ */
+async function ensurePredictiveForExport(
+  engineCtx: ChartEngineContextValue | null,
+  predictiveInput: EnsurePredictiveInput | null,
+  signal: AbortSignal,
+): Promise<void> {
+  if (!predictiveInput || !engineCtx || signal.aborted) return;
+  const expectedKey = predictiveRequestKey(predictiveInput);
   const initial = usePredictiveStore.getState();
-  const alreadyLoading = initial.status === 'loading' && initial.requestKey === expectedKey;
-  if (!alreadyLoading) {
-    engineCtx.startBootstrap?.();
-    const engine = await resolveReadyEngine(engineCtx);
-    const afterBoot = usePredictiveStore.getState();
-    const settledOrLoading =
-      afterBoot.requestKey === expectedKey &&
-      (afterBoot.status === 'ready' || afterBoot.status === 'loading');
-    if (!settledOrLoading) {
-      await afterBoot.ensurePredictive(engine, predictiveInput);
-    }
+  if (initial.requestKey === expectedKey && initial.status === 'ready') return;
+
+  if (initial.requestKey === expectedKey && initial.status === 'loading') {
+    await awaitInFlightKey(expectedKey, signal);
   }
-  if (currentState() === 'pending') {
-    await waitForPredictiveFacts({
-      state: currentState,
-      subscribe: usePredictiveStore.subscribe,
-      signal: new AbortController().signal,
-      onWaiting: () => {},
-    });
+  if (signal.aborted) return;
+
+  const afterWait = usePredictiveStore.getState();
+  if (afterWait.requestKey === expectedKey && (afterWait.status === 'ready' || afterWait.status === 'error')) {
+    return;
   }
+
+  engineCtx.startBootstrap?.();
+  const engine = await resolveReadyEngine(engineCtx);
+  if (signal.aborted) return;
+
+  const afterBoot = usePredictiveStore.getState();
+  if (afterBoot.requestKey === expectedKey && afterBoot.status === 'ready') return;
+  if (afterBoot.requestKey === expectedKey && afterBoot.status === 'loading') {
+    await awaitInFlightKey(expectedKey, signal);
+    return;
+  }
+  await afterBoot.ensurePredictive(engine, predictiveInput);
 }
 
 export interface UseReportPdfExportResult {
@@ -171,17 +186,46 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const exportingRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Keep latest validated prose/annotations for each chartId reachable across
+  // an async engine wait without mixing state if the active profile switches.
+  const latestProseRef = useRef({
+    chartId,
+    interpretation: reportInterpretation,
+    evidenceAnnotations,
+  });
+  latestProseRef.current = {
+    chartId,
+    interpretation: reportInterpretation,
+    evidenceAnnotations,
+  };
+
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+    },
+    [],
+  );
 
   const exportPdf = useCallback((): void => {
     if (!storedChart || !sidereal || !birth || exportingRef.current) {
       return;
     }
+    const controller = new AbortController();
+    abortRef.current = controller;
     exportingRef.current = true;
     setIsExporting(true);
     setPdfError(null);
 
+    const targetChartId = storedChart.chart_id;
+    const targetProfileId = profileId;
+    const initialInterpretation = reportInterpretation;
+    const initialAnnotations = evidenceAnnotations;
+
     void (async () => {
       try {
+        const chartAyanamsa = storedChartAyanamsa(storedChart, ayanamsa);
         const profileKey = predictiveProfileKeyOf(storedChart, activeProfileId);
         const referenceInstant = storedChartReferenceInstant(storedChart, todayDay);
         const predictiveInput = buildEnsurePredictiveInput(
@@ -189,12 +233,15 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
           birth,
           referenceInstant,
           {},
-          ayanamsa,
+          chartAyanamsa,
         );
         try {
-          await ensurePredictiveForExport(engineCtx, predictiveInput);
+          await ensurePredictiveForExport(engineCtx, predictiveInput, controller.signal);
         } catch {
           // Degrade honestly: export deterministic natal chapters + omitted-sections manifest.
+        }
+        if (controller.signal.aborted) {
+          return;
         }
 
         const expectedKey = predictiveInput ? predictiveRequestKey(predictiveInput) : undefined;
@@ -209,16 +256,27 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
             settledPredictive.domainsCtx,
         );
 
+        const freshProse =
+          latestProseRef.current.chartId === targetChartId
+            ? latestProseRef.current
+            : { interpretation: initialInterpretation, evidenceAnnotations: initialAnnotations };
+        const liveRectification = targetProfileId
+          ? useRectificationRecordsStore.getState().recordsByProfile[targetProfileId]
+          : rectificationRecord;
+        const liveEvents: readonly LifeEvent[] =
+          (targetProfileId
+            ? useLifeEventsStore.getState().eventsByProfile[targetProfileId]
+            : storedEvents) ?? [];
+
         const lagna = sidereal.lagna as LagnaData;
         const personName = storedChart.person_name ?? '';
-        const profileEvents: readonly LifeEvent[] = storedEvents ?? [];
-        const supportingEvents: readonly LifeEvent[] = rectificationRecord
-          ? rectificationRecord.supportingEventIds
-              .map((id) => profileEvents.find((event) => event.id === id))
+        const supportingEvents: readonly LifeEvent[] = liveRectification
+          ? liveRectification.supportingEventIds
+              .map((id) => liveEvents.find((event) => event.id === id))
               .filter((event): event is LifeEvent => event !== undefined)
           : [];
 
-        const snapshotAyanamsa = (sidereal.snapshot?.ayanamsa ?? 'LAHIRI').toUpperCase();
+        const snapshotAyanamsa = chartAyanamsa.toUpperCase();
         const ayanamsaValueLabel =
           snapshotAyanamsa === 'LAHIRI'
             ? t('assumptions.ayanamsa_value')
@@ -327,7 +385,7 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
 
         const assumptionsDelta = rectificationDelta(birth);
         const omittedValue = buildOmittedSectionsValue(
-          { hasPredictive, hasRectification: Boolean(rectificationRecord) },
+          { hasPredictive, hasRectification: Boolean(liveRectification) },
           {
             predictive: t('assumptions.omitted_predictive'),
             rectification: t('assumptions.omitted_rectification'),
@@ -375,7 +433,7 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
           lagna,
           chart: { ayanamsa_value: sidereal.ayanamsa_value, snapshot: sidereal.snapshot },
           sidereal,
-          interpretation: reportInterpretation,
+          interpretation: freshProse.interpretation,
           audience,
           narrativeTitles: {
             currentSky: t('interpretation.current_sky'),
@@ -399,9 +457,9 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
                 strengthSignerPublicKey: settledPredictive.rawContexts?.strength_signer_public_key,
               }
             : undefined,
-          rectification: rectificationRecord
+          rectification: liveRectification
             ? buildRectificationPdf({
-                record: rectificationRecord,
+                record: liveRectification,
                 events: supportingEvents.map((event) => ({
                   date: event.date,
                   category: event.category,
@@ -412,7 +470,7 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
             : undefined,
           assumptions,
           evidence: buildEvidenceSection(
-            buildEvidenceLedger(sidereal, evidenceAnnotations),
+            buildEvidenceLedger(sidereal, freshProse.evidenceAnnotations),
             t,
             glyphSafe,
           ),
@@ -420,17 +478,25 @@ export function useReportPdfExport(audience: ReportAudience): UseReportPdfExport
           locale: i18n.language,
         });
       } catch (err) {
-        safeError('report.pdf_generation_failed', err);
-        setPdfError(t('pdf_error'));
+        if (!controller.signal.aborted) {
+          safeError('report.pdf_generation_failed', err);
+          setPdfError(t('pdf_error'));
+        }
       } finally {
+        if (abortRef.current === controller) {
+          abortRef.current = null;
+        }
         exportingRef.current = false;
-        setIsExporting(false);
+        if (!controller.signal.aborted) {
+          setIsExporting(false);
+        }
       }
     })();
   }, [
     storedChart,
     sidereal,
     birth,
+    profileId,
     activeProfileId,
     todayDay,
     ayanamsa,
