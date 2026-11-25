@@ -475,3 +475,146 @@ describe('observations must distinguish THIS chart from any other', () => {
     expect(ids).toContain('retrograde:saturn');
   });
 });
+
+describe('canonical evidence identifiers and explicit timezone normalization', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('mints and validates canonical ids for lagna, Raja Yoga variants, Yogakaraka, and active Ketu pratyantar', () => {
+    const base = nearCuspChart();
+    const rajaYogaChart = {
+      ...base,
+      dashas: {
+        ...base.dashas,
+        current_pratyantar: {
+          lord: 'ketu',
+          start_date: '2026-11-24T18:57:22.961049Z',
+          end_date: '2027-01-31T06:13:52.961049Z',
+          duration_years: 0.184,
+        },
+      },
+      yogas: [
+        {
+          ...base.yogas[0],
+          name: 'Raja Yoga',
+          display_name: 'Sun–Venus Raja Yoga',
+          category: 'raja',
+          planets_involved: ['sun', 'venus'],
+          houses_involved: [2],
+        },
+        {
+          ...base.yogas[0],
+          name: 'Yogakaraka',
+          display_name: 'Venus Yogakaraka',
+          category: 'raja',
+          planets_involved: ['venus'],
+          houses_involved: [4, 9],
+        },
+        {
+          ...base.yogas[0],
+          name: 'Neecha Bhanga Raja Yoga',
+          display_name: 'Neecha Bhanga Raja Yoga',
+          category: 'raja',
+          planets_involved: ['saturn'],
+          houses_involved: [4],
+        },
+        {
+          ...base.yogas[0],
+          name: 'Vipareeta Raja Yoga',
+          display_name: 'Vipareeta Raja Yoga (Harsha)',
+          category: 'raja',
+          planets_involved: ['moon'],
+          houses_involved: [12],
+        },
+      ],
+    };
+
+    const observations = buildObservations(rajaYogaChart);
+    expect([...observations.observationIds]).toEqual(
+      expect.arrayContaining([
+        'lagna',
+        'rulership:venus',
+        'dasha:maha:saturn',
+        'dasha:antar:saturn/venus',
+        'dasha:pratyantar:saturn/venus/ketu',
+        'yoga:Raja Yoga',
+        'yoga:Yogakaraka',
+        'yoga:Neecha Bhanga Raja Yoga',
+        'yoga:Vipareeta Raja Yoga',
+      ]),
+    );
+    expect([...observations.factorIds]).toEqual(
+      expect.arrayContaining([
+        'lagna',
+        'yoga:Raja Yoga',
+        'yoga:Raja Yoga:strength',
+        'yoga:Yogakaraka',
+        'yoga:Yogakaraka:strength',
+        'yoga:Neecha Bhanga Raja Yoga',
+        'yoga:Vipareeta Raja Yoga',
+      ]),
+    );
+
+    const ledger = buildEvidenceLedger(rajaYogaChart, {
+      readings: [
+        {
+          observation_id: 'lagna',
+          interpretation: 'Aquarius rising highlights independent judgment near a sensitive sign edge.',
+        },
+        {
+          observation_id: 'yoga:Raja Yoga',
+          interpretation:
+            'Sun and Venus combine ninth-house dharma with seventh-house partnership responsibility.',
+          also_cites: ['rulership:venus', 'yoga:Raja Yoga:strength'],
+        },
+        {
+          observation_id: 'dasha:pratyantar:saturn/venus/ketu',
+          interpretation:
+            'Ketu inside the Saturn–Venus chapter highlights paring back non-essential commitments.',
+          also_cites: ['dasha:antar:saturn/venus', 'rulership:venus'],
+        },
+      ],
+    });
+
+    expect(ledger.rejectedCount).toBe(0);
+    expect(ledger.unsupportedCount).toBe(0);
+    expect(ledger.reflectionRejectedCount).toBe(0);
+    expect(ledger.staleDashaCount).toBe(0);
+    expect(ledger.rows.find((r) => r.observation.id === 'lagna')?.interpretation).toContain(
+      'Aquarius rising',
+    );
+    expect(ledger.rows.find((r) => r.observation.id === 'yoga:Raja Yoga')?.interpretation).toContain(
+      'Sun and Venus combine',
+    );
+    expect(
+      ledger.rows.find((r) => r.observation.id === 'dasha:pratyantar:saturn/venus/ketu')
+        ?.interpretation,
+    ).toContain('Ketu inside the Saturn–Venus chapter');
+  });
+
+  it('normalizes canonical UTC dasha boundary timestamps explicitly into the viewer timezone', () => {
+    const OrigDateTimeFormat = Intl.DateTimeFormat;
+    const instant = '2027-01-31T06:13:52.961049Z';
+
+    const resolvedPacific = vi.fn(() => ({ timeZone: 'America/Los_Angeles' }));
+    vi.spyOn(Intl, 'DateTimeFormat').mockImplementation(function (
+      locales?: Intl.LocalesArgument,
+      options?: Intl.DateTimeFormatOptions,
+    ) {
+      if (!locales && !options) {
+        return { resolvedOptions: resolvedPacific } as unknown as Intl.DateTimeFormat;
+      }
+      return new OrigDateTimeFormat(locales, options);
+    } as unknown as typeof Intl.DateTimeFormat);
+
+    // 2027-01-31T06:13:52Z is Jan 30, 2027 at 22:13 PST in America/Los_Angeles,
+    // matching both `formatPredictiveDate` and the Evidence Ledger `isoDay` cell.
+    expect(formatPredictiveDate(instant)).toBe('Jan 30, 2027');
+
+    const ledger = buildEvidenceLedger(nearCuspChart());
+    const section = buildEvidenceSection(ledger, maximalReportT(), (s) => s);
+    const antarRow = section.rows.find((row) => row.observation.includes('antar-daśā'));
+    expect(antarRow?.evidence.join(' ')).toContain('2027-01-30');
+  });
+});

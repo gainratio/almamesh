@@ -21,7 +21,11 @@ import { cuspInfo } from '../../../lib/lagnaCusp';
 import type { RectificationDelta } from '../../../lib/rectification';
 import { ayanamsaDisplayName } from '../../../lib/reportData';
 import { ReportSectionHeading } from './ReportSectionHeading';
-import { sectionNumeral } from '../../../lib/reportSections';
+import {
+  buildOmittedSectionsValue,
+  sectionNumeral,
+  type ReportSectionPresence,
+} from '../../../lib/reportSections';
 
 function titleCase(value: string): string {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : '';
@@ -33,6 +37,8 @@ interface ReportAssumptionsProps {
   readonly rectification?: RectificationDelta | null;
   /** Stamped snapshot ayanamsa convention (defaults to Lahiri when absent). */
   readonly ayanamsa?: string;
+  /** Optional chapter-presence manifest so omitted sections never jump numerals silently. */
+  readonly omittedSections?: ReportSectionPresence;
 }
 
 /** The four load-bearing assumptions behind every verdict in this report. */
@@ -40,6 +46,7 @@ export function ReportAssumptions({
   lagna,
   rectification,
   ayanamsa,
+  omittedSections,
 }: ReportAssumptionsProps): ReactElement {
   const { t } = useTranslation(['report', 'settings']);
   const rectified = rectification ?? null;
@@ -51,6 +58,12 @@ export function ReportAssumptions({
       : t(`settings:ayanamsa.${ayanamsaCode.toLowerCase()}`, {
           defaultValue: ayanamsaDisplayName(ayanamsaCode),
         });
+  const omittedValue = omittedSections
+    ? buildOmittedSectionsValue(omittedSections, {
+        predictive: t('report:assumptions.omitted_predictive'),
+        rectification: t('report:assumptions.omitted_rectification'),
+      })
+    : null;
   return (
     <section className="report-section report-assumptions" data-testid="report-assumptions">
       <ReportSectionHeading
@@ -91,6 +104,12 @@ export function ReportAssumptions({
               : t('report:assumptions.cusp_clear')}
           </dd>
         </div>
+        {omittedValue ? (
+          <div className="report-assumptions-row">
+            <dt>{t('report:assumptions.omitted_label')}</dt>
+            <dd data-testid="report-assumptions-omitted">{omittedValue}</dd>
+          </div>
+        ) : null}
       </dl>
     </section>
   );

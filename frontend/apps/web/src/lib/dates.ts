@@ -44,20 +44,32 @@ function isRealDate(date: Date): boolean {
   return !Number.isNaN(date.getTime()) && date.getTime() !== 0;
 }
 
+/** Explicit IANA timezone of the viewer, falling back to `'UTC'` when unnamed. */
+function resolvedViewerTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+}
+
 /**
  * Format a real `Date` in the active UI locale. Generic call-site helper for any
  * machine instant (e.g. a dasha start/end ISO date or `generated_at`).
+ *
+ * Always normalizes through an explicit `timeZone` (`opts.timeZone` when given,
+ * otherwise the viewer's resolved IANA zone) so timestamps never render under
+ * an implicit or ambiguous host-default zone.
  *
  * Defense-in-depth: an epoch / NaN `Date` falls back to the current date so the
  * UI never shows "1969"/"1970" or "Invalid Date" — it is the last line guarding
  * against a stored chart that carried the Unix-epoch calculation_timestamp.
  */
 export function formatDisplayDate(date: Date, opts?: Intl.DateTimeFormatOptions): string {
-  const options: Intl.DateTimeFormatOptions = opts ?? {
+  const base: Intl.DateTimeFormatOptions = opts ?? {
     year: 'numeric',
     month: 'short',
     day: '2-digit',
   };
+  const options: Intl.DateTimeFormatOptions = base.timeZone
+    ? base
+    : { ...base, timeZone: resolvedViewerTimeZone() };
   const safe = isRealDate(date) ? date : new Date();
   return new Intl.DateTimeFormat(activeLocale(), options).format(safe);
 }
@@ -67,10 +79,13 @@ export function formatDisplayDate(date: Date, opts?: Intl.DateTimeFormatOptions)
  * convention follows the locale (en→12h with AM/PM, es/pt→24h).
  */
 export function formatDisplayTime(date: Date, opts?: Intl.DateTimeFormatOptions): string {
-  const options: Intl.DateTimeFormatOptions = opts ?? {
+  const base: Intl.DateTimeFormatOptions = opts ?? {
     hour: 'numeric',
     minute: '2-digit',
   };
+  const options: Intl.DateTimeFormatOptions = base.timeZone
+    ? base
+    : { ...base, timeZone: resolvedViewerTimeZone() };
   return new Intl.DateTimeFormat(activeLocale(), options).format(date);
 }
 
@@ -115,11 +130,12 @@ export function parseLocalDate(dateString: string): Date {
 export function formatBirthDateForDisplay(local: string): string {
   const datePart = local.split('T')[0];
   const [year, month, day] = datePart.split('-').map(Number);
-  const safe = new Date(year, month - 1, day, 12, 0, 0);
+  const safe = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
   return new Intl.DateTimeFormat(activeLocale(), {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
+    timeZone: 'UTC',
   }).format(safe);
 }
 

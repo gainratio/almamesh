@@ -189,7 +189,12 @@ export function formatPredictiveDate(iso: string): string {
   if (Number.isNaN(parsed.getTime())) {
     return formatBirthDateForDisplay(iso.split('T')[0] ?? iso);
   }
-  return formatDisplayDate(parsed);
+  return formatDisplayDate(parsed, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    timeZone: resolvedViewerTimeZone(),
+  });
 }
 
 /**

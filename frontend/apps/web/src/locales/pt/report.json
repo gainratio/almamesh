@@ -255,7 +255,10 @@
     "time_rectified": "Inserida {{entered}} → mapa calculado para {{rectified}}",
     "cusp_label": "Proximidade do ascendente à cúspide",
     "cusp_near": "≈{{degrees}}° do limite de {{sign}} — as posições de casa são sensíveis à hora",
-    "cusp_clear": "Longe de qualquer limite de signo — o signo ascendente é inequívoco"
+    "cusp_clear": "Longe de qualquer limite de signo — o signo ascendente é inequívoco",
+    "omitted_label": "Secções omitidas",
+    "omitted_predictive": "Secções IX–XII (Trânsitos, mapas divisionais, força planetária e temas de vida — cálculo temporal no dispositivo não concluído)",
+    "omitted_rectification": "Secção XIII (Autoridade da hora de nascimento — sem retificação confirmada)"
   },
   "evidence": {
     "heading": "Evidência e confiança",

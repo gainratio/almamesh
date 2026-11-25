@@ -39,6 +39,8 @@ const NATAL_ONLY_INPUT = { predictiveRequestKey: null } as const;
 import { CHART, FULL_INTERPRETATION, storedChart } from '../../test/reportFixtures';
 import { predictiveReferenceInstant } from '../../lib/predictive';
 import { storedChartReferenceInstant, viewerTimeZone } from '../../lib/analysisInstant';
+import { ChartEngineContext } from '../../providers/chartEngineContext';
+import { useRectificationRecordsStore } from '@almamesh/store';
 
 
 function seed(interpretationComplete = true): void {
@@ -67,9 +69,11 @@ function renderReport(mode: string): ReturnType<typeof render> {
 
 describe('ReportView', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     useProfilesStore.setState({ activeProfileId: 'chart-1' });
     useChartLibraryStore.setState({ charts: {}, hydrated: true });
     useInterpretationStore.setState({ byChart: {} });
+    useRectificationRecordsStore.setState({ recordsByProfile: {} });
     usePredictiveStore.getState().reset();
   });
 
@@ -311,9 +315,11 @@ describe('ReportView', () => {
 
 describe('ReportView predictive sections', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     useProfilesStore.setState({ activeProfileId: 'chart-1' });
     useChartLibraryStore.setState({ charts: {}, hydrated: true });
     useInterpretationStore.setState({ byChart: {} });
+    useRectificationRecordsStore.setState({ recordsByProfile: {} });
     usePredictiveStore.getState().reset();
   });
 
@@ -443,6 +449,85 @@ describe('ReportView predictive sections', () => {
     const marker = [...(input.stability?.values() ?? [])][0];
     expect(marker).toBeDefined();
     expect(input.formatStability?.(marker!)).toMatch(/birth-time (stable|sensitive)/);
+
+    // Without an engine in this unit harness, Sections IX–XII and XIII are
+    // absent, and Section XIV explicitly manifests the omitted sections rather
+    // than jumping VIII → XIV silently.
+    const omittedRow = input.assumptions?.rows.find((row) => row.label === 'Omitted sections');
+    expect(omittedRow?.value).toContain('Sections IX–XII');
+    expect(omittedRow?.value).toContain('Section XIII');
+    expect(screen.getByTestId('report-assumptions-omitted').textContent).toContain(
+      'Sections IX–XII',
+    );
+  });
+
+  it('computes predictive Sections IX–XII before exporting when an engine is mounted after a dasha rollover', async () => {
+    seed();
+    // Simulate a stale predictive snapshot left over from before a dasha rollover.
+    usePredictiveStore.setState({
+      status: 'ready',
+      transitCtx: TRANSIT_CTX,
+      vargaCtxFull: VARGA_CTX_FULL,
+      strengthCtx: STRENGTH_CTX,
+      domainsCtx: DOMAINS_CTX,
+      profileKey: 'chart-1',
+      requestKey: '["chart-1","stale-pre-rollover-key"]',
+    });
+
+    const startBootstrap = vi.fn();
+    const fakeEngine = { identity: () => 'test-bundle', computePredictive: vi.fn() };
+    const origEnsure = usePredictiveStore.getState().ensurePredictive;
+    const ensureSpy = vi.fn(async (_runtime: unknown, reqInput: Parameters<typeof origEnsure>[1]) => {
+      usePredictiveStore.setState({
+        status: 'ready',
+        transitCtx: TRANSIT_CTX,
+        vargaCtxFull: VARGA_CTX_FULL,
+        strengthCtx: STRENGTH_CTX,
+        domainsCtx: DOMAINS_CTX,
+        profileKey: reqInput.profileKey,
+        requestKey: predictiveRequestKey(reqInput),
+      });
+    });
+    usePredictiveStore.setState({ ensurePredictive: ensureSpy as typeof origEnsure });
+
+    try {
+      render(
+        <ChartEngineContext.Provider
+          value={{
+            engine: null,
+            stage: null,
+            meta: null,
+            error: null,
+            startBootstrap,
+            reboot: async () => fakeEngine as never,
+            whenReady: async () => fakeEngine as never,
+          }}
+        >
+          <MemoryRouter initialEntries={['/report?mode=astrologer']}>
+            <ReportView />
+          </MemoryRouter>
+        </ChartEngineContext.Provider>,
+      );
+
+      // Click Download PDF immediately — before the 2.5s auto-kickoff timer fires!
+      fireEvent.click(screen.getByTestId('report-download-pdf'));
+
+      await waitFor(() => expect(downloadReportPdf).toHaveBeenCalledTimes(1));
+      expect(startBootstrap).toHaveBeenCalled();
+      expect(ensureSpy).toHaveBeenCalledTimes(1);
+
+      const [exported] = vi.mocked(downloadReportPdf).mock.calls[0];
+      expect(exported.comprehensive?.transitCtx).toEqual(TRANSIT_CTX);
+      expect(exported.comprehensive?.vargaCtxFull).toEqual(VARGA_CTX_FULL);
+      expect(exported.comprehensive?.strengthCtx).toEqual(STRENGTH_CTX);
+      expect(exported.comprehensive?.domainsCtx).toEqual(DOMAINS_CTX);
+      // Sections IX–XII are present, so ONLY Section XIII (unconfirmed rectification) is listed as omitted.
+      const omittedRow = exported.assumptions?.rows.find((row) => row.label === 'Omitted sections');
+      expect(omittedRow?.value).not.toContain('Sections IX–XII');
+      expect(omittedRow?.value).toContain('Section XIII');
+    } finally {
+      usePredictiveStore.setState({ ensurePredictive: origEnsure });
+    }
   });
 
   it('cites the dasha-year convention when the engine declares one', () => {

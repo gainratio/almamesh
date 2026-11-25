@@ -28,6 +28,13 @@ import { chatCompletionJson, LlmRequestError, type ChatMessage } from "./client"
 import { ensurePrivacy, type ProviderConfig } from "./config";
 import { withLanguage, type PromptLanguage } from "./language";
 import { OUTPUT_DISCIPLINE_RULES, PRIVACY_RULE } from "./prompt";
+import {
+  REFLECTION_RULE,
+  reflectionIssues,
+  reflectionRetry,
+  rewordedOr,
+  type ReflectionIssue,
+} from "./reflection";
 import type { SanitizedChart } from "./sanitize";
 
 // =============================================================================
@@ -125,6 +132,8 @@ const EVIDENCE_SYSTEM_PROMPT = [
   SPLIT_BLOCK,
   "",
   NO_PARAPHRASE_BLOCK,
+  "",
+  REFLECTION_RULE,
   "",
   OUTPUT_DISCIPLINE_RULES,
   "",
@@ -263,6 +272,95 @@ function parsePayload(raw: string): RawEvidenceAnnotationPayload {
   return parsed as RawEvidenceAnnotationPayload;
 }
 
+function proseIssuesOf(value: unknown): readonly ReflectionIssue[] {
+  return typeof value === "string" ? reflectionIssues(value) : [];
+}
+
+/**
+ * Scan ONLY user-facing prose fields (`readings[].interpretation` and
+ * `general_guidance[]`) for non-reflective phrasing — never citation ids.
+ */
+function annotationReflectionIssues(
+  payload: RawEvidenceAnnotationPayload,
+): readonly ReflectionIssue[] {
+  const readingIssues = Array.isArray(payload.readings)
+    ? payload.readings.flatMap((entry) =>
+        entry !== null && typeof entry === "object"
+          ? proseIssuesOf((entry as { interpretation?: unknown }).interpretation)
+          : [],
+      )
+    : [];
+  const guidanceIssues = Array.isArray(payload.general_guidance)
+    ? payload.general_guidance.flatMap(proseIssuesOf)
+    : [];
+  return [...readingIssues, ...guidanceIssues];
+}
+
+function isObjectWithStringId(
+  entry: unknown,
+): entry is { readonly observation_id: string; readonly interpretation?: unknown } {
+  return (
+    entry !== null &&
+    typeof entry === "object" &&
+    typeof (entry as { observation_id?: unknown }).observation_id === "string"
+  );
+}
+
+/**
+ * Merge a reflection-retry payload onto the initial payload without filtering:
+ * clean rows from `first` survive even if the retry omits them, while rows that
+ * failed reflection adopt the retry's clean rewording when provided. Any row
+ * that still fails stays intact so `validateAnnotations` remains the sole gate.
+ */
+function mergeRewordedPayload(
+  first: RawEvidenceAnnotationPayload,
+  retried: RawEvidenceAnnotationPayload,
+): RawEvidenceAnnotationPayload {
+  const retriedById = new Map<string, { readonly observation_id: string; readonly interpretation?: unknown }>();
+  if (Array.isArray(retried.readings)) {
+    for (const entry of retried.readings) {
+      if (isObjectWithStringId(entry) && !retriedById.has(entry.observation_id)) {
+        retriedById.set(entry.observation_id, entry);
+      }
+    }
+  }
+
+  let readings: unknown = first.readings;
+  if (Array.isArray(first.readings) && Array.isArray(retried.readings)) {
+    const seenIds = new Set<string>();
+    const merged = first.readings.map((entry) => {
+      if (!isObjectWithStringId(entry)) return entry;
+      seenIds.add(entry.observation_id);
+      const replacement = retriedById.get(entry.observation_id);
+      if (!replacement) return entry;
+      const replacementClean = proseIssuesOf(replacement.interpretation).length === 0;
+      const firstBroken = proseIssuesOf(entry.interpretation).length > 0;
+      return replacementClean && firstBroken ? replacement : entry;
+    });
+    for (const extra of retried.readings) {
+      if (!isObjectWithStringId(extra) || !seenIds.has(extra.observation_id)) {
+        merged.push(extra);
+      }
+    }
+    readings = merged;
+  }
+
+  const firstGuidanceBroken =
+    Array.isArray(first.general_guidance) &&
+    first.general_guidance.flatMap(proseIssuesOf).length > 0;
+  const retriedGuidanceClean =
+    Array.isArray(retried.general_guidance) &&
+    retried.general_guidance.flatMap(proseIssuesOf).length === 0;
+  const general_guidance =
+    firstGuidanceBroken && retriedGuidanceClean ? retried.general_guidance : first.general_guidance;
+
+  return {
+    ...first,
+    ...(readings !== undefined ? { readings } : {}),
+    ...(general_guidance !== undefined ? { general_guidance } : {}),
+  };
+}
+
 // =============================================================================
 // The call
 // =============================================================================
@@ -273,7 +371,8 @@ function parsePayload(raw: string): RawEvidenceAnnotationPayload {
  *
  * Fails closed on privacy BEFORE any prompt is built or any byte is sent, and
  * throws `LlmRequestError` on a non-2xx, an empty completion, or a completion
- * that is not a JSON object.
+ * that is not a JSON object. If the first completion trips the reflection rule,
+ * sends a single reword retry while preserving already-clean rows.
  */
 export async function requestEvidenceAnnotations(
   params: EvidenceAnnotationParams,
@@ -284,11 +383,31 @@ export async function requestEvidenceAnnotations(
   // is the gate the caller can see.
   ensurePrivacy(params.config);
 
-  const raw = await chatCompletionJson({
-    config: params.config,
-    messages: buildEvidenceAnnotationMessages(params),
-    ...(params.signal ? { signal: params.signal } : {}),
-    ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
-  });
-  return parsePayload(raw);
+  const baseMessages = buildEvidenceAnnotationMessages(params);
+  const request = (messages: ChatMessage[]): Promise<string> =>
+    chatCompletionJson({
+      config: params.config,
+      messages,
+      ...(params.signal ? { signal: params.signal } : {}),
+      ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
+    });
+
+  const raw = await request(baseMessages);
+  const first = parsePayload(raw);
+  const issues = annotationReflectionIssues(first);
+  if (issues.length === 0) {
+    return first;
+  }
+
+  const retriedRaw = await rewordedOr(raw, params.signal, () =>
+    request([...baseMessages, ...reflectionRetry(raw, issues)]),
+  );
+  if (retriedRaw === raw) {
+    return first;
+  }
+  try {
+    return mergeRewordedPayload(first, parsePayload(retriedRaw));
+  } catch {
+    return first;
+  }
 }

@@ -186,4 +186,90 @@ describe("requestEvidenceAnnotations", () => {
     // The gate is only a gate if nothing left the device.
     expect(fetchImpl).not.toHaveBeenCalled();
   });
+
+  it("retries once when prose breaks the reflection rule and preserves already-clean rows", async () => {
+    const firstCompletion = JSON.stringify({
+      readings: [
+        {
+          observation_id: "dignity:venus",
+          interpretation: "Warmth here is earned through effort rather than handed over.",
+          also_cites: ["rulership:venus"],
+        },
+        {
+          observation_id: "yoga:Gajakesari Yoga",
+          interpretation: "You will become famous and experience a windfall in 2027.",
+        },
+      ],
+      general_guidance: ["You will soon get a promotion."],
+    });
+    // Retry omits the already-clean `dignity:venus` row and rewords only the failing ones.
+    const retriedCompletion = JSON.stringify({
+      readings: [
+        {
+          observation_id: "yoga:Gajakesari Yoga",
+          interpretation:
+            "Jupiter in a kendra from the Moon highlights counsel, stewardship, and steady reputation.",
+        },
+      ],
+      general_guidance: ["Steady preparation matters more than rushing a decision."],
+    });
+    const fetchImpl = vi
+      .fn<() => Promise<Response>>()
+      .mockResolvedValueOnce(jsonResponse(firstCompletion))
+      .mockResolvedValueOnce(jsonResponse(retriedCompletion));
+
+    const payload = await requestEvidenceAnnotations({
+      chart: CHART,
+      observations: OBSERVATIONS,
+      factorIds: FACTOR_IDS,
+      config: LOCAL_CONFIG,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const secondBody = String((fetchImpl.mock.calls[1] as unknown[] | undefined)?.[1] && ((fetchImpl.mock.calls[1] as unknown[])[1] as RequestInit).body);
+    expect(secondBody).toContain("broke the reflection rule");
+    expect(payload).toEqual({
+      readings: [
+        {
+          observation_id: "dignity:venus",
+          interpretation: "Warmth here is earned through effort rather than handed over.",
+          also_cites: ["rulership:venus"],
+        },
+        {
+          observation_id: "yoga:Gajakesari Yoga",
+          interpretation:
+            "Jupiter in a kendra from the Moon highlights counsel, stewardship, and steady reputation.",
+        },
+      ],
+      general_guidance: ["Steady preparation matters more than rushing a decision."],
+    });
+  });
+
+  it("falls back cleanly to the first payload when the reflection retry fails or returns non-JSON", async () => {
+    const firstCompletion = JSON.stringify({
+      readings: [
+        {
+          observation_id: "dignity:venus",
+          interpretation: "You will get married next year.",
+        },
+      ],
+      general_guidance: [],
+    });
+    const fetchImpl = vi
+      .fn<() => Promise<Response>>()
+      .mockResolvedValueOnce(jsonResponse(firstCompletion))
+      .mockResolvedValueOnce(jsonResponse("Sorry, I cannot rewrite JSON right now."));
+
+    const payload = await requestEvidenceAnnotations({
+      chart: CHART,
+      observations: OBSERVATIONS,
+      factorIds: FACTOR_IDS,
+      config: LOCAL_CONFIG,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(payload).toEqual(JSON.parse(firstCompletion));
+  });
 });

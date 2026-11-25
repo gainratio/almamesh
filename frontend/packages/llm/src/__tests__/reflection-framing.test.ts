@@ -5,6 +5,7 @@
 import { describe, expect, it } from "vitest";
 
 import { CHAT_ANSWER_DESCRIPTION, renderAnswer, type ChatAnswer } from "../answer";
+import { buildEvidenceAnnotationMessages } from "../evidence-annotation";
 import { buildPredictiveFactsBlock } from "../predictive-facts";
 import { buildChatMessages, buildInterpretationMessages, type ThreadFacts } from "../prompt";
 import { lifeGuesses, PREDICTION_CLAIM_PATTERNS, predictionClaims, REFLECTION_RULE, toolNarration } from "../reflection";
@@ -33,12 +34,35 @@ const REPORT_SECTION_SYSTEMS = REPORT_SECTIONS.flatMap((section) =>
     (lite) => [`report ${section} lite=${lite}`, systemOf(buildSectionMessages(section, REPORT_CHART, "layman", lite, "en", REPORT_PROMPT_SET))] as const,
   ),
 );
+const EVIDENCE_MESSAGES = buildEvidenceAnnotationMessages({
+  chart: REPORT_CHART,
+  observations: [
+    {
+      id: "yoga:Raja Yoga",
+      statement: "Raja Yoga is formed.",
+      evidence: "Sun + Venus in Pisces; grade=moderate, strength=50%",
+    },
+    {
+      id: "lagna",
+      statement: "Aquarius rises.",
+      evidence: "Aquarius 28.82°",
+    },
+  ],
+  factorIds: ["yoga:Raja Yoga", "yoga:Raja Yoga:strength", "lagna"],
+  config: {
+    engine: "openai-http",
+    model: "llama3.1",
+    privacyMode: "local_only",
+    baseUrl: "http://localhost:11434/v1",
+  },
+});
 const SYSTEM_PROMPTS: readonly (readonly [string, string])[] = [
   ["chat, trip thread", systemOf(chat(TRIP, MAY_2019))],
   ["chat, today thread", systemOf(chat(TODAY))],
   ["chat, single pass", systemOf(buildChatMessages(REPORT_CHART, "How is work?"))],
   ["interpretation, layman", systemOf(buildInterpretationMessages(REPORT_CHART, "layman"))],
   ["interpretation, expert", systemOf(buildInterpretationMessages(REPORT_CHART, "expert"))],
+  ["evidence annotation", systemOf(EVIDENCE_MESSAGES)],
   ...LEGACY_SECTION_SYSTEMS,
   ...REPORT_SECTION_SYSTEMS,
 ];
@@ -97,7 +121,12 @@ describe("prompt text claims no prediction or accuracy", () => {
   );
 
   it("the tool-loop and answer descriptions", () => {
-    for (const text of [ANSWER_TOOL_DESCRIPTION, CHAT_ANSWER_DESCRIPTION, BUDGET_INSTRUCTION]) {
+    for (const text of [
+      ANSWER_TOOL_DESCRIPTION,
+      CHAT_ANSWER_DESCRIPTION,
+      BUDGET_INSTRUCTION,
+      EVIDENCE_MESSAGES[1]?.content ?? "",
+    ]) {
       expect(predictionClaims(text, "en")).toEqual([]);
     }
   });

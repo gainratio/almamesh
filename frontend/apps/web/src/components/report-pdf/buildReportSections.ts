@@ -299,11 +299,19 @@ function shortMonthYear(iso: string): string {
     return '';
   }
   const instant = iso.includes('T') ? new Date(iso) : null;
-  const when =
-    instant !== null && !Number.isNaN(instant.getTime())
-      ? instant
-      : new Date(year, month - 1, day, 12, 0, 0);
-  return new Intl.DateTimeFormat('en-US', { month: 'short', year: 'numeric' }).format(when);
+  if (instant !== null && !Number.isNaN(instant.getTime())) {
+    const viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    return new Intl.DateTimeFormat('en-US', {
+      month: 'short',
+      year: 'numeric',
+      timeZone: viewerTz,
+    }).format(instant);
+  }
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(new Date(Date.UTC(year, month - 1, day, 12, 0, 0)));
 }
 
 function spanLabel(years: number): string {
