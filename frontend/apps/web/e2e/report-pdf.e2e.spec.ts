@@ -167,21 +167,6 @@ const SYNTHETIC_BIRTH = {
 // for the rest of the day.
 const SYNTHETIC_NOW = new Date('2026-09-23T20:00:00Z');
 
-/**
- * The predictive reference instant the app expects for `now`: midnight of the
- * chart's LOCAL calendar day, written as `YYYY-MM-DDT00:00:00Z`. Mirrors
- * `predictiveReferenceInstant(now, timeZone)` in src/lib/predictive.ts (not
- * imported: that module pulls the persisted stores into the Node runner).
- */
-function chartDayReferenceInstant(now: Date, timeZone: string): string {
-  const parts = Object.fromEntries(
-    new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
-      .formatToParts(now)
-      .map((part) => [part.type, part.value]),
-  );
-  return `${parts.year}-${parts.month}-${parts.day}T00:00:00Z`;
-}
-
 const BASE_SYNTHETIC_PLANET = {
   longitude: 75.1,
   latitude: 0,
@@ -390,13 +375,10 @@ async function seedSyntheticMaximalReport(
   // stores hydrate before this write, they can race and overwrite the fixture.
   await page.clock.setFixedTime(SYNTHETIC_NOW);
   await page.goto('/robots.txt', { waitUntil: 'domcontentloaded' });
-  // ONE analysis instant (PR #277): the predictive facts are keyed to the
-  // chart's own calculation day, read in the viewer's zone (the zone the
-  // footer, cover and PDF print it in). The browser runs in this process's zone.
-  const referenceInstant = chartDayReferenceInstant(
-    SYNTHETIC_NOW,
-    Intl.DateTimeFormat().resolvedOptions().timeZone,
-  );
+  // ONE analysis instant: the predictive layer is keyed to the chart's own
+  // exact recorded instant (`storedChartReferenceInstant`), never truncated to
+  // UTC midnight, so intra-day daśā rollovers match `sidereal_chart`.
+  const referenceInstant = SYNTHETIC_NOW.toISOString();
   const requestKey = JSON.stringify([
     SYNTHETIC_PROFILE_ID,
     SYNTHETIC_BIRTH.birth_datetime_utc,
