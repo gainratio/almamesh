@@ -1101,11 +1101,12 @@ def detect_yogas(context: SiderealContext) -> list[YogaData]:
     (empty), not silently. Truly unexpected errors are NOT caught: they
     propagate and fail loud, per the calculation-integrity mandate.
     """
+    from almamesh.yogas.activation import attach_yoga_activations
     from almamesh.yogas.engine import YogaRuleError, create_yoga_engine
 
     try:
         engine = create_yoga_engine(context)
-        return engine.evaluate_all_yogas()
+        return attach_yoga_activations(engine.evaluate_all_yogas(), context)
     except ImportError:
         logger.warning("Yoga engine not available, returning empty list")
         return []

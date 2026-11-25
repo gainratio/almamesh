@@ -134,8 +134,11 @@ class DashaTransitFusion(BaseModel):
     instant: datetime
     maha_lord: PlanetName
     antar_lord: PlanetName | None = None
+    pratyantar_lord: PlanetName | None = None
     maha_lord_transit_house_from_moon: int  # 1..12
     maha_lord_transit_house_from_lagna: int  # 1..12
+    antar_lord_transit_house_from_moon: int | None = None  # 1..12
+    pratyantar_lord_transit_house_from_moon: int | None = None  # 1..12
     reinforcing: list[PlanetName] = Field(default_factory=list)  # benefics
     afflicting: list[PlanetName] = Field(default_factory=list)  # malefics
     net_weight: float  # -1.0..+1.0 deterministic score

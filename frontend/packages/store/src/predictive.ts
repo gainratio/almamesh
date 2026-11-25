@@ -82,6 +82,12 @@ export interface EnsurePredictiveInput {
   readonly ayanamsaType?: AyanamsaType;
 }
 
+/** Optional modifiers for `ensurePredictive` (e.g. refreshing per-boot Avow receipts on export). */
+export interface EnsurePredictiveOptions {
+  /** When true, re-runs `computePredictive` if current-boot Ed25519 receipts are absent. */
+  readonly requireProof?: boolean;
+}
+
 export interface PredictiveStore {
   status: PredictiveStatus;
   error?: string;
@@ -109,7 +115,11 @@ export interface PredictiveStore {
    * No-op when already `ready` or `loading` for the same profile + reference
    * instant; an `error` state can always be retried.
    */
-  ensurePredictive(runtime: PredictiveRuntime, input: EnsurePredictiveInput): Promise<void>;
+  ensurePredictive(
+    runtime: PredictiveRuntime,
+    input: EnsurePredictiveInput,
+    options?: EnsurePredictiveOptions,
+  ): Promise<void>;
   /** Back to `idle` with no contexts (e.g. on profile deletion). */
   reset(): void;
 }
@@ -169,8 +179,10 @@ export function predictiveRequestKey(input: EnsurePredictiveInput): string {
  * v5 → v6 (2026-10-14): the engine added `period_reading`. A v5 snapshot lacks
  * it, and today's request key (no readingEnd) is unchanged, so without the bump
  * it short-circuits the recompute and today's chat reading is unavailable.
+ * v6 → v7 (2026-11-25): Dasha × Transit Fusion added `pratyantar_lord` + sub-lord
+ * transit houses from Moon, and `slow_hits` gained chronological ordering.
  */
-export const PREDICTIVE_PERSIST_VERSION = 6;
+export const PREDICTIVE_PERSIST_VERSION = 7;
 
 /** The canonical SQLite key holding the persisted predictive slice. */
 export const PREDICTIVE_PERSIST_NAME = 'almamesh-predictive';
@@ -329,74 +341,106 @@ function mergePredictivePersisted(persisted: unknown, current: PredictiveStore):
   return { ...current, ...coercePersistedPredictive(persisted) };
 }
 
-export const predictiveStoreCreator: StateCreator<PredictiveStore> = (set, get) => ({
-  status: 'idle',
-  error: undefined,
-  ...EMPTY_CONTEXTS,
-  profileKey: undefined,
-  requestKey: undefined,
+export const predictiveStoreCreator: StateCreator<PredictiveStore> = (set, get) => {
+  let inFlightProofRefresh: { key: string; promise: Promise<void> } | null = null;
 
-  async ensurePredictive(runtime, input) {
-    const key = predictiveRequestKey(input);
-    const { status, requestKey } = get();
-    const settledForKey = status === 'ready' || status === 'loading';
-    if (settledForKey && requestKey === key) {
-      return; // idempotent: already computed (or computing) this exact request
-    }
-    set({
-      status: 'loading',
-      error: undefined,
-      ...EMPTY_CONTEXTS,
-      profileKey: input.profileKey,
-      requestKey: key,
-    });
-    try {
-      const raw = await runtime.computePredictive({
-        datetimeUtc: input.datetimeUtc,
-        latitude: input.latitude,
-        longitude: input.longitude,
-        referenceInstant: input.referenceInstant,
-        utcOffsetMinutes: input.utcOffsetMinutes,
-        ...(input.ayanamsaType !== undefined && input.ayanamsaType !== 'LAHIRI'
-          ? { ayanamsaType: input.ayanamsaType }
-          : {}),
-      });
-      if (get().requestKey !== key) {
-        return; // superseded by a newer profile/instant while in flight
+  return {
+    status: 'idle',
+    error: undefined,
+    ...EMPTY_CONTEXTS,
+    profileKey: undefined,
+    requestKey: undefined,
+
+    async ensurePredictive(runtime, input, options) {
+      const key = predictiveRequestKey(input);
+      const { status, requestKey, rawContexts } = get();
+      if (status === 'loading' && requestKey === key) {
+        return; // already computing this exact request
       }
+      const needsProofRefresh =
+        Boolean(options?.requireProof) &&
+        rawContexts !== undefined &&
+        (!rawContexts.domain_strength_receipts || !rawContexts.strength_signer_public_key);
+      if (status === 'ready' && requestKey === key && !needsProofRefresh) {
+        return; // idempotent: already computed (and carries proof when rawContexts exist)
+      }
+      if (inFlightProofRefresh?.key === key) {
+        await inFlightProofRefresh.promise;
+        return;
+      }
+      const refreshingProofOnly = status === 'ready' && requestKey === key;
+      if (!refreshingProofOnly) {
+        set({
+          status: 'loading',
+          error: undefined,
+          ...EMPTY_CONTEXTS,
+          profileKey: input.profileKey,
+          requestKey: key,
+        });
+      }
+      const runCompute = async (): Promise<void> => {
+        try {
+          const raw = await runtime.computePredictive({
+            datetimeUtc: input.datetimeUtc,
+            latitude: input.latitude,
+            longitude: input.longitude,
+            referenceInstant: input.referenceInstant,
+            utcOffsetMinutes: input.utcOffsetMinutes,
+            ...(input.ayanamsaType !== undefined && input.ayanamsaType !== 'LAHIRI'
+              ? { ayanamsaType: input.ayanamsaType }
+              : {}),
+          });
+          if (get().requestKey !== key) {
+            return; // superseded by a newer profile/instant while in flight
+          }
+          set({
+            status: 'ready',
+            error: undefined,
+            transitCtx: toTransitCtx(raw.transit_context),
+            vargaCtxFull: toVargaCtx(raw.varga_context_full),
+            strengthCtx: toStrengthCtx(raw.strength_context),
+            domainsCtx: toDomainsCtx(raw.domains_context, raw.domain_strength_assays),
+            rawContexts: raw,
+          });
+        } catch (err) {
+          if (get().requestKey !== key) {
+            return; // a newer request owns the store now; keep its state
+          }
+          if (refreshingProofOnly) {
+            return; // preserve the valid cached contexts; export degrades Avow to Unavailable
+          }
+          set({
+            status: 'error',
+            error: err instanceof Error ? err.message : String(err),
+            ...EMPTY_CONTEXTS,
+          });
+        }
+      };
+      if (refreshingProofOnly) {
+        const promise = runCompute().finally(() => {
+          if (inFlightProofRefresh?.promise === promise) {
+            inFlightProofRefresh = null;
+          }
+        });
+        inFlightProofRefresh = { key, promise };
+        await promise;
+        return;
+      }
+      await runCompute();
+    },
+
+    reset() {
+      inFlightProofRefresh = null;
       set({
-        status: 'ready',
+        status: 'idle',
         error: undefined,
-        transitCtx: toTransitCtx(raw.transit_context),
-        vargaCtxFull: toVargaCtx(raw.varga_context_full),
-        strengthCtx: toStrengthCtx(raw.strength_context),
-        domainsCtx: toDomainsCtx(raw.domains_context, raw.domain_strength_assays),
-        // The raw engine contexts, verbatim, for the LLM composition layer
-        // (Spec 062 delta 1) — persisted with the reshape, never re-derived.
-        rawContexts: raw,
-      });
-    } catch (err) {
-      if (get().requestKey !== key) {
-        return; // a newer request owns the store now; keep its state
-      }
-      set({
-        status: 'error',
-        error: err instanceof Error ? err.message : String(err),
         ...EMPTY_CONTEXTS,
+        profileKey: undefined,
+        requestKey: undefined,
       });
-    }
-  },
-
-  reset() {
-    set({
-      status: 'idle',
-      error: undefined,
-      ...EMPTY_CONTEXTS,
-      profileKey: undefined,
-      requestKey: undefined,
-    });
-  },
-});
+    },
+  };
+};
 
 export const usePredictiveStore = create<PredictiveStore>()(
   persist<PredictiveStore, [], [], PersistedPredictiveState>(predictiveStoreCreator, {

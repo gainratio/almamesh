@@ -372,11 +372,46 @@ describe("usePredictiveStore — raw contexts persistence (Spec 062 delta 1)", (
   // v6 (2026-10-14): a v5 snapshot predates the engine's period_reading. Its request key
   // (no readingEnd) equals today's, so it short-circuited ensurePredictive and the chat's
   // get_period_reading answered reading_unavailable for today. Live on ba4430ce.
-  it("pins the persist version at 6 (v1-v5 snapshots predate period_reading)", () => {
-    expect(PREDICTIVE_PERSIST_VERSION).toBe(6);
+  it("pins the persist version at 7 (v1-v6 snapshots predate pratyantar fusion)", () => {
+    expect(PREDICTIVE_PERSIST_VERSION).toBe(7);
   });
 
-  it.each([1, 2, 3, 4, 5])(
+  it("refreshes stripped current-boot Avow proof when requireProof is requested after reload", async () => {
+    await seedReadyThenReload();
+    expect(usePredictiveStore.getState().rawContexts?.domain_strength_receipts).toBeUndefined();
+
+    const fresh = makeRuntime();
+    await usePredictiveStore.getState().ensurePredictive(fresh, INPUT);
+    expect(fresh.computePredictive).not.toHaveBeenCalled();
+
+    await usePredictiveStore.getState().ensurePredictive(fresh, INPUT, { requireProof: true });
+    expect(fresh.computePredictive).toHaveBeenCalledTimes(1);
+    expect(usePredictiveStore.getState().rawContexts?.domain_strength_receipts).toEqual(
+      RAW.domain_strength_receipts,
+    );
+    expect(usePredictiveStore.getState().rawContexts?.strength_signer_public_key).toBe(
+      RAW.strength_signer_public_key,
+    );
+  });
+
+  it("preserves UI-only ready contexts (rawContexts undefined) even when requireProof is requested", async () => {
+    await usePredictiveStore.getState().ensurePredictive(makeRuntime(), INPUT);
+    const blob = JSON.parse(memMap.get(PREDICTIVE_PERSIST_NAME)!);
+    delete blob.state.rawContexts;
+    usePredictiveStore.getState().reset();
+    memMap.set(PREDICTIVE_PERSIST_NAME, JSON.stringify(blob));
+    await usePredictiveStore.persist.rehydrate();
+
+    expect(usePredictiveStore.getState().status).toBe("ready");
+    expect(usePredictiveStore.getState().rawContexts).toBeUndefined();
+
+    const fresh = makeRuntime();
+    await usePredictiveStore.getState().ensurePredictive(fresh, INPUT, { requireProof: true });
+    expect(fresh.computePredictive).not.toHaveBeenCalled();
+    expect(usePredictiveStore.getState().strengthCtx?.ashtakavarga.sarva.total).toBe(337);
+  });
+
+  it.each([1, 2, 3, 4, 5, 6])(
     "drops a v%i ready snapshot: rehydrates idle and the same input recomputes",
     async (version) => {
       memMap.set(

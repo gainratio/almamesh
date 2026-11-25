@@ -2418,11 +2418,14 @@
           "ketu"
         ],
         "antar_lord": "mercury",
+        "antar_lord_transit_house_from_moon": 11,
         "instant": "2026-06-09T12:00:00Z",
         "maha_lord": "rahu",
         "maha_lord_transit_house_from_lagna": 9,
         "maha_lord_transit_house_from_moon": 7,
         "net_weight": 0.05,
+        "pratyantar_lord": "moon",
+        "pratyantar_lord_transit_house_from_moon": 8,
         "reinforcing": [],
         "severity": "neutral"
       },
@@ -6650,11 +6653,14 @@
           "ketu"
         ],
         "antar_lord": "mercury",
+        "antar_lord_transit_house_from_moon": 11,
         "instant": "2026-06-09T12:00:00Z",
         "maha_lord": "rahu",
         "maha_lord_transit_house_from_lagna": 9,
         "maha_lord_transit_house_from_moon": 7,
         "net_weight": 0.05,
+        "pratyantar_lord": "moon",
+        "pratyantar_lord_transit_house_from_moon": 8,
         "reinforcing": [],
         "severity": "neutral"
       },
@@ -10812,11 +10818,14 @@
       "fusion": {
         "afflicting": [],
         "antar_lord": "rahu",
+        "antar_lord_transit_house_from_moon": 1,
         "instant": "2026-06-09T12:00:00Z",
         "maha_lord": "saturn",
         "maha_lord_transit_house_from_lagna": 9,
         "maha_lord_transit_house_from_moon": 2,
         "net_weight": 0.5,
+        "pratyantar_lord": "mercury",
+        "pratyantar_lord_transit_house_from_moon": 5,
         "reinforcing": [
           "jupiter",
           "moon"
@@ -10948,6 +10957,13 @@
       },
       "slow_hits": [
         {
+          "exact": "2029-08-31T20:16:47.711822Z",
+          "graha": "saturn",
+          "kind": "return",
+          "natal_point": "natal_saturn",
+          "severity": "neutral"
+        },
+        {
           "exact": "2034-03-06T13:25:02.602029Z",
           "graha": "jupiter",
           "kind": "sign_ingress",
@@ -10960,13 +10976,6 @@
           "kind": "sign_ingress",
           "natal_point": "lagna",
           "severity": "challenging"
-        },
-        {
-          "exact": "2029-08-31T20:16:47.711822Z",
-          "graha": "saturn",
-          "kind": "return",
-          "natal_point": "natal_saturn",
-          "severity": "neutral"
         }
       ],
       "timeline": {

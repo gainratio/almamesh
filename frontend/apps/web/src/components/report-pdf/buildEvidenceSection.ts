@@ -363,23 +363,62 @@ function alternativeCell(copy: Copy, alternative: Alternative): string {
 
 /* ── Assembly ─────────────────────────────────────────────────────────────── */
 
+export interface BuildEvidenceSectionOptions {
+  /** True when a structured reading exists for this chart (`Boolean(interpretation)`). */
+  readonly hasReading?: boolean;
+  /** Canonical error code when the optional evidence-annotation request failed. */
+  readonly annotationError?: string | null;
+}
+
+function emptyInterpretationCell(
+  copy: Copy,
+  row: EvidenceRow,
+  staleDashaLevels: ReadonlySet<string>,
+  annotated: boolean,
+  options?: BuildEvidenceSectionOptions,
+): string {
+  const { observation, rejectionReason } = row;
+  if (rejectionReason === 'not-reflection') {
+    return line(copy, 'no_interpretation_withheld_reflection');
+  }
+  if (rejectionReason === 'unknown-factor' || rejectionReason === 'unknown-observation') {
+    return line(copy, 'no_interpretation_rejected_citation');
+  }
+  if (
+    rejectionReason === 'stale-dasha' ||
+    (observation.primary.kind === 'dasha' && staleDashaLevels.has(observation.primary.level))
+  ) {
+    return line(copy, 'no_interpretation_dasha_rollover');
+  }
+  if (rejectionReason === 'empty-interpretation' || rejectionReason === 'malformed') {
+    return options?.hasReading || annotated
+      ? line(copy, 'no_interpretation_omitted')
+      : line(copy, 'no_interpretation');
+  }
+  if (options?.annotationError && !annotated) {
+    return line(copy, 'no_interpretation_generation_failed');
+  }
+  if (options?.hasReading) {
+    return line(copy, 'no_interpretation_omitted');
+  }
+  return line(copy, 'no_interpretation');
+}
+
 function evidenceRow(
   copy: Copy,
   row: EvidenceRow,
   staleDashaLevels: ReadonlySet<string>,
+  annotated: boolean,
+  options?: BuildEvidenceSectionOptions,
 ): ReportPdfEvidenceRow {
   const { observation } = row;
-  const emptyKey =
-    observation.primary.kind === 'dasha' && staleDashaLevels.has(observation.primary.level)
-      ? 'no_interpretation_dasha_rollover'
-      : 'no_interpretation';
   return {
     observationId: observation.id,
     observation: observationSentence(copy, observation.primary),
     evidence: observation.supporting.map((factor) => factorLine(copy, factor)),
     interpretation:
       row.interpretation === null
-        ? line(copy, emptyKey)
+        ? emptyInterpretationCell(copy, row, staleDashaLevels, annotated, options)
         : copy.text(row.interpretation),
     confidence: confidenceCell(copy, observation.confidence),
     alternative: alternativeCell(copy, observation.alternative),
@@ -442,11 +481,15 @@ function alternateBlock(
 }
 
 /** The rejected-statement provenance lines, separated honestly by cause. */
-function rejectedNote(copy: Copy, ledger: EvidenceLedger): { rejectedNote?: string } {
-  if (ledger.rejectedCount === 0) {
-    return {};
-  }
+function rejectedNote(
+  copy: Copy,
+  ledger: EvidenceLedger,
+  options?: BuildEvidenceSectionOptions,
+): { rejectedNote?: string } {
   const notes: string[] = [];
+  if (options?.annotationError && !ledger.annotated) {
+    notes.push(line(copy, 'rejected_generation_failed_note', { code: options.annotationError }));
+  }
   if (ledger.unsupportedCount > 0) {
     notes.push(
       line(copy, 'rejected_note', {
@@ -477,6 +520,7 @@ export function buildEvidenceSection(
   ledger: EvidenceLedger,
   tr: TFunction,
   text: EvidenceText = (value) => value,
+  options?: BuildEvidenceSectionOptions,
 ): ReportPdfEvidence {
   const copy: Copy = { tr, text };
   return {
@@ -507,6 +551,8 @@ export function buildEvidenceSection(
         copy,
         row,
         ledger.annotated ? new Set(ledger.staleDashaLevels) : new Set<string>(),
+        ledger.annotated,
+        options,
       ),
     ),
     ...(ledger.generalGuidance.length > 0
@@ -516,6 +562,6 @@ export function buildEvidenceSection(
           guidance: ledger.generalGuidance.map((statement) => text(statement)),
         }
       : {}),
-    ...rejectedNote(copy, ledger),
+    ...rejectedNote(copy, ledger, options),
   };
 }

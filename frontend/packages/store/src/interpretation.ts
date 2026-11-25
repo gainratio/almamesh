@@ -161,6 +161,12 @@ export interface ChartInterpretationEntry {
    * empty interpretation cell — which loses nothing deterministic.
    */
   readonly evidenceAnnotations?: RawEvidenceAnnotationPayload;
+  /**
+   * Canonical error code (e.g. `ai.provider.rate_limited`) when the optional
+   * evidence-annotation call failed after a reading completed. Cleared whenever
+   * a fresh reading or fresh annotation payload lands.
+   */
+  readonly evidenceAnnotationError?: string;
   /** Explicitly refreshed timing prose; independent from the stable natal reading. */
   readonly timeline?: CurrentTimelineEntry;
 }
@@ -217,6 +223,15 @@ export interface InterpretationStore {
   setEvidenceAnnotations: (
     chartId: string,
     annotations: RawEvidenceAnnotationPayload,
+    runToken?: InterpretationRunToken,
+  ) => Promise<void>;
+  /**
+   * Record that the optional evidence-annotation call failed for this run so
+   * Section VIII states the cause honestly instead of claiming no reading exists.
+   */
+  setEvidenceAnnotationError: (
+    chartId: string,
+    errorCode: string | undefined,
     runToken?: InterpretationRunToken,
   ) => Promise<void>;
   /**
@@ -787,6 +802,9 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
                 ...(current.evidenceAnnotations !== undefined
                   ? { evidenceAnnotations: current.evidenceAnnotations }
                   : {}),
+                ...(current.evidenceAnnotationError !== undefined
+                  ? { evidenceAnnotationError: current.evidenceAnnotationError }
+                  : {}),
                 ...(current.timeline !== undefined ? { timeline: current.timeline } : {}),
               }
             : current.timeline !== undefined
@@ -868,6 +886,7 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
           provenance,
           inputProvenance,
           evidenceAnnotations: undefined,
+          evidenceAnnotationError: undefined,
         };
         return { byChart: withEntry(state.byChart, chartId, entry) };
       });
@@ -881,7 +900,28 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
         }
         const current = entryOf(state.byChart, chartId);
         return {
-          byChart: withEntry(state.byChart, chartId, { ...current, evidenceAnnotations: annotations }),
+          byChart: withEntry(state.byChart, chartId, {
+            ...current,
+            evidenceAnnotations: annotations,
+            evidenceAnnotationError: undefined,
+          }),
+        };
+      });
+      await persistInterpretationSnapshot(get());
+    },
+
+    setEvidenceAnnotationError: async (chartId, errorCode, runToken) => {
+      set((state) => {
+        if (!acceptsRun(chartId, runToken)) {
+          return state;
+        }
+        const current = entryOf(state.byChart, chartId);
+        return {
+          byChart: withEntry(state.byChart, chartId, {
+            ...current,
+            ...(errorCode !== undefined ? { evidenceAnnotations: undefined } : {}),
+            evidenceAnnotationError: errorCode,
+          }),
         };
       });
       await persistInterpretationSnapshot(get());

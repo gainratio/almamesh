@@ -89,18 +89,35 @@ export function useChartReanchor(): void {
   const today = useDailyReferenceInstant(viewerTimeZone());
   const storedAyanamsa = (chart?.sidereal_chart?.snapshot?.ayanamsa ?? 'LAHIRI').toUpperCase();
   const ayanamsaChanged = chart !== undefined && storedAyanamsa !== ayanamsa;
-  // A chart that records no instant at all (the oldest backups) or uses a
-  // different ayanamsa than the active preference is behind too.
-  const behind = chart !== undefined &&
-    (!storedChartRecordsInstant(chart) || storedChartReferenceDay(chart, today) < today || ayanamsaChanged);
+  const storedYogas = chart?.sidereal_chart?.yogas ?? [];
+  const missingYogaActivation =
+    chart !== undefined &&
+    chart.sidereal_chart?.snapshot != null &&
+    storedYogas.length > 0 &&
+    storedYogas.some((yoga) => yoga.dasha_activation == null);
+  // A chart that records no instant at all (the oldest backups), uses a
+  // different ayanamsa than the active preference, or predates deterministic
+  // yoga-dasha activation is behind too.
+  const behind =
+    chart !== undefined &&
+    (!storedChartRecordsInstant(chart) ||
+      storedChartReferenceDay(chart, today) < today ||
+      ayanamsaChanged ||
+      missingYogaActivation);
   // Secondary/family charts whose stored snapshot ayanamsa lags behind the active
-  // preference also need re-anchoring so Mesh/Match PDF plates never mix ayanamsas.
+  // preference (or whose yogas predate deterministic dasha_activation) also need
+  // re-anchoring so Mesh/Match PDF plates never mix ayanamsas or omit activation.
   const staleSecondaryIds = Object.values(charts)
-    .filter(
-      (c) =>
-        c.chart_id !== chart?.chart_id &&
-        (c.sidereal_chart?.snapshot?.ayanamsa ?? 'LAHIRI').toUpperCase() !== ayanamsa,
-    )
+    .filter((c) => {
+      if (c.chart_id === chart?.chart_id) return false;
+      const secAyanamsa = (c.sidereal_chart?.snapshot?.ayanamsa ?? 'LAHIRI').toUpperCase();
+      const secYogas = c.sidereal_chart?.yogas ?? [];
+      const secMissingAct =
+        c.sidereal_chart?.snapshot != null &&
+        secYogas.length > 0 &&
+        secYogas.some((yoga) => yoga.dasha_activation == null);
+      return secAyanamsa !== ayanamsa || secMissingAct;
+    })
     .map((c) => c.chart_id);
   const staleSecondaryKey = staleSecondaryIds.join(',');
   // Per attempt (`chartId|day|ayanamsa`): active wait, in-flight attempts, and
@@ -120,7 +137,7 @@ export function useChartReanchor(): void {
     if (chartId === undefined || !behind) {
       return;
     }
-    const attempt = `${chartId}|${today}|${ayanamsa}`;
+    const attempt = `${chartId}|${today}|${ayanamsa}${missingYogaActivation ? '|yoga-act' : ''}`;
     if (failed.current.has(attempt)) {
       return;
     }
@@ -157,7 +174,17 @@ export function useChartReanchor(): void {
         attempted.current.delete(attempt);
         endWait(waits.current, attempt);
       });
-  }, [engine, engineError, startBootstrap, chartId, behind, today, ayanamsa, queryClient]);
+  }, [
+    engine,
+    engineError,
+    startBootstrap,
+    chartId,
+    behind,
+    missingYogaActivation,
+    today,
+    ayanamsa,
+    queryClient,
+  ]);
 
   // Re-anchor any secondary/family charts whose stored ayanamsa differs.
   useEffect(() => {

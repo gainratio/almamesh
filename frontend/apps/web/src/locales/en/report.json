@@ -112,6 +112,26 @@
       "tier": "structural estimate",
       "summary": "net {{net}} on the {{min}}…{{max}} scale",
       "aria": "Structural strength estimate: {{pct}} percent, {{band}}. {{scale}}"
+    },
+    "activation": {
+      "label": "Daśā activation",
+      "status": {
+        "direct": "Active (direct)",
+        "indirect": "Active (dispositor / aspect)",
+        "dormant": "Dormant in running period"
+      },
+      "direct_prefix": "Direct: {{items}}",
+      "dispositor_prefix": "Dispositor: {{items}}",
+      "aspect_prefix": "Aspect: {{items}}",
+      "mitigating_prefix": "Qualifying: {{items}}",
+      "aspect_conjunction": "{{level}} {{lord}} conjunct {{target}}",
+      "aspect_drishti": "{{level}} {{lord}} → {{target}} (house {{offset}} aspect)",
+      "mitigation": {
+        "combust": "{{planet}} combust",
+        "debilitated": "{{planet}} debilitated",
+        "dusthana": "{{planet}} in house {{house}}",
+        "lagna_near_cusp": "ascendant near sign boundary"
+      }
     }
   },
   "dasha": {
@@ -287,8 +307,13 @@
     "cell_alternative": "Alternative",
     "no_interpretation": "No written interpretation — generate a reading to add one.",
     "no_interpretation_dasha_rollover": "Active daśā changed since this reading was generated — regenerate the reading to annotate this period.",
+    "no_interpretation_withheld_reflection": "Statement withheld for non-reflective phrasing — regenerate the reading to retry.",
+    "no_interpretation_rejected_citation": "Statement rejected for citing an uncomputed factor — see provenance below.",
+    "no_interpretation_generation_failed": "Observation annotation request did not complete — regenerate the reading to retry.",
+    "no_interpretation_omitted": "No separate annotation was returned for this observation — regenerate the reading to populate it.",
     "guidance_heading": "General guidance — not derived from this chart",
     "guidance_note": "The model marked these statements as resting on no computed factor in this chart. They are printed apart from the ledger above, and nothing in this chart backs them.",
+    "rejected_generation_failed_note": "The observation-level annotation request did not complete ({{code}}) — regenerate the reading to populate the interpretations above.",
     "rejected_note_one": "1 model statement was rejected for citing a chart factor this chart does not contain: {{citations}}",
     "rejected_note_other": "{{count}} model statements were rejected for citing chart factors this chart does not contain: {{citations}}",
     "rejected_reflection_note_one": "1 model statement was withheld for non-reflective phrasing.",

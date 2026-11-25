@@ -112,6 +112,26 @@
       "tier": "संरचनात्मक आकलन",
       "summary": "{{min}}…{{max}} पैमाने पर शुद्ध {{net}}",
       "aria": "संरचनात्मक बल आकलन: {{pct}} प्रतिशत, {{band}}। {{scale}}"
+    },
+    "activation": {
+      "label": "दशा सक्रियता",
+      "status": {
+        "direct": "सक्रिय (प्रत्यक्ष)",
+        "indirect": "सक्रिय (राशिपति / दृष्टि)",
+        "dormant": "वर्तमान अवधि में सुप्त"
+      },
+      "direct_prefix": "प्रत्यक्ष: {{items}}",
+      "dispositor_prefix": "राशिपति शृंखला: {{items}}",
+      "aspect_prefix": "दृष्टि: {{items}}",
+      "mitigating_prefix": "संशोधक कारक: {{items}}",
+      "aspect_conjunction": "{{level}} {{lord}} व {{target}} युति",
+      "aspect_drishti": "{{level}} {{lord}} → {{target}} (भाव {{offset}} दृष्टि)",
+      "mitigation": {
+        "combust": "{{planet}} अस्त",
+        "debilitated": "{{planet}} नीच",
+        "dusthana": "{{planet}} भाव {{house}} में",
+        "lagna_near_cusp": "लग्न राशि संधि के निकट"
+      }
     }
   },
   "dasha": {
@@ -287,8 +307,13 @@
     "cell_alternative": "वैकल्पिक पाठ",
     "no_interpretation": "कोई लिखित व्याख्या नहीं — जोड़ने के लिए पठन जनरेट करें।",
     "no_interpretation_dasha_rollover": "यह पठन बनने के बाद सक्रिय दशा बदल गई है — इस अवधि की व्याख्या के लिए पठन पुनः जनरेट करें।",
+    "no_interpretation_withheld_reflection": "गैर-चिंतनशील भाषा के कारण कथन रोक दिया गया — पुनः प्रयास हेतु पठन फिर से जनरेट करें।",
+    "no_interpretation_rejected_citation": "अनुपस्थित कारक का हवाला देने के कारण कथन अस्वीकार किया गया — नीचे विवरण देखें।",
+    "no_interpretation_generation_failed": "प्रेक्षण-व्याख्या अनुरोध पूर्ण नहीं हुआ — पुनः प्रयास हेतु पठन फिर से जनरेट करें।",
+    "no_interpretation_omitted": "इस प्रेक्षण के लिए अलग व्याख्या प्राप्त नहीं हुई — जोड़ने के लिए पठन पुनः जनरेट करें।",
     "guidance_heading": "सामान्य मार्गदर्शन — इस कुंडली से व्युत्पन्न नहीं",
     "guidance_note": "मॉडल ने इन कथनों को इस कुंडली के किसी गणना किए गए कारक से असंबद्ध चिह्नित किया है। इन्हें ऊपर की साक्ष्य-तालिका से अलग मुद्रित किया गया है।",
+    "rejected_generation_failed_note": "प्रेक्षण-स्तरीय व्याख्या अनुरोध पूर्ण नहीं हुआ ({{code}}) — ऊपर की व्याख्याएँ भरने के लिए पठन पुनः जनरेट करें।",
     "rejected_note_one": "इस कुंडली में अनुपस्थित कारक का हवाला देने के कारण 1 मॉडल कथन अस्वीकार किया गया: {{citations}}",
     "rejected_note_other": "इस कुंडली में अनुपस्थित कारकों का हवाला देने के कारण {{count}} मॉडल कथन अस्वीकार किए गए: {{citations}}",
     "rejected_reflection_note_one": "गैर-चिंतनशील भाषा के कारण 1 मॉडल कथन रोक दिया गया।",

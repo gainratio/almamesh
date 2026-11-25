@@ -15,6 +15,7 @@ import type { YogaData } from '@almamesh/browser/types';
 import type { VedicInterpretation } from '@almamesh/shared-types';
 import { personaText, type ReportAudience } from '../../../lib/reportSelectors';
 import { hasStrength, signedMark, yogaStrength } from '../../../lib/yogaStrength';
+import { formatYogaActivation } from '../../../lib/yogaActivation';
 import { yogaClaimId, type StabilityMarker } from '../../../lib/stability';
 import { ReportProse } from './ReportProse';
 import { ReportSectionHeading } from './ReportSectionHeading';
@@ -95,6 +96,7 @@ export function ReportYogas({
   stability,
 }: ReportYogasProps): ReactElement | null {
   const { t } = useTranslation('report');
+  const { t: tp } = useTranslation('predictive');
   const narrative = interpretation
     ? personaText(interpretation.integrated_yoga_narrative, audience)
     : '';
@@ -141,6 +143,11 @@ export function ReportYogas({
                   </span>
                 </div>
                 <YogaStrengthMark yoga={yoga} />
+                {yoga.dasha_activation ? (
+                  <p className="report-strength-ledger" data-testid="report-yoga-activation">
+                    {formatYogaActivation(yoga, t, tp)}
+                  </p>
+                ) : null}
                 {yoga.description ? (
                   <p className="report-yoga-desc">{yoga.description}</p>
                 ) : null}

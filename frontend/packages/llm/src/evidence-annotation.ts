@@ -28,6 +28,7 @@ import { chatCompletionJson, LlmRequestError, type ChatMessage } from "./client"
 import { ensurePrivacy, type ProviderConfig } from "./config";
 import { withLanguage, type PromptLanguage } from "./language";
 import { OUTPUT_DISCIPLINE_RULES, PRIVACY_RULE } from "./prompt";
+import { SECTION_REASONING_MAX_TOKENS } from "./reasoning";
 import {
   REFLECTION_RULE,
   reflectionIssues,
@@ -158,9 +159,9 @@ const OUTPUT_SCHEMA = [
   "}",
   "",
   '"also_cites" is optional; omit it or use [] when the reading leans on nothing',
-  "beyond its own observation. Write at most one reading per observation id, and",
-  "skip any observation you have nothing meaningful to add to — an omitted",
-  "observation still prints its evidence and confidence, so silence costs nothing.",
+  "beyond its own observation. Provide ONE concise (1-2 sentence) reflective",
+  "reading for EVERY observation id in the OBSERVATIONS list above — never invent",
+  "an id and never write two entries for the same observation_id.",
 ].join("\n");
 
 // =============================================================================
@@ -413,14 +414,37 @@ function mergeRewordedPayload(
 // The call
 // =============================================================================
 
+function abortAwareDelay(ms: number, signal?: AbortSignal): Promise<void> {
+  if (ms <= 0 || signal?.aborted) return Promise.resolve();
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(() => {
+      signal?.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = (): void => {
+      clearTimeout(timer);
+      resolve();
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+function isRetryableAnnotationFailure(err: unknown): boolean {
+  if (err instanceof TypeError) return true;
+  if (!(err instanceof LlmRequestError)) return false;
+  if (err.status === undefined) return true;
+  return err.status === 408 || err.status === 429 || err.status >= 500;
+}
+
 /**
  * Ask the model to attach interpretation prose to observations the engine has
  * already computed, and return the RAW payload for the web app to validate.
  *
  * Fails closed on privacy BEFORE any prompt is built or any byte is sent, and
  * throws `LlmRequestError` on a non-2xx, an empty completion, or a completion
- * that is not a JSON object. If the first completion trips the reflection rule,
- * sends a single reword retry while preserving already-clean rows.
+ * that is not a JSON object. Retries transient HTTP/network/truncated-JSON
+ * failures once, and if the first valid JSON trips the reflection rule, sends a
+ * single reword retry while preserving already-clean rows.
  */
 export async function requestEvidenceAnnotations(
   params: EvidenceAnnotationParams,
@@ -436,12 +460,29 @@ export async function requestEvidenceAnnotations(
     chatCompletionJson({
       config: params.config,
       messages,
+      reasoningMaxTokens: SECTION_REASONING_MAX_TOKENS,
       ...(params.signal ? { signal: params.signal } : {}),
       ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
     });
 
-  const raw = await request(baseMessages);
-  const first = parsePayload(raw);
+  let raw: string;
+  let first: RawEvidenceAnnotationPayload;
+  try {
+    raw = await request(baseMessages);
+    first = parsePayload(raw);
+  } catch (err) {
+    if (params.signal?.aborted || !isRetryableAnnotationFailure(err)) {
+      throw err;
+    }
+    const backoffMs = err instanceof LlmRequestError && err.status === 429 ? 400 : 150;
+    await abortAwareDelay(backoffMs, params.signal);
+    if (params.signal?.aborted) {
+      throw err;
+    }
+    raw = await request(baseMessages);
+    first = parsePayload(raw);
+  }
+
   const issues = annotationReflectionIssues(first);
   if (issues.length === 0) {
     return first;

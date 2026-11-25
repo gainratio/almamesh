@@ -397,4 +397,33 @@ describe("requestEvidenceAnnotations", () => {
       ],
     });
   });
+
+  it("caps OpenRouter reasoning budget and retries once on a transient 502 or truncated JSON", async () => {
+    const cloudConfig: ProviderConfig = {
+      engine: "openai-http",
+      model: "deepseek/deepseek-r1",
+      privacyMode: "cloud_premium",
+      baseUrl: "https://openrouter.ai/api/v1",
+      apiKey: "test-key",
+    };
+    const fetchImpl = vi
+      .fn<() => Promise<Response>>()
+      .mockResolvedValueOnce(new Response("upstream gateway error", { status: 502 }))
+      .mockResolvedValueOnce(jsonResponse(WELL_FORMED));
+
+    const payload = await requestEvidenceAnnotations({
+      chart: CHART,
+      observations: OBSERVATIONS,
+      factorIds: FACTOR_IDS,
+      config: cloudConfig,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const firstSent = JSON.parse(sentBody(fetchImpl as ReturnType<typeof stubFetch>)) as {
+      reasoning?: { max_tokens?: number };
+    };
+    expect(firstSent.reasoning?.max_tokens).toBe(12_000);
+    expect(payload).toEqual(JSON.parse(WELL_FORMED));
+  });
 });

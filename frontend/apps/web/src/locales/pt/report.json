@@ -115,6 +115,26 @@
       "tier": "estimativa estrutural",
       "summary": "líquido {{net}} na escala {{min}}…{{max}}",
       "aria": "Estimativa de força estrutural: {{pct}} por cento, {{band}}. {{scale}}"
+    },
+    "activation": {
+      "label": "Ativação por daśā",
+      "status": {
+        "direct": "Ativa (direta)",
+        "indirect": "Ativa (regente / aspecto)",
+        "dormant": "Latente no período em curso"
+      },
+      "direct_prefix": "Direta: {{items}}",
+      "dispositor_prefix": "Regente: {{items}}",
+      "aspect_prefix": "Aspecto: {{items}}",
+      "mitigating_prefix": "Fatores moduladores: {{items}}",
+      "aspect_conjunction": "{{level}} {{lord}} em conjunção com {{target}}",
+      "aspect_drishti": "{{level}} {{lord}} → {{target}} (aspecto de casa {{offset}})",
+      "mitigation": {
+        "combust": "{{planet}} combusto",
+        "debilitated": "{{planet}} debilitado",
+        "dusthana": "{{planet}} na casa {{house}}",
+        "lagna_near_cusp": "ascendente perto do limite de signo"
+      }
     }
   },
   "dasha": {
@@ -290,8 +310,13 @@
     "cell_alternative": "Alternativa",
     "no_interpretation": "Sem interpretação escrita — gere uma leitura para a acrescentar.",
     "no_interpretation_dasha_rollover": "O daśā ativo mudou desde que esta leitura foi gerada — volte a gerar a leitura para anotar este período.",
+    "no_interpretation_withheld_reflection": "Frase retida por linguagem não reflexiva — volte a gerar a leitura para tentar novamente.",
+    "no_interpretation_rejected_citation": "Frase rejeitada por citar um fator não calculado — consulte a proveniência abaixo.",
+    "no_interpretation_generation_failed": "O pedido de anotação não foi concluído — volte a gerar a leitura para tentar novamente.",
+    "no_interpretation_omitted": "Nenhuma anotação individual foi devolvida para esta observação — volte a gerar a leitura para a preencher.",
     "guidance_heading": "Orientação geral — não derivada deste mapa",
     "guidance_note": "O modelo assinalou estas frases como não assentando em nenhum factor calculado deste mapa. São impressas à parte do registo acima e nada neste mapa as sustenta.",
+    "rejected_generation_failed_note": "O pedido de anotações por observação não foi concluído ({{code}}) — volte a gerar a leitura para preencher as interpretações acima.",
     "rejected_note_one": "1 frase do modelo foi rejeitada por citar um factor que este mapa não contém: {{citations}}",
     "rejected_note_other": "{{count}} frases do modelo foram rejeitadas por citarem factores que este mapa não contém: {{citations}}",
     "rejected_reflection_note_one": "1 frase do modelo foi retida por linguagem não reflexiva.",

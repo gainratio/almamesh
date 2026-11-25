@@ -18,6 +18,7 @@ import {
   formatPredictiveDate,
   formatPredictiveWindowBound,
   formatReferenceDay,
+  sortSlowHits,
 } from '../../../lib/predictive';
 import {
   grahaName,
@@ -149,13 +150,14 @@ function SadeSatiCard({ data, frame }: { data: SadeSatiData; frame: TransitsFram
 
 function SlowHitsCard({ ctx }: { ctx: TransitCtx }): ReactElement {
   const { t } = useTranslation('predictive');
+  const sortedHits = sortSlowHits(ctx.slow_hits);
   return (
     <Card title={t('slow_hits.heading')} data-testid="slow-hits-card">
-      {ctx.slow_hits.length === 0 ? (
+      {sortedHits.length === 0 ? (
         <p className="text-sm text-text-secondary">{t('slow_hits.empty')}</p>
       ) : (
         <ul className="space-y-2">
-          {ctx.slow_hits.map((hit) => (
+          {sortedHits.map((hit) => (
             <li
               key={`${hit.graha}-${hit.kind}-${hit.exact}`}
               className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-md border border-ui-border/60 px-3 py-2 text-sm"
@@ -209,6 +211,14 @@ function FusionCard({ ctx, frame }: { ctx: TransitCtx; frame: TransitsFrame }): 
             {fusion.antar_lord ? grahaName(t, fusion.antar_lord) : t('fusion.none')}
           </dd>
         </div>
+        {fusion.pratyantar_lord != null ? (
+          <div>
+            <dt className="text-xs uppercase tracking-wider text-text-tertiary">
+              {t('fusion.pratyantar_lord')}
+            </dt>
+            <dd className="text-text-primary">{grahaName(t, fusion.pratyantar_lord)}</dd>
+          </div>
+        ) : null}
         <div>
           <dt className="text-xs uppercase tracking-wider text-text-tertiary">{t('fusion.net_weight')}</dt>
           <dd className="font-mono text-text-primary">{formatNetWeight(fusion.net_weight)}</dd>

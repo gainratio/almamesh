@@ -21,6 +21,7 @@ import { combustionOrbDeg } from '../../lib/evidence/combustionOrbs';
 import { formatDegree } from '../../lib/reportData';
 import { buildGuidanceSections, personaText, type ReportAudience } from '../../lib/reportSelectors';
 import { hasStrength, yogaStrength } from '../../lib/yogaStrength';
+import { formatYogaActivation } from '../../lib/yogaActivation';
 import { glyphSafe } from './glyphSafe';
 import { yogaClaimId } from '../../lib/stability';
 import type {
@@ -450,6 +451,7 @@ function buildYogaStrength(yoga: YogaData): { strength: string; strengthLedger: 
 export function buildYogas(
   chart: SiderealChart,
   stabilityFlagFor?: StabilityFlagFor,
+  formatActivation?: (yoga: YogaData) => string | undefined,
 ): ReadonlyArray<ReportPdfYoga> {
   return chart.yogas.map((yoga) => {
     const category = titleCase(yoga.category.replace(/_/g, ' '));
@@ -459,6 +461,10 @@ export function buildYogas(
     // formation that duplicates the description, so we drop it. The 4 distinct
     // "Dhana Yoga" rows stay distinguishable via their description line.
     const stability = stabilityFlagFor?.(yogaClaimId(yoga.name));
+    const rawActivation = formatActivation
+      ? formatActivation(yoga)
+      : formatYogaActivation(yoga);
+    const activation = rawActivation ? glyphSafe(rawActivation) : undefined;
     return {
       name: glyphSafe(yoga.name),
       classification: glyphSafe(category ? `${category} · ${grade}` : grade),
@@ -467,6 +473,7 @@ export function buildYogas(
       grade: yoga.grade,
       ...buildYogaStrength(yoga),
       ...(stability ? { stability } : {}),
+      ...(activation ? { activation } : {}),
     };
   });
 }
