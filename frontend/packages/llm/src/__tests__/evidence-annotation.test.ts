@@ -340,4 +340,61 @@ describe("requestEvidenceAnnotations", () => {
       ],
     });
   });
+
+  it("replaces paraphrased general_guidance without duplicating clean bullets and ignores non-reflective extra rows", async () => {
+    const firstCompletion = JSON.stringify({
+      readings: [
+        {
+          observation_id: "dignity:venus",
+          interpretation: "You will get married in 2027.",
+        },
+      ],
+      general_guidance: [
+        "Rest is part of work.",
+        "You will soon get promoted.",
+      ],
+    });
+    const retriedCompletion = JSON.stringify({
+      readings: [
+        {
+          observation_id: "dignity:venus",
+          interpretation: "Highlights deliberate affection and honest pacing.",
+        },
+        // Unseen extra row that itself breaks the reflection rule must NOT be appended.
+        {
+          observation_id: "combustion:venus",
+          interpretation: "You will gain fame next month.",
+        },
+      ],
+      general_guidance: [
+        "Rest is part of the work.",
+        "Steady preparation steadies major transitions.",
+      ],
+    });
+    const fetchImpl = vi
+      .fn<() => Promise<Response>>()
+      .mockResolvedValueOnce(jsonResponse(firstCompletion))
+      .mockResolvedValueOnce(jsonResponse(retriedCompletion));
+
+    const payload = await requestEvidenceAnnotations({
+      chart: CHART,
+      observations: OBSERVATIONS,
+      factorIds: FACTOR_IDS,
+      config: LOCAL_CONFIG,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    });
+
+    expect(payload).toEqual({
+      readings: [
+        {
+          observation_id: "dignity:venus",
+          interpretation: "Highlights deliberate affection and honest pacing.",
+        },
+      ],
+      general_guidance: [
+        "Rest is part of the work.",
+        "Steady preparation steadies major transitions.",
+      ],
+    });
+  });
 });

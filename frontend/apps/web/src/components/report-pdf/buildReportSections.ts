@@ -16,6 +16,7 @@ import {
   type ChartPlanet,
 } from '@almamesh/store';
 import { planetInk } from '../chart/chartTheme';
+import { resolvedViewerTimeZone } from '../../lib/dates';
 import { combustionOrbDeg } from '../../lib/evidence/combustionOrbs';
 import { formatDegree } from '../../lib/reportData';
 import { buildGuidanceSections, personaText, type ReportAudience } from '../../lib/reportSelectors';
@@ -300,11 +301,10 @@ function shortMonthYear(iso: string): string {
   }
   const instant = iso.includes('T') ? new Date(iso) : null;
   if (instant !== null && !Number.isNaN(instant.getTime())) {
-    const viewerTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
     return new Intl.DateTimeFormat('en-US', {
       month: 'short',
       year: 'numeric',
-      timeZone: viewerTz,
+      timeZone: resolvedViewerTimeZone(),
     }).format(instant);
   }
   return new Intl.DateTimeFormat('en-US', {

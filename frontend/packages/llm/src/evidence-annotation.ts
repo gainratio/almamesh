@@ -357,7 +357,11 @@ function mergeRewordedPayload(
       };
     });
     for (const extra of retried.readings) {
-      if (isObjectWithStringId(extra) && !seenIds.has(extra.observation_id)) {
+      if (
+        isObjectWithStringId(extra) &&
+        !seenIds.has(extra.observation_id) &&
+        isNonEmptyCleanString(extra.interpretation)
+      ) {
         seenIds.add(extra.observation_id);
         merged.push(extra);
       }
@@ -373,11 +377,29 @@ function mergeRewordedPayload(
     firstGuidanceBroken &&
     Array.isArray(first.general_guidance) &&
     Array.isArray(retried.general_guidance) &&
-    retried.general_guidance.length > 0 &&
-    retried.general_guidance.every(isNonEmptyCleanString)
+    retried.general_guidance.length > 0
   ) {
-    const cleanFromFirst = first.general_guidance.filter(isNonEmptyCleanString);
-    general_guidance = [...new Set([...cleanFromFirst, ...retried.general_guidance])];
+    if (
+      retried.general_guidance.every(isNonEmptyCleanString) &&
+      retried.general_guidance.length >= first.general_guidance.length
+    ) {
+      general_guidance = [...new Set(retried.general_guidance)];
+    } else {
+      const existingClean = new Set(first.general_guidance.filter(isNonEmptyCleanString));
+      const queue = retried.general_guidance.filter(
+        (item): item is string => isNonEmptyCleanString(item) && !existingClean.has(item),
+      );
+      let cursor = 0;
+      general_guidance = first.general_guidance.map((entry) => {
+        if (isNonEmptyCleanString(entry)) return entry;
+        const nextClean = queue[cursor];
+        if (nextClean !== undefined) {
+          cursor += 1;
+          return nextClean;
+        }
+        return entry;
+      });
+    }
   }
 
   return {

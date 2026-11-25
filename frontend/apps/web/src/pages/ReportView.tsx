@@ -27,6 +27,7 @@ import type { ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
+  useAyanamsaStore,
   useChartLibraryStore,
   useLifeEventsStore,
   useProfilesStore,
@@ -40,7 +41,7 @@ import { usePredictiveLayer, type PredictiveLayer } from '../hooks/usePredictive
 import { useElapsedSeconds, formatElapsed } from '../hooks/useElapsedSeconds';
 import { useContentModeStore } from '../stores/contentMode';
 import { resolveReportAudience } from '../lib/reportSelectors';
-import { selectPrimaryStoredChart } from '../lib/predictive';
+import { selectPrimaryStoredChart, storedChartAyanamsa } from '../lib/predictive';
 import { cuspInfo } from '../lib/lagnaCusp';
 import { yogaDependsOnHouses } from '../lib/evidence';
 import { rectificationDelta } from '../lib/rectification';
@@ -149,6 +150,7 @@ export default function ReportView(): ReactElement {
 
   // Subscribe to the chart map so the page re-renders once SQLite rehydrates.
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
+  const ayanamsa = useAyanamsaStore((s) => s.ayanamsa);
   const charts = useChartLibraryStore((s) => s.charts);
   const storedChart = selectPrimaryStoredChart(charts, activeProfileId);
   const chartId = storedChart?.chart_id ?? null;
@@ -338,7 +340,7 @@ export default function ReportView(): ReactElement {
         <ReportAssumptions
           lagna={lagna}
           rectification={birth ? rectificationDelta(birth) : null}
-          ayanamsa={sidereal.snapshot?.ayanamsa}
+          ayanamsa={storedChartAyanamsa(storedChart, ayanamsa)}
           omittedSections={{
             hasPredictive: Boolean(
               predictive.status === 'ready' &&
@@ -350,7 +352,7 @@ export default function ReportView(): ReactElement {
             hasRectification: Boolean(rectificationRecord),
           }}
         />
-        <ReportFooter personName={personName} ayanamsa={sidereal.snapshot?.ayanamsa} />
+        <ReportFooter personName={personName} ayanamsa={storedChartAyanamsa(storedChart, ayanamsa)} />
       </article>
     </div>
   );
