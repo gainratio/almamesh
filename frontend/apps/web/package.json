@@ -60,7 +60,7 @@
 		"smoke:returning-pair": "bun scripts/serve-returning-pair.ts"
 	},
 	"dependencies": {
-		"@gainratio/browser": "^0.4.2",
+		"@gainratio/browser": "^0.4.6",
 		"@almamesh/browser": "workspace:*",
 		"@almamesh/constants": "workspace:*",
 		"@almamesh/llm": "workspace:*",
@@ -68,7 +68,7 @@
 		"@almamesh/shared-types": "workspace:*",
 		"@almamesh/store": "workspace:*",
 		"@assistant-ui/react": "0.15.28",
-		"@gainratio/errors": "^0.3.1",
+		"@gainratio/errors": "^0.5.0",
 		"@gainratio/receipt-ui": "0.3.0",
 		"@emotion/react": "^11.14.0",
 		"@emotion/styled": "^11.14.1",
