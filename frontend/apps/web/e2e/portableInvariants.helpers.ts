@@ -51,7 +51,13 @@ function isBenignAbort(url: URL, origin: string, errorText: string): boolean {
 }
 
 function isFakedHost(url: URL): boolean {
-  return url.hostname === 'openrouter.ai' || url.hostname === 'geocoding-api.open-meteo.com';
+  return (
+    url.hostname === 'openrouter.ai' ||
+    url.hostname === 'geocoding-api.open-meteo.com' ||
+    url.hostname === 'www.googleapis.com' ||
+    url.hostname === 'oauth2.googleapis.com' ||
+    url.hostname === 'accounts.google.com'
+  );
 }
 
 export function watchBrowser(context: BrowserContext, origin: string): BrowserProblems {

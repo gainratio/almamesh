@@ -31,6 +31,9 @@ export default function PrivacyPolicy() {
         <li>
           <strong>{t('privacy.s1_sub2_li2_label')}</strong>: {t('privacy.s1_sub2_li2_text')}
         </li>
+        <li>
+          <strong>{t('privacy.s1_sub2_li3_label')}</strong>: {t('privacy.s1_sub2_li3_text')}
+        </li>
       </ul>
 
       <h2>{t('privacy.s2_heading')}</h2>
@@ -40,6 +43,7 @@ export default function PrivacyPolicy() {
         <li>{t('privacy.s2_li3')}</li>
         <li>{t('privacy.s2_li2')}</li>
         <li>{t('privacy.s2_li4')}</li>
+        <li>{t('privacy.s2_li8')}</li>
       </ul>
 
       <p>
@@ -80,6 +84,7 @@ export default function PrivacyPolicy() {
       <ul>
         <li>{t('privacy.s6_li1')}</li>
         <li>{t('privacy.s6_li2')}</li>
+        <li>{t('privacy.s6_li3')}</li>
       </ul>
 
       <h2>{t('privacy.s7_heading')}</h2>

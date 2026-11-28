@@ -69,6 +69,8 @@ export const JOURNEY_STEPS: readonly JourneyStep[] = [
   // WebKit project needs macOS OPFS.
   { lane: "b", minutes: 0.1, command: "node scripts/verify-boot-fault-hook.mjs dist-verify --present" },
   { lane: "b", minutes: 4.0, command: `BOOT_RETRY_E2E_BASE_URL=${URL} bun run test:e2e:boot-retry --project=chromium` },
+  // Zero-knowledge Google Drive backup + silent renewal + cross-device restore (Chromium here; WebKit runs on macOS).
+  { lane: "c", minutes: 1.4, command: `DRIVE_BACKUP_E2E_BASE_URL=${URL} bun run test:e2e:drive-backup --project=chromium` },
 ]
 
 /** The commands one lane runs, in the order the original single lane ran them. */

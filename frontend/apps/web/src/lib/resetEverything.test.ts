@@ -10,6 +10,7 @@
  *
  * All fixtures are synthetic.
  */
+import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { del as idbDel } from 'idb-keyval';
 
@@ -35,7 +36,9 @@ import {
 } from '@almamesh/store';
 
 import { clearMemory } from './chatMemory';
-import { resetEverything } from './resetEverything';
+import { getDeviceKey, readDeviceKeyRecords } from './drive/deviceKey';
+import { getSessionPassphrase, setSessionPassphrase } from '../hooks/driveBackupHelpers';
+import { clearDriveStateForReset, resetEverything } from './resetEverything';
 
 describe('derived sky reset', () => {
   it('removes the derived database after the dataset fence and before commit', async () => {
@@ -263,11 +266,35 @@ describe('resetEverything', () => {
       waitForHydration: () => Promise.resolve(),
       beginDatasetReset: async () => 3,
       clearSetAside: vi.fn(async () => void events.push('clear-set-aside')),
+      clearDriveState: vi.fn(async () => void events.push('clear-drive-state')),
       clearPersisted: vi.fn(async () => void events.push('clear-persisted')),
       publishDatasetReset: () => undefined,
     });
 
-    expect(events).toEqual(['clear-set-aside', 'clear-persisted']);
+    expect(events).toEqual(['clear-set-aside', 'clear-drive-state', 'clear-persisted']);
+  });
+
+  it('clearDriveStateForReset wipes almamesh-device-keys IndexedDB and in-memory passphrase', async () => {
+    vi.stubGlobal('indexedDB', new IDBFactory());
+    try {
+      await getDeviceKey();
+      setSessionPassphrase('correct horse battery staple');
+      expect((await readDeviceKeyRecords()).length).toBe(1);
+      expect(getSessionPassphrase()).not.toBeNull();
+
+      await resetEverything({
+        waitForHydration: () => Promise.resolve(),
+        beginDatasetReset: async () => 4,
+        clearDriveState: clearDriveStateForReset,
+        clearPersisted: async () => undefined,
+        publishDatasetReset: () => undefined,
+      });
+
+      expect(await readDeviceKeyRecords()).toEqual([]);
+      expect(getSessionPassphrase()).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('waits for every persisted store hydration barrier before deleting anything', async () => {

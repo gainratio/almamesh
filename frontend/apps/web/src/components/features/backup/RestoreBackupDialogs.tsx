@@ -54,6 +54,18 @@ function SafetyFailure({ restore }: RestoreBackupDialogsProps): ReactElement | n
         >
           {t('backup.safety_retry')}
         </Button>
+        {restore.safetyFailedOnDrive && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={restore.saveSafetyLocallyInstead}
+            disabled={restore.importing}
+            data-testid="backup-safety-fallback-local"
+          >
+            {t('drive.safety_save_local_instead')}
+          </Button>
+        )}
         <button
           type="button"
           onClick={restore.skipSafety}
@@ -132,6 +144,25 @@ function ConfirmDialog({ restore }: RestoreBackupDialogsProps): ReactElement {
         {restore.safetyDownloadUnverified && (
           <p role="status" className="text-sm text-accent-gold" data-testid="backup-safety-confirmation">
             {t('backup.confirm_safety_download')}
+          </p>
+        )}
+        {restore.olderThanLocal && (
+          <p data-testid="backup-older-warning" className="text-sm text-status-warning">
+            {t('drive.older_backup_warning')}
+          </p>
+        )}
+        {!empty && restore.usingDriveSafety && (
+          <p className="text-xs text-text-secondary" data-testid="backup-safety-drive-note">
+            {t('drive.safety_to_drive_note')}{' '}
+            <button
+              type="button"
+              onClick={restore.saveSafetyLocallyInstead}
+              disabled={restore.importing}
+              data-testid="backup-safety-local-instead"
+              className="font-semibold text-accent-gold underline underline-offset-2 hover:text-accent-gold-bright"
+            >
+              {t('drive.safety_save_local_instead')}
+            </button>
           </p>
         )}
         <SafetyFailure restore={restore} />

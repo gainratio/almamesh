@@ -58,6 +58,10 @@ import { SemanticMemoryStorageUnavailableError } from '@almamesh/memory';
 import { clearMemory } from './chatMemory';
 import { publishDeletionNotice } from './deletionPropagation';
 import { removeDerivedData } from './derivedDataLifecycle';
+import { resetDriveSessionPassphraseForTests } from '../hooks/driveBackupHelpers';
+import { deleteDriveDeviceRows } from './drive/credentialStore';
+import { deleteDeviceKey } from './drive/deviceKey';
+import { resetSingletonDrive } from './drive';
 
 /** Legacy browser keys removed after canonical SQLite has taken authority. */
 const INTERPRETATIONS_KEY = 'almamesh-interpretations';
@@ -120,6 +124,8 @@ export interface ResetEverythingDeps {
    * step leaves less data, never more, which is what Start fresh asked for.
    */
   clearSetAside?: () => Promise<void>;
+  /** Clears device-local Drive sign-in rows (`drive-*`) and the IndexedDB device key. */
+  clearDriveState?: () => Promise<void>;
   beginDatasetReset?: () => Promise<number>;
   /** Optional only for injected non-atomic persistence; the browser commit finalizes itself. */
   finalizeDatasetReset?: (epoch: number) => Promise<void>;
@@ -143,6 +149,13 @@ async function waitForResetStoresHydrated(): Promise<void> {
   ]);
 }
 
+export async function clearDriveStateForReset(): Promise<void> {
+  resetDriveSessionPassphraseForTests();
+  resetSingletonDrive();
+  if (supportsPortableState()) await deleteDriveDeviceRows();
+  await deleteDeviceKey();
+}
+
 const DEFAULT_DEPS: ResetEverythingDeps = {
   waitForHydration: waitForResetStoresHydrated,
   clearDerivedData: removeDerivedData,
@@ -150,6 +163,7 @@ const DEFAULT_DEPS: ResetEverythingDeps = {
   clearSetAside: async () => {
     if (supportsPortableState()) await clearSetAsideRecords();
   },
+  clearDriveState: clearDriveStateForReset,
   clearPersisted: async (epoch) => {
     if (epoch === undefined) return;
     // One SQLite batch: dataset rows, the quarantine of unreadable
@@ -205,6 +219,7 @@ export async function resetEverything(deps: ResetEverythingDeps = DEFAULT_DEPS):
     useMeshStore.getState().reset();
 
     await deps.clearSetAside?.();
+    await deps.clearDriveState?.();
     await deps.clearPersisted(epoch);
     await clearLegacyPersistedRows();
     const storage = getUsableLocalStorage();

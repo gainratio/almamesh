@@ -282,6 +282,7 @@ const LANE_ARTIFACT_LINES: readonly string[] = [
   'TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" run_suite test:e2e:time-travel "${ARTIFACTS}/time-travel" e2e/time-travel.spec.ts --project=webkit --project=iphone-webkit --project=iphone-15-webkit || status=1',
   'PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" run_suite test:e2e:portable-invariants "${ARTIFACTS}/portable-invariants" --project=webkit --project=iphone-webkit || status=1',
   'BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" run_suite test:e2e:boot-retry "${ARTIFACTS}/boot-retry" --project=webkit || status=1',
+  'DRIVE_BACKUP_E2E_BASE_URL="${BASE_URL}" run_suite test:e2e:drive-backup "${ARTIFACTS}/drive-backup" --project=webkit || status=1',
   `grep -rh "page crashed" "\${ARTIFACTS}" --include='*-browser.log' || true`,
 ]
 
@@ -759,6 +760,7 @@ exit "$status"
     portable: [
       "bun run test:e2e:portable-invariants --project=webkit --project=iphone-webkit --retries=0 --reporter=list,json --output=evidence/portable-invariants json=evidence/portable-invariants-report.json",
       "bun run test:e2e:boot-retry --project=webkit --retries=0 --reporter=list,json --output=evidence/boot-retry json=evidence/boot-retry-report.json",
+      "bun run test:e2e:drive-backup --project=webkit --retries=0 --reporter=list,json --output=evidence/drive-backup json=evidence/drive-backup-report.json",
     ],
   }
 

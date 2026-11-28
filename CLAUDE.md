@@ -302,18 +302,26 @@ JSON-mode reading body (no `max_tokens` cap), so a bad key / bad model /
 out-of-credits / rate-limited / provider-outage / unreachable endpoint is
 reported immediately (with the provider's own reason) instead of a silent no-op. PII-redacted,
 fail-closed local_only for local endpoints. The chart engine is zero-egress;
-there are exactly TWO deliberate network egresses (besides one-way bundle/app
+there are exactly THREE deliberate network egresses (besides one-way bundle/app
 delivery): (1) the optional AI calls the user opts into (the configured
-endpoint), and (2) **birthplace search** — the typed city string is sent to the
+endpoint), (2) **birthplace search** — the typed city string is sent to the
 Open-Meteo geocoding API (keyless, CORS) to resolve coordinates + IANA timezone,
 online-primary with an offline fallback to the bundled `cities.min.json` list
-(`lib/geo/onlineGeocoder.ts` + `searchCities` in `lib/geo/cityLookup.ts`). Only
-the city name leaves the device — never the birth date/time, name, or chart.
+(`lib/geo/onlineGeocoder.ts` + `searchCities` in `lib/geo/cityLookup.ts`; only
+the city name leaves the device — never the birth date/time, name, or chart),
+and (3) **cloud drive backup** — only when the user presses a drive button and
+consents, the age-sealed backup file and its neutral filename go to the user's
+own drive provider (Google Drive at launch; `https://www.googleapis.com` and
+`https://oauth2.googleapis.com` in `connect-src`). Never plaintext, never the
+passphrase, never a person name in a filename. The provider credential is stored
+encrypted in device-local SQLite (`device` namespace) and never travels in a
+backup; Owner ruling R0 permits `almamesh-device-keys` in IndexedDB solely for
+one non-extractable AES-GCM `CryptoKey` handle (`lib/drive/deviceKey.ts`).
 Privacy copy is scoped accordingly (landing/legal/mesh say "birth date, time,
 and chart stay on the device unless you turn on the optional AI"; with AI on, the
 sanitized chart's planet positions and period dates can reveal the birth date, and
-the AI disclosures say so; the privacy policy discloses the geocoder as touchpoint
-#2). Places named in chat are NOT a third egress: chat has two tools, `read_period`
+the AI disclosures say so; the privacy policy discloses the geocoder and
+encrypted cloud drive backup). Places named in chat are NOT a fourth egress: chat has two tools, `read_period`
 (`lib/readPeriod.ts`, any span up to 24 months in one call) and `travel`
 (`lib/travelTool.ts`). A place named in either resolves offline against the bundled
 city list (`lib/geo/placeLookup.ts`, lazy-loaded); the model gets only a label and an

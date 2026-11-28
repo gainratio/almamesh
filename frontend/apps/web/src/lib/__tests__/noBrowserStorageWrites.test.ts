@@ -19,20 +19,27 @@ const SOURCE_ROOTS = [
   ...readdirSync(join(FRONTEND, 'packages')).map((name) => join(FRONTEND, 'packages', name, 'src')),
 ];
 
-/** sessionStorage reload flags (loop guards for self-heal reloads). Nothing else. */
+/** sessionStorage reload/redirect loop guards across full-page navigations. Nothing else. */
 const SESSION_RELOAD_FLAG_FILES = new Set([
   'apps/web/src/components/ErrorBoundary.tsx',
   'apps/web/src/lib/lazyWithRetry.tsx',
   'apps/web/src/lib/swSelfHeal.ts',
+  'apps/web/src/lib/drive/oauthRedirect.ts',
+  'apps/web/src/lib/drive/driveSession.ts',
 ]);
 
 /**
- * The one allowed IndexedDB open: the legacy keyval EXISTENCE probe. It opens
- * with no version and aborts the upgrade when the database does not exist, so
- * nothing is created (legacyKeyval.test.ts proves it, red without the abort).
- * Needed only on browsers that cannot list databases (Firefox < 126).
+ * The one allowed IndexedDB open for legacy migration: the keyval EXISTENCE probe.
+ * It opens with no version and aborts the upgrade when the database does not exist,
+ * so nothing is created (legacyKeyval.test.ts proves it, red without the abort).
  */
 const IDB_OPEN_AND_ABORT_PROBE_FILES = new Set(['packages/store/src/legacyKeyval.ts']);
+
+/**
+ * Owner ruling R0: `almamesh-device-keys` holds ONLY one non-extractable AES-GCM
+ * CryptoKey handle (never user data, never tokens), verified in `deviceKey.test.ts`.
+ */
+const IDB_DEVICE_KEY_FILES = new Set(['apps/web/src/lib/drive/deviceKey.ts']);
 
 const IDB_KEYVAL_WRITERS = new Set(['set', 'setMany', 'update']);
 const STORAGE_GLOBALS = { localStorage: 'local', sessionStorage: 'session', indexedDB: 'idb' } as const;
@@ -105,6 +112,7 @@ function storageWriteFindings(file: string, text: string): string[] {
   const writeOn = (kind: StorageKind, what: string): void => {
     if (kind === 'session' && SESSION_RELOAD_FLAG_FILES.has(file)) return;
     if (kind === 'idb' && what === 'open' && IDB_OPEN_AND_ABORT_PROBE_FILES.has(file)) return;
+    if (kind === 'idb' && what === 'open' && IDB_DEVICE_KEY_FILES.has(file)) return;
     findings.push(`${kind}: ${what}`);
   };
 
@@ -177,7 +185,7 @@ function storageWriteFindings(file: string, text: string): string[] {
       const kind = kindOf(node.left.expression);
       if (kind === 'local' || kind === 'session') writeOn(kind, 'property assignment');
     }
-    if (ts.isStringLiteralLike(node) && node.text === 'readwrite') {
+    if (ts.isStringLiteralLike(node) && node.text === 'readwrite' && !IDB_DEVICE_KEY_FILES.has(file)) {
       findings.push('IndexedDB readwrite transaction');
     }
     if (
@@ -261,6 +269,21 @@ describe('SQLite is the only store for app data', () => {
     ).not.toEqual([]);
     expect(
       storageWriteFindings('packages/store/src/legacyKeyval.ts', "db.transaction('s', 'readwrite');"),
+    ).not.toEqual([]);
+  });
+
+  it('exempts deviceKey.ts only for its non-extractable CryptoKey IndexedDB handle (Owner ruling R0)', () => {
+    const idb = "indexedDB.open('almamesh-device-keys', 1); db.transaction('keys', 'readwrite');";
+    expect(storageWriteFindings('apps/web/src/lib/drive/deviceKey.ts', idb)).toEqual([]);
+    expect(storageWriteFindings('apps/web/src/lib/drive/other.ts', idb)).toEqual([
+      'idb: open',
+      'IndexedDB readwrite transaction',
+    ]);
+    expect(
+      storageWriteFindings('apps/web/src/lib/drive/deviceKey.ts', "localStorage.setItem('k', 'v');"),
+    ).not.toEqual([]);
+    expect(
+      storageWriteFindings('apps/web/src/lib/drive/deviceKey.ts', "sessionStorage.setItem('k', 'v');"),
     ).not.toEqual([]);
   });
 });

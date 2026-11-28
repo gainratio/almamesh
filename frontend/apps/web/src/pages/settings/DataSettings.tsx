@@ -14,7 +14,7 @@
  * same one the first-run surfaces (landing, onboarding) use. The safety copy is
  * skipped only when this browser holds nothing to protect.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   BackupCryptoError,
@@ -25,11 +25,14 @@ import { Button, Card, Input } from '../../components/ui';
 import { buildBackupExport, exportBackupFilename } from '../../lib/backupService';
 import { openBackupSaveTarget, type BackupSaveTarget } from '../../lib/backupFile';
 import { repairNoteLines } from '../../lib/dataRepairNotice';
+import { type BackupDrive, createDriveForCurrentOrigin, createDriveSafetyTarget } from '../../lib/drive';
 import { useBackupRestore } from '../../hooks/useBackupRestore';
+import { useDriveBackup } from '../../hooks/useDriveBackup';
 import { DataRepairNotice } from '../../components/features/settings/DataRepairNotice';
 import { SetAsideRecords } from '../../components/features/settings/SetAsideRecords';
 import { RestoreBackupDialogs } from '../../components/features/backup/RestoreBackupDialogs';
 import { ConfirmPasswordField } from '../../components/features/backup/ConfirmPasswordField';
+import { DriveBackupPanel } from '../../components/features/backup/drive/DriveBackupPanel';
 
 function reasonOf(error: unknown): string {
   return error instanceof Error && error.message ? error.message : String(error);
@@ -47,10 +50,26 @@ function exportErrorKey(error: unknown): string | null {
   return null;
 }
 
-export function DataSettingsPanel() {
+export function DataSettingsPanel({ driveOverride }: { readonly driveOverride?: BackupDrive | null } = {}) {
   const { t } = useTranslation('settings');
+  const drive = useMemo(
+    () => (driveOverride !== undefined ? driveOverride : createDriveForCurrentOrigin()),
+    [driveOverride],
+  );
+  const driveSafetyReadyRef = useRef(false);
   // The one restore flow, shared with the first-run surfaces.
-  const restore = useBackupRestore();
+  const restore = useBackupRestore({
+    safetyTarget: () =>
+      drive !== null && driveSafetyReadyRef.current && navigator.onLine
+        ? createDriveSafetyTarget(drive)
+        : null,
+  });
+  const driveController = useDriveBackup({ drive, restore, returnTo: '/settings/data' });
+  driveSafetyReadyRef.current =
+    driveController.connected &&
+    driveController.hasFreshToken &&
+    !driveController.needsReconnect &&
+    !driveController.inMemoryOnly;
 
   // Export
   const [password, setPassword] = useState('');
@@ -173,6 +192,9 @@ export function DataSettingsPanel() {
           )}
         </div>
       )}
+
+      {/* Cloud Drive Backup (Google Drive when enabled for this origin) */}
+      <DriveBackupPanel controller={driveController} />
 
       {/* Export */}
       <Card title={t('backup.export_heading')}>

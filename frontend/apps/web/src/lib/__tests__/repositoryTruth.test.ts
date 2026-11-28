@@ -129,6 +129,7 @@ describe('repository truth', () => {
       ['frontend/packages/llm/src/client.ts', '/credits', 'credit check'],
       ['frontend/apps/web/src/components/features/feedback/FeedbackWidget.tsx', 'challenges.cloudflare.com', 'Cloudflare Turnstile'],
       ['frontend/apps/web/src/lib/submitFeedback.ts', '/api/feedback', '/api/feedback'],
+      ['frontend/apps/web/src/lib/drive/googleDrive.ts', 'www.googleapis.com', 'Google Drive'],
     ] as const;
     for (const [path, implementationNeedle, documentationNeedle] of evidence) {
       expect(readRoot(path), path).toContain(implementationNeedle);

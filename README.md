@@ -235,6 +235,7 @@ complete browser network inventory is:
 | OpenRouter model list or credit check in Settings | OpenRouter | API request plus the configured key; the credit response concerns that provider account | Chart, birth data, chat, life events |
 | Opening feedback when Turnstile is configured | Cloudflare Turnstile | Normal anti-bot request metadata and a challenge token | Chart and birth data |
 | Sending feedback | Same-origin `/api/feedback` | Page identifier, thumbs sentiment, optional message as written, Turnstile token | Chart and birth data unless the user puts them in the optional message |
+| Back up or restore with a cloud drive | Google Drive (your account) | The passphrase-sealed backup file, a filename with time, browser, OS and a random device code, normal request metadata | Plaintext data, your passphrase, names, birth details |
 
 `local_only` fail-closes if a configured AI endpoint is not local. Production
 diagnostics emit allowlisted codes only—never raw prompts, narratives, provider
@@ -243,8 +244,10 @@ errors, city text, chart data, or profile names.
 **The browser enforces that table.** This inventory is not a promise you have to
 take on trust: the deployed `Content-Security-Policy` (see
 `frontend/apps/web/public/_headers`) restricts `connect-src` to a closed
-allowlist—this origin, `openrouter.ai`, `geocoding-api.open-meteo.com`, and
-loopback (`localhost` / `127.0.0.1`, any port, for a local model). Any other
+allowlist—this origin, `openrouter.ai`, `geocoding-api.open-meteo.com`,
+`www.googleapis.com` and `oauth2.googleapis.com` (opt-in encrypted Google Drive
+backup and token revocation), and loopback (`localhost` / `127.0.0.1`, any port,
+for a local model). Any other
 destination is refused by the browser itself, so code that tried to send your
 data somewhere else could not, even if it wanted to. A consequence worth knowing:
 a custom AI endpoint on a **non-loopback** address—a LAN machine like

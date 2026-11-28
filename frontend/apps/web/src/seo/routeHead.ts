@@ -131,7 +131,7 @@ export const PUBLIC_ROUTE_HEADS: readonly RouteHead[] = [
   route(
     '/privacy',
     'Privacy Policy — AlmaMesh',
-    'AlmaMesh computes your chart in your browser. Only birthplace search and the optional AI touch the network, and AI chart data can reveal your birth date.',
+    'Charts run in your browser. Only city search, optional encrypted Drive backup, and optional AI touch the network; AI data can reveal your birth date.',
   ),
   route(
     '/terms',
@@ -189,6 +189,7 @@ export const PRIVATE_ROUTE_PREFIXES: readonly string[] = [
   '/rectify',
   '/settings',
   '/life',
+  '/oauth',
 ];
 
 export function getRouteHead(path: string): RouteHead | undefined {

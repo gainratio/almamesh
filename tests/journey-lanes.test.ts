@@ -92,8 +92,9 @@ describe("lane wiring in the Dagger module", () => {
     expect(evidence).not.toMatch(/"[abc]"/)
   })
 
-  test("the journey list is pinned: 14 steps including the onboarding AI step", () => {
-    expect(JOURNEY_STEPS.length).toBe(14)
+  test("the journey list is pinned: 15 steps including onboarding AI and Google Drive backup", () => {
+    expect(JOURNEY_STEPS.length).toBe(15)
     expect(JOURNEY_STEPS.some((s) => s.command.includes("test:e2e:onboarding-ai"))).toBe(true)
+    expect(JOURNEY_STEPS.some((s) => s.command.includes("test:e2e:drive-backup"))).toBe(true)
   })
 })
