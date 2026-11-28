@@ -535,6 +535,41 @@ const ES_CONFIDENCE = { high: "coinciden casi todos los indicadores", medium: "c
 const PT_CONFIDENCE = { high: "quase todos os indicadores concordam", medium: "alguns indicadores concordam", low: "poucos indicadores concordam" } as const;
 const HI_CONFIDENCE = { high: "अधिकांश संकेतक सहमत हैं", medium: "कुछ संकेतक सहमत हैं", low: "कम संकेतक सहमत हैं" } as const;
 
+// Plain everyday life-area glosses for houses 1..12, shown beside house numbers in layman mode.
+const HOUSE_AREAS: Readonly<Record<Language, readonly string[]>> = {
+  en: ["self-direction", "money", "communication", "home life", "creativity", "daily routines", "partnerships", "shared finances", "long-term growth", "career", "friendships", "rest"],
+  es: ["rumbo personal", "dinero", "comunicación", "hogar", "creatividad", "rutina diaria", "pareja", "finanzas compartidas", "aprendizaje", "carrera", "amistades", "descanso"],
+  pt: ["direção pessoal", "dinheiro", "comunicação", "lar", "criatividade", "rotina diária", "parcerias", "finanças compartilhadas", "aprendizado", "carreira", "amizades", "descanso"],
+  hi: ["व्यक्तिगत दिशा", "धन", "संवाद", "घर-परिवार", "रचनात्मकता", "दैनिक दिनचर्या", "साझेदारी", "साझा वित्त", "अध्ययन", "करियर", "मित्रता", "विश्राम"],
+};
+
+function houseAreaGloss(language: Language, houses: readonly number[], list: (items: string[]) => string): string {
+  const areas = houses.map((h) => HOUSE_AREAS[language][h - 1]).filter((v): v is string => Boolean(v));
+  return areas.length > 0 ? ` (${list(areas)})` : "";
+}
+
+const SADE_SATI_GLOSS: Readonly<Record<Language, string>> = {
+  en: "a test of emotional steadiness",
+  es: "etapa de madurez emocional",
+  pt: "etapa de equilíbrio emocional",
+  hi: "मानसिक धैर्य का दौर",
+};
+
+const SPECIAL_MOON_TAG_GLOSS: Readonly<Record<string, Readonly<Record<Language, string>>>> = {
+  kantaka_shani: {
+    en: "Saturn pressure on home or work",
+    es: "presión de Saturno en hogar o trabajo",
+    pt: "pressão de Saturno no lar ou trabalho",
+    hi: "घर या काम पर शनि का दबाव",
+  },
+  ashtama_shani: {
+    en: "Saturn stretch asking for extra care",
+    es: "tramo de Saturno que pide cautela",
+    pt: "fase de Saturno que pede cautela",
+    hi: "सावधानी माँगने वाला शनि का दौर",
+  },
+};
+
 const LABELS: Readonly<Record<Language, LanguageLabels>> = {
   en: {
     layman: { chapters: "Your chapters", moon: "The Moon's sky", themes: "What it means", windows: "Dates to watch" },
@@ -549,7 +584,7 @@ const LABELS: Readonly<Record<Language, LanguageLabels>> = {
       pratyantar: "is the short chapter inside that (pratyantar dasha)",
     },
     lordOf: "lord of",
-    rules: (graha, houses, list) => `${graha} rules your ${list(houses.map(ordinal))} ${houses.length > 1 ? "houses" : "house"}.`,
+    rules: (graha, houses, list) => `${graha} rules your ${list(houses.map(ordinal))} ${houses.length > 1 ? "houses" : "house"}${houseAreaGloss("en", houses, list)}.`,
     direction: { supportive: "supportive", mixed: "mixed", challenging: "challenging" },
     confidence: (level) => EN_CONFIDENCE[level],
     phases: ["first", "second", "third"],
@@ -578,7 +613,7 @@ const LABELS: Readonly<Record<Language, LanguageLabels>> = {
       pratyantar: "es el capítulo corto dentro de ese (pratyantar dasha)",
     },
     lordOf: "señor de",
-    rules: (graha, houses, list) => `${graha} rige ${houses.length > 1 ? "tus casas" : "tu casa"} ${list(houses.map(String))}.`,
+    rules: (graha, houses, list) => `${graha} rige ${houses.length > 1 ? "tus casas" : "tu casa"} ${list(houses.map(String))}${houseAreaGloss("es", houses, list)}.`,
     direction: { supportive: "favorable", mixed: "mixto", challenging: "difícil" },
     confidence: (level) => ES_CONFIDENCE[level],
     phases: ["primera", "segunda", "tercera"],
@@ -607,7 +642,7 @@ const LABELS: Readonly<Record<Language, LanguageLabels>> = {
       pratyantar: "é o capítulo curto dentro desse (pratyantar dasha)",
     },
     lordOf: "senhor de",
-    rules: (graha, houses, list) => `${graha} rege ${houses.length > 1 ? "suas casas" : "sua casa"} ${list(houses.map(String))}.`,
+    rules: (graha, houses, list) => `${graha} rege ${houses.length > 1 ? "suas casas" : "sua casa"} ${list(houses.map(String))}${houseAreaGloss("pt", houses, list)}.`,
     direction: { supportive: "favorável", mixed: "misto", challenging: "desafiador" },
     confidence: (level) => PT_CONFIDENCE[level],
     phases: ["primeira", "segunda", "terceira"],
@@ -636,7 +671,7 @@ const LABELS: Readonly<Record<Language, LanguageLabels>> = {
       pratyantar: "उसके भीतर संक्षिप्त अध्याय (प्रत्यंतर्दशा) है",
     },
     lordOf: "स्वामी:",
-    rules: (graha, houses, list) => `${graha} ${houses.length > 1 ? "आपके भाव" : "आपके भाव"} ${list(houses.map(String))} का स्वामी है।`,
+    rules: (graha, houses, list) => `${graha} आपके भाव ${list(houses.map(String))}${houseAreaGloss("hi", houses, list)} का स्वामी है।`,
     direction: { supportive: "सहायक", mixed: "मिश्रित", challenging: "चुनौतीपूर्ण" },
     confidence: (level) => HI_CONFIDENCE[level],
     phases: ["प्रथम", "द्वितीय", "तृतीय"],
@@ -684,6 +719,19 @@ export function moonTagLabel(tag: string, language: Language): string {
   const fromMoon = /^([a-z]+)_from_moon_(\d+)$/.exec(tag);
   if (fromMoon?.[1] && isGraha(fromMoon[1])) return L.fromMoon(L.grahas[fromMoon[1]], Number(fromMoon[2]));
   return tag.split("_").map((word) => capitalize(tagWord(word, L))).join(" ");
+}
+
+/** Plain-language Moon tag label for layman mode: keeps the citable indicator and adds everyday meaning. */
+export function laymanMoonTagLabel(tag: string, language: Language): string {
+  const base = moonTagLabel(tag, language);
+  if (/^sade_sati_phase_[123]$/.test(tag)) return `${base} (${SADE_SATI_GLOSS[language]})`;
+  const fromMoon = /^([a-z]+)_from_moon_(\d+)$/.exec(tag);
+  const house = Number(fromMoon?.[2]);
+  if (fromMoon?.[1] && isGraha(fromMoon[1]) && house >= 1 && house <= 12) {
+    return `${base}${houseAreaGloss(language, [house], (items) => joinList(items, LABELS[language].and))}`;
+  }
+  const special = SPECIAL_MOON_TAG_GLOSS[tag]?.[language];
+  return special ? `${base} (${special})` : base;
 }
 
 /** A dated fact before it is phrased: what the engine says happens that day. */
@@ -740,10 +788,11 @@ function dashaLine(level: DashaLevel, line: DashaLine, o: RenderOptions): string
 }
 
 /** A Moon line; a meaning that only repeats the tag's name (a line filled from the reading) is not said twice. */
-function moonLineText(line: MoonLine, language: Language): string {
-  const label = moonTagLabel(line.tag, language);
+function moonLineText(line: MoonLine, o: RenderOptions): string {
+  const base = moonTagLabel(line.tag, o.language);
+  const label = o.voice === "layman" ? laymanMoonTagLabel(line.tag, o.language) : base;
   const meaning = line.meaning.trim();
-  return meaning && plain(meaning) !== plain(label) ? `- **${label}**: ${meaning}` : `- **${label}**`;
+  return meaning && plain(meaning) !== plain(base) && plain(meaning) !== plain(label) ? `- **${label}**: ${meaning}` : `- **${label}**`;
 }
 
 function themeLineText(theme: ThemeLine, language: Language): string {
@@ -813,7 +862,7 @@ function periodSections(v: Value, done: Done, o: RenderOptions): Array<() => Sec
     () => headingSection(v, done, o),
     () => proseSection("opening", v, done),
     () => dashasSection(v, done, o),
-    () => listSection("moon", moonLineSchema, (m) => moonLineText(m, o.language), v, done, o),
+    () => listSection("moon", moonLineSchema, (m) => moonLineText(m, o), v, done, o),
     () => listSection("themes", themeLineSchema, (t) => themeLineText(t, o.language), v, done, o),
     () => listSection("windows", windowLineSchema, (w) => `- **${renderDate(w.date, o.language)}**: ${w.what.trim()}`, v, done, o),
     () => proseSection("advice", v, done),

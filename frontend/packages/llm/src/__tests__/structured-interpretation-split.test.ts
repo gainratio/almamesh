@@ -27,7 +27,7 @@ const config: ProviderConfig = {
 
 const payloads: Record<InterpretationSectionKey, unknown> = {
   core: { summary: "Natal summary", strengths: [], challenges: [], life_themes: [] },
-  yoga: { integrated_yoga_narrative: { layman: "Yoga", technical: "Yoga" } },
+  yoga: { integrated_yoga_narrative: { layman: "Life journey", technical: "Yoga" } },
   guidance1: {},
   guidance2: {},
   remedial: { remedial_measures: { layman: "Rest", technical: "Rest" } },
@@ -107,7 +107,7 @@ describe.each(["upcoming_periods", "current_sky"] as const)("%s required output"
     ] }],
   ];
 
-  it.each(invalidResponses)("reports %s as a section failure instead of a successful hidden section", async (_label, payload) => {
+  it.each(invalidResponses)("reports %s as a section failure instead of a successful hidden section", async (label, payload) => {
     const { events, seen } = await timelineWithResponse(section, payload);
     expect(events).toContainEqual(expect.objectContaining({ type: "error", section }));
     expect(events).not.toContainEqual({ type: "section_complete", section });
@@ -116,7 +116,7 @@ describe.each(["upcoming_periods", "current_sky"] as const)("%s required output"
     expect(complete.timeline[section]).toEqual([]);
     const other = section === "upcoming_periods" ? "current_sky" : "upcoming_periods";
     expect(complete.timeline[other]).toHaveLength(1);
-    expect(seen).toHaveLength(2);
+    expect(seen).toHaveLength(label === "layman voice removed by jargon guard" ? 3 : 2);
   });
 
   it("rejects an empty array when the engine supplied facts for the requested section", async () => {
