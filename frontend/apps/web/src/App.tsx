@@ -17,6 +17,7 @@ import { useChatScopeSync } from './hooks/useChatScopeSync'
 import { useLanguageSync } from './hooks/useLanguageSync'
 import { useRegenerationSubscription } from './hooks/useRegenerationSubscription'
 import { useChartReanchor } from './hooks/useChartReanchor'
+import OAuthCallbackPage from './pages/OAuthCallback'
 
 /** Wrap a page element in the animated-page transition wrapper. */
 function page(element: ReactNode): ReactNode {
@@ -219,6 +220,7 @@ function App() {
           <Route path="/dasha" element={<DashaPage />} />
           <Route path="/kundli-matching" element={<KundliMatchingPage />} />
           <Route path="/muhurta" element={<MuhurtaPage />} />
+          <Route path="/oauth/callback" element={<StorageGate><OAuthCallbackPage /></StorageGate>} />
           <Route path="*" element={<AppRoutes />} />
         </Routes>
       </Suspense>

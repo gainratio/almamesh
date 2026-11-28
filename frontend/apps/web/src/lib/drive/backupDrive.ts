@@ -57,6 +57,7 @@ export type DriveErrorKind =
   | 'quota_exceeded'
   | 'rate_limited'
   | 'not_found'
+  | 'too_large'
   | 'not_sealed'
   | 'bad_name'
   | 'provider_error';

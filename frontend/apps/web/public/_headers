@@ -44,6 +44,12 @@
 #                                       network inventory and the header comment
 #                                       in src/lib/geo/onlineGeocoder.ts). Only a
 #                                       typed city string leaves; never birth data.
+#   https://www.googleapis.com          opt-in encrypted Google Drive backup
+#                                       (drive.file scope only; age-sealed
+#                                       ciphertext + neutral filename, verified by
+#                                       driveEgress.test.ts).
+#   https://oauth2.googleapis.com       Google OAuth 2.0 token revocation on
+#                                       Disconnect (POST /revoke).
 #   http://localhost:*  http://127.0.0.1:*
 #                                       LOOPBACK ONLY = still on-device. Any port,
 #                                       because a local OpenAI-compatible server is
@@ -67,7 +73,7 @@
 # The allowlist is pinned by src/lib/__tests__/securityHeaders.test.ts.
 /*
   ! Access-Control-Allow-Origin
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://openrouter.ai https://geocoding-api.open-meteo.com http://localhost:* http://127.0.0.1:*; frame-src 'self' https://challenges.cloudflare.com; manifest-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://challenges.cloudflare.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://openrouter.ai https://geocoding-api.open-meteo.com https://www.googleapis.com https://oauth2.googleapis.com http://localhost:* http://127.0.0.1:*; frame-src 'self' https://challenges.cloudflare.com; manifest-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests
   Strict-Transport-Security: max-age=63072000; includeSubDomains
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Embedder-Policy: require-corp

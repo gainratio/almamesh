@@ -21,5 +21,6 @@
 /settings/ai / 200
 /settings/preferences / 200
 /settings/data / 200
+/oauth/callback / 200
 /mesh/:memberId / 200
 /rectify/:profileId / 200

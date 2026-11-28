@@ -13,7 +13,7 @@
 
 ## Privacy
 
-Birth details and computed charts remain in the browser. The city search can use Open-Meteo with an offline fallback, and optional AI sends only user-approved context to the endpoint the user configures.
+Birth details and computed charts remain in the browser. The city search can use Open-Meteo with an offline fallback, optional encrypted cloud drive backup uploads only passphrase-sealed age ciphertext when initiated by the user, and optional AI sends only user-approved context to the endpoint the user configures.
 
 - Privacy: https://almamesh.com/privacy
 - Data deletion: https://almamesh.com/data-deletion

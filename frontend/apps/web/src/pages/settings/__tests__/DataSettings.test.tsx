@@ -60,7 +60,8 @@ vi.mock('../../../lib/backupService', () => ({
 
 // The picker opens first (inside the click) and the bytes are written later;
 // `saveBackupFile` stands in for "the user picked a place, then we wrote it".
-vi.mock('../../../lib/backupFile', () => ({
+vi.mock('../../../lib/backupFile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../lib/backupFile')>()),
   saveBackupFile: vi.fn(),
   pickBackupFile: vi.fn(),
   openBackupSaveTarget: vi.fn(),

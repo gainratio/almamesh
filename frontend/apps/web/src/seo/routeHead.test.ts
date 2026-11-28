@@ -137,6 +137,7 @@ describe('routeHead — the single per-route SEO source', () => {
         '/rectify',
         '/settings',
         '/life',
+        '/oauth',
       ].sort(),
     );
   });

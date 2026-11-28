@@ -293,7 +293,7 @@ TT_MEMORY_PHASE=final TT_MEMORY_GRANULARITY=day TT_MEMORY_REPORT_ONLY=0 TT_WEBKI
 }
 
 start_functional_preview() {
-VITE_API_URL= VITE_EXIT_GATE_HOOKS=1 ./node_modules/.bin/vite build --outDir dist-webkit
+VITE_API_URL= VITE_EXIT_GATE_HOOKS=1 VITE_DRIVE_BACKUP=1 VITE_GOOGLE_CLIENT_ID_OVERRIDE=e2e-google-client-id.apps.googleusercontent.com ./node_modules/.bin/vite build --outDir dist-webkit
 VITE_API_URL= ./node_modules/.bin/vite preview --outDir dist-webkit --host 127.0.0.1 --port "${PORT}" --strictPort &
 register_producer "$!"
 wait_for_preview "${BASE_URL}"
@@ -318,6 +318,7 @@ TIME_TRAVEL_E2E_BASE_URL="${BASE_URL}" run_suite test:e2e:time-travel "${ARTIFAC
 run_portable_lane() {
 PORTABLE_INVARIANTS_E2E_BASE_URL="${BASE_URL}" run_suite test:e2e:portable-invariants "${ARTIFACTS}/portable-invariants" --project=webkit --project=iphone-webkit || status=1
 BOOT_RETRY_E2E_BASE_URL="${BASE_URL}" run_suite test:e2e:boot-retry "${ARTIFACTS}/boot-retry" --project=webkit || status=1
+DRIVE_BACKUP_E2E_BASE_URL="${BASE_URL}" run_suite test:e2e:drive-backup "${ARTIFACTS}/drive-backup" --project=webkit || status=1
 }
 
 if [[ "${MODE}" == memory || "${MODE}" == all ]]; then run_memory_lane; fi

@@ -230,6 +230,7 @@ const ENGINE_FREE_SPLASH_PATHS = new Set([
   '/dasha',
   '/kundli-matching',
   '/muhurta',
+  '/oauth/callback',
 ])
 
 /** The marketing splash and SEO landing pages: always engine-free; `/` only before a chart exists. */

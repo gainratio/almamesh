@@ -11,6 +11,7 @@ Disallow: /mesh
 Disallow: /rectify
 Disallow: /settings
 Disallow: /life
+Disallow: /oauth
 
 # AI crawlers: deliberately allowed everything (training/answering opt-in for
 # an open-source project). The private routes above are empty shells anyway.

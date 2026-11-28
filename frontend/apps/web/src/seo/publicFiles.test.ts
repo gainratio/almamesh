@@ -39,6 +39,7 @@ const appShellRoutes = [
   '/settings/ai',
   '/settings/preferences',
   '/settings/data',
+  '/oauth/callback',
 ] as const;
 
 const CALCULATOR_SLUGS = [
@@ -262,6 +263,8 @@ describe('Cloudflare Pages security headers', () => {
       "'self'", //                              own origin: engine assets, /api/feedback
       'https://openrouter.ai', //               opt-in BYO-key cloud LLM
       'https://geocoding-api.open-meteo.com', // declared city-typeahead egress
+      'https://www.googleapis.com', //          opt-in age-sealed Google Drive backup
+      'https://oauth2.googleapis.com', //       Google OAuth token revocation on disconnect
       'http://localhost:*', //                  loopback LLM, any port (still on-device)
       'http://127.0.0.1:*', //                  same, explicit IPv4 form
     ];

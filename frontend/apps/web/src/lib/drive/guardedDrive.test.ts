@@ -7,22 +7,28 @@ import { createFakeDrive } from './testing/fakeDrive';
 import { sealedFixtureBytes } from './testing/sealedFixture';
 
 const NAME = backupNameOf('almamesh-backup-2026-10-10T18-04-05-123Z-chrome-macos-7f3a2c.almamesh');
+const OTHER_DEVICE_NAME = backupNameOf(
+  'almamesh-backup-2026-10-10T19-04-05-123Z-safari-ios-aaaaaa.almamesh',
+);
 const AGE = await sealedFixtureBytes();
+const ownCode = async () => '7f3a2c';
 
-runBackupDriveContract('guarded fake drive', async () => guardedDrive(createFakeDrive(), () => true));
+runBackupDriveContract('guarded fake drive', async () =>
+  guardedDrive(createFakeDrive(), () => true, ownCode),
+);
 
 describe('guardedDrive', () => {
   it('passes isConnected through to the adapter', async () => {
     const inner = createFakeDrive();
     const isConnected = vi.spyOn(inner, 'isConnected').mockResolvedValue(false);
-    expect(await guardedDrive(inner, () => true).isConnected()).toBe(false);
+    expect(await guardedDrive(inner, () => true, ownCode).isConnected()).toBe(false);
     expect(isConnected).toHaveBeenCalledOnce();
   });
 
   it('passes disconnect through to the adapter', async () => {
     const inner = createFakeDrive();
     const disconnect = vi.spyOn(inner, 'disconnect');
-    await guardedDrive(inner, () => true).disconnect();
+    await guardedDrive(inner, () => true, ownCode).disconnect();
     expect(disconnect).toHaveBeenCalledOnce();
   });
 
@@ -30,7 +36,9 @@ describe('guardedDrive', () => {
     const inner = createFakeDrive();
     const upload = vi.spyOn(inner, 'upload');
     const forged = { bytes: new TextEncoder().encode('SQLite format 3\0') } as unknown as SealedBackup;
-    await expect(guardedDrive(inner).upload(NAME, forged)).rejects.toMatchObject({ kind: 'not_sealed' });
+    await expect(guardedDrive(inner, () => true, ownCode).upload(NAME, forged)).rejects.toMatchObject({
+      kind: 'not_sealed',
+    });
     expect(upload).not.toHaveBeenCalled();
   });
 
@@ -38,17 +46,18 @@ describe('guardedDrive', () => {
     const inner = createFakeDrive();
     const upload = vi.spyOn(inner, 'upload');
     const bad = { value: 'Priya-backup.almamesh' } as never;
-    await expect(guardedDrive(inner).upload(bad, { bytes: AGE } as SealedBackup)).rejects.toMatchObject({
-      kind: 'bad_name',
-    });
+    await expect(
+      guardedDrive(inner, () => true, ownCode).upload(bad, { bytes: AGE } as SealedBackup),
+    ).rejects.toMatchObject({ kind: 'bad_name' });
     expect(upload).not.toHaveBeenCalled();
   });
 
   it('drops entries whose names do not parse', async () => {
     const inner = createFakeDrive();
     inner.files.set('x', { name: 'Copy of something.almamesh', bytes: AGE, trashed: false });
-    await guardedDrive(inner).upload(NAME, { bytes: AGE } as SealedBackup);
-    expect((await guardedDrive(inner).list()).map((e) => e.name.value)).toEqual([NAME.value]);
+    const guarded = guardedDrive(inner, () => true, ownCode);
+    await guarded.upload(NAME, { bytes: AGE } as SealedBackup);
+    expect((await guarded.list()).map((e) => e.name.value)).toEqual([NAME.value]);
   });
 
   it('reports meta from the name, not from a lying adapter', async () => {
@@ -58,7 +67,7 @@ describe('guardedDrive', () => {
       ...inner,
       list: async () => [{ ...real, meta: { ...real.meta, deviceCode: 'bbbbbb', browser: 'firefox' } }],
     };
-    const [entry] = await guardedDrive(lying).list();
+    const [entry] = await guardedDrive(lying, () => true, ownCode).list();
     expect(entry?.meta.deviceCode).toBe('7f3a2c');
     expect(entry?.meta.browser).toBe('chrome');
   });
@@ -72,7 +81,9 @@ describe('guardedDrive', () => {
         return { ...real, meta: { ...real.meta, deviceCode: 'bbbbbb' } };
       },
     };
-    const entry = await guardedDrive(lying).upload(NAME, { bytes: AGE } as SealedBackup);
+    const entry = await guardedDrive(lying, () => true, ownCode).upload(NAME, {
+      bytes: AGE,
+    } as SealedBackup);
     expect(entry.meta.deviceCode).toBe('7f3a2c');
   });
 
@@ -85,9 +96,27 @@ describe('guardedDrive', () => {
         return { ...real, name: { value: 'Copy of x.almamesh' } as typeof real.name };
       },
     };
-    await expect(guardedDrive(bad).upload(NAME, { bytes: AGE } as SealedBackup)).rejects.toMatchObject({
-      kind: 'provider_error',
-    });
+    await expect(
+      guardedDrive(bad, () => true, ownCode).upload(NAME, { bytes: AGE } as SealedBackup),
+    ).rejects.toMatchObject({ kind: 'provider_error' });
+  });
+
+  it('refuses remove() for an unseen id or another device backup without calling the adapter', async () => {
+    const inner = createFakeDrive();
+    const other = await inner.upload(OTHER_DEVICE_NAME, { bytes: AGE } as SealedBackup);
+    const own = await inner.upload(NAME, { bytes: AGE } as SealedBackup);
+    const removeSpy = vi.spyOn(inner, 'remove');
+    const guarded = guardedDrive(inner, () => true, ownCode);
+
+    await expect(guarded.remove(own.id)).rejects.toMatchObject({ kind: 'not_found' });
+    expect(removeSpy).not.toHaveBeenCalled();
+
+    await guarded.list();
+    await expect(guarded.remove(other.id)).rejects.toMatchObject({ kind: 'not_found' });
+    expect(removeSpy).not.toHaveBeenCalled();
+
+    await guarded.remove(own.id);
+    expect(removeSpy).toHaveBeenCalledExactlyOnceWith(own.id);
   });
 
   it.each(['connect', 'list', 'upload', 'download', 'remove'] as const)(
@@ -95,7 +124,7 @@ describe('guardedDrive', () => {
     async (method) => {
       const inner = createFakeDrive();
       const spy = vi.spyOn(inner, method);
-      const guarded = guardedDrive(inner, () => false);
+      const guarded = guardedDrive(inner, () => false, ownCode);
       const calls = {
         connect: () => guarded.connect('/'),
         list: () => guarded.list(),

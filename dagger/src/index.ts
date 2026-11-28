@@ -489,7 +489,15 @@ exec ${inline.join(" ")}`,
     browsers = ["chromium", "webkit"],
   ): Container {
     let container = this.browserBase(browsers)
-    if (hooks) container = container.withEnvVariable("VITE_EXIT_GATE_HOOKS", "1")
+    if (hooks) {
+      container = container
+        .withEnvVariable("VITE_EXIT_GATE_HOOKS", "1")
+        .withEnvVariable("VITE_DRIVE_BACKUP", "1")
+        .withEnvVariable(
+          "VITE_GOOGLE_CLIENT_ID_OVERRIDE",
+          "e2e-google-client-id.apps.googleusercontent.com",
+        )
+    }
     return container.withExec([
       "./node_modules/.bin/vite",
       "build",
@@ -533,6 +541,7 @@ exec ${inline.join(" ")}`,
           "frontend/apps/web/playwright.time-travel.config.ts",
           "frontend/apps/web/playwright.portable-invariants.config.ts",
           "frontend/apps/web/playwright.boot-retry.config.ts",
+          "frontend/apps/web/playwright.drive-backup.config.ts",
           // The AI panel egress contract reads its config and spec.
           "frontend/apps/web/playwright.ai-setup-panel.egress.config.ts",
           "frontend/apps/web/e2e/ai-setup-panel.egress.spec.ts",

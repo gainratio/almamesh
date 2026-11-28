@@ -27,6 +27,12 @@ function memoryRows(): DeviceRows & { map: Map<string, string> } {
     write: async (key, value) => {
       map.set(key, value);
     },
+    insertIfAbsent: async (key, value) => {
+      const existing = map.get(key);
+      if (existing !== undefined) return existing;
+      map.set(key, value);
+      return value;
+    },
     remove: async (keys) => {
       keys.forEach((key) => map.delete(key));
     },
@@ -53,6 +59,19 @@ describe('getDeviceCode', () => {
     const code = await getDeviceCode(rows);
     expect(code).toMatch(/^[0-9a-f]{6}$/);
     expect(rows.map.get('device-code')).toBe(code);
+  });
+
+  it('converges on a single 6-hex code when two callers race on an empty repository', async () => {
+    const sqlite = new PortableMemoryStore();
+    const repository = new PortableStateRepository(sqlite);
+    setPortableStateRepositoryForTests(repository);
+    try {
+      const [a, b] = await Promise.all([getDeviceCode(), getDeviceCode()]);
+      expect(a).toMatch(/^[0-9a-f]{6}$/);
+      expect(b).toBe(a);
+    } finally {
+      setPortableStateRepositoryForTests(undefined);
+    }
   });
 });
 

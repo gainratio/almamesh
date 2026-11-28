@@ -35,6 +35,16 @@ describe('cspFromHeadersFile', () => {
     // we only assert the parser lifted a real, closed connect-src.)
     expect(csp).toContain("connect-src 'self' https://openrouter.ai");
     expect(csp).not.toContain('\n');
+    const connectSrc = csp.match(/connect-src ([^;]+)/)?.[1]?.trim().split(/\s+/);
+    expect(connectSrc).toEqual([
+      "'self'",
+      'https://openrouter.ai',
+      'https://geocoding-api.open-meteo.com',
+      'https://www.googleapis.com',
+      'https://oauth2.googleapis.com',
+      'http://localhost:*',
+      'http://127.0.0.1:*',
+    ]);
   });
 
   it('ignores detach markers and unrelated headers inside the catch-all block', () => {

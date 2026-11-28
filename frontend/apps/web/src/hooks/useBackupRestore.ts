@@ -43,7 +43,9 @@ import {
   type BackupSaveTarget,
 } from '../lib/backupFile';
 import { adoptRestoredDatasetInPlace } from '../lib/profileDataLifecycle';
+import { DriveError } from '../lib/drive';
 import { suppressNextServiceWorkerHeal } from '../lib/swSelfHeal';
+import { mapDriveFailure } from './driveBackupHelpers';
 
 /** True when a password may seal a NEW file (the safety copy): the export rule. */
 function canSealWith(password: string): boolean {
@@ -55,6 +57,12 @@ export interface BackupRestoreOptions {
   readonly afterRestoreHref?: string;
   /** In-app navigation to `afterRestoreHref` when a page load would erase the restore (SQLite in memory). */
   readonly navigateInApp?: (href: string) => void;
+  /** Optional cloud-drive safety-copy target; user can switch to local file download on confirm. */
+  readonly safetyTarget?: () => BackupSaveTarget | null;
+}
+
+export interface StageContentMeta {
+  readonly olderThanLocal?: boolean;
 }
 
 export interface BackupRestore {
@@ -62,6 +70,7 @@ export interface BackupRestore {
   readonly error: string | null;
   clearMessages(): void;
   chooseFile(): Promise<void>;
+  stageContent(content: BackupFileContent, passphrase?: string, meta?: StageContentMeta): Promise<void>;
   /** Encrypted backup awaiting its password. */
   readonly promptOpen: boolean;
   readonly promptPassphrase: string;
@@ -75,6 +84,13 @@ export interface BackupRestore {
   readonly importing: boolean;
   /** False when this browser holds nothing a restore could destroy. */
   readonly needsSafetyCopy: boolean;
+  /** True when the staged backup is older than this device's latest backup. */
+  readonly olderThanLocal: boolean;
+  /** True when the pre-restore safety copy will go to the connected cloud drive unless switched. */
+  readonly usingDriveSafety: boolean;
+  /** True when the failed safety attempt was a cloud-drive upload, so the user can fall back to local download. */
+  readonly safetyFailedOnDrive: boolean;
+  saveSafetyLocallyInstead(): void;
   /** The staged file had no reusable password, so the safety copy needs one. */
   readonly needsSafetyPassphrase: boolean;
   readonly safetyPassphrase: string;
@@ -118,6 +134,14 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
   const [safetyPassphraseError, setSafetyPassphraseError] = useState<string | null>(null);
   const [safetyConfirmation, setSafetyConfirmation] = useState('');
   const [safetyConfirmationTouched, setSafetyConfirmationTouched] = useState(false);
+  const [preferLocalSafety, setPreferLocalSafety] = useState(false);
+  const [safetyFailedOnDrive, setSafetyFailedOnDrive] = useState(false);
+  const [olderThanLocal, setOlderThanLocal] = useState(false);
+
+  function safetyFailureText(err: unknown): string {
+    if (err instanceof DriveError) return mapDriveFailure(err, t).text;
+    return reasonOf(err);
+  }
 
   function clearMessages() {
     setStatus(null);
@@ -137,6 +161,8 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
     setSafetyConfirmationTouched(false);
     setUnverifiedSafetyRevision(null);
     setSafetyFailure(null);
+    setSafetyFailedOnDrive(false);
+    setPreferLocalSafety(false);
   }
 
   function stageErrorMessage(err: unknown): string {
@@ -164,11 +190,13 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
   }
 
   /** Stage a picked file; open the passphrase prompt on encryption, else confirm. */
-  async function stageFile(content: BackupFileContent, passphrase?: string) {
+  async function stageFile(content: BackupFileContent, passphrase?: string, meta?: StageContentMeta) {
     // A new attempt starts clean: a stale "wrong password" must not sit next to
     // whatever this attempt reports.
     clearMessages();
     setPromptError(null);
+    if (meta !== undefined) setOlderThanLocal(Boolean(meta.olderThanLocal));
+    else if (passphrase === undefined) setOlderThanLocal(false);
     setStatus(t('backup.status_checking'));
     try {
       const result = await stageBackupImport(content, passphrase);
@@ -213,6 +241,8 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
     setConfirmOpen(false);
     setUnverifiedSafetyRevision(null);
     setSafetyFailure(null);
+    setSafetyFailedOnDrive(false);
+    setPreferLocalSafety(false);
   }
 
   /**
@@ -317,13 +347,17 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
       return;
     }
     let target: BackupSaveTarget;
+    let isDriveTarget = false;
     try {
-      target = openBackupSaveTarget(safetyBackupFilename(exportBackupFilename()));
+      const driveTarget = preferLocalSafety ? null : (options.safetyTarget?.() ?? null);
+      isDriveTarget = driveTarget !== null;
+      target = driveTarget ?? openBackupSaveTarget(safetyBackupFilename(exportBackupFilename()));
     } catch (err) {
-      setSafetyFailure(reasonOf(err));
+      setSafetyFailedOnDrive(isDriveTarget);
+      setSafetyFailure(safetyFailureText(err));
       return;
     }
-    void saveSafetyCopyThenReplace(staged, target, safetyPassword);
+    void saveSafetyCopyThenReplace(staged, target, safetyPassword, isDriveTarget);
   }
 
   /** Build the safety copy at a stable revision; returns that revision. */
@@ -351,11 +385,21 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
     toImport: StagedImport,
     target: BackupSaveTarget,
     safetyPassword: string,
+    isDriveTarget: boolean,
   ) {
     setImporting(true);
     setSafetyFailure(null);
+    setSafetyFailedOnDrive(false);
     try {
-      if ((await target.choice) === 'cancelled') {
+      let choice: Awaited<BackupSaveTarget['choice']>;
+      try {
+        choice = await target.choice;
+      } catch (err) {
+        setSafetyFailedOnDrive(isDriveTarget);
+        setSafetyFailure(safetyFailureText(err));
+        return;
+      }
+      if (choice === 'cancelled') {
         setSafetyFailure(t('backup.safety_failed_cancelled'));
         return;
       }
@@ -364,10 +408,11 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
         built = await buildSafetyCopy(safetyPassword);
       } catch (err) {
         await target.discard();
-        setSafetyFailure(reasonOf(err));
+        setSafetyFailedOnDrive(isDriveTarget);
+        setSafetyFailure(safetyFailureText(err));
         return;
       }
-      await writeSafetyCopyThenReplace(toImport, target, built);
+      await writeSafetyCopyThenReplace(toImport, target, built, isDriveTarget);
     } finally {
       setImporting(false);
     }
@@ -377,12 +422,14 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
     toImport: StagedImport,
     target: BackupSaveTarget,
     built: { readonly content: BackupFileContent; readonly revision: number },
+    isDriveTarget: boolean,
   ) {
     let saved: Awaited<ReturnType<BackupSaveTarget['write']>>;
     try {
       saved = await target.write(built.content);
     } catch (err) {
-      setSafetyFailure(reasonOf(err));
+      setSafetyFailedOnDrive(isDriveTarget);
+      setSafetyFailure(safetyFailureText(err));
       return;
     }
     if (saved === 'cancelled') {
@@ -409,6 +456,7 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
     error,
     clearMessages,
     chooseFile,
+    stageContent: stageFile,
     promptOpen: pendingContent != null,
     promptPassphrase,
     setPromptPassphrase,
@@ -419,6 +467,14 @@ export function useBackupRestore(options: BackupRestoreOptions = {}): BackupRest
     confirmOpen,
     importing,
     needsSafetyCopy,
+    olderThanLocal,
+    usingDriveSafety: needsSafetyCopy && !preferLocalSafety && (options.safetyTarget?.() ?? null) !== null,
+    safetyFailedOnDrive,
+    saveSafetyLocallyInstead: () => {
+      setPreferLocalSafety(true);
+      setSafetyFailure(null);
+      setSafetyFailedOnDrive(false);
+    },
     needsSafetyPassphrase: needsSafetyCopy && stagedPassphrase === undefined,
     safetyPassphrase,
     setSafetyPassphrase: (value: string) => {

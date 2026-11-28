@@ -466,6 +466,23 @@ export class PortableStateRepository {
     await this.#store.put(PORTABLE_DEVICE_NAMESPACE, key, encoder.encode(value));
   }
 
+  /** Insert one device-local row if absent (CAS on SQLite epoch), returning the winning value. */
+  public async insertDeviceIfAbsent(key: string, value: string): Promise<string> {
+    for (let attempt = 0; attempt < MAX_TRANSACTION_ATTEMPTS; attempt += 1) {
+      const { epoch } = await this.#store.runtimeInfo();
+      const existing = await this.#store.get(PORTABLE_DEVICE_NAMESPACE, key);
+      if (existing !== undefined) return decode(existing.value, key);
+      const put = { type: 'put', namespace: PORTABLE_DEVICE_NAMESPACE, key, value: encoder.encode(value) } as const;
+      try {
+        await this.#store.batch([put], { expectedEpoch: epoch });
+        return value;
+      } catch (error) {
+        if (!(error instanceof SqliteStateConflictError)) throw error;
+      }
+    }
+    throw new Error('Portable state remained busy while inserting a device row.');
+  }
+
   /** Remove device-local rows in one SQLite batch. */
   public async deleteDevice(keys: readonly string[]): Promise<void> {
     if (keys.length === 0) return;

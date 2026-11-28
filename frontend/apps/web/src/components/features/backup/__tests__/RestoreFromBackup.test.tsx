@@ -46,7 +46,8 @@ vi.mock('../../../../lib/backupService', () => ({
     name.replace('almamesh-backup-', 'almamesh-backup-before-import-'),
 }));
 
-vi.mock('../../../../lib/backupFile', () => ({
+vi.mock('../../../../lib/backupFile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../../lib/backupFile')>()),
   pickBackupFile: vi.fn(),
   openBackupSaveTarget: vi.fn(),
 }));

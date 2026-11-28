@@ -8,6 +8,7 @@ import { requirePortableStateRepository } from './deletionTombstones';
 export interface DeviceRows {
   read(key: string): Promise<string | null>;
   write(key: string, value: string): Promise<void>;
+  insertIfAbsent(key: string, value: string): Promise<string>;
   remove(keys: readonly string[]): Promise<void>;
   list(prefix: string): Promise<ReadonlyMap<string, string>>;
 }
@@ -18,6 +19,8 @@ const DEVICE_CODE = /^[0-9a-f]{6}$/;
 export const deviceRows: DeviceRows = {
   read: async (key) => (await requirePortableStateRepository()).readDevice(key),
   write: async (key, value) => (await requirePortableStateRepository()).writeDevice(key, value),
+  insertIfAbsent: async (key, value) =>
+    (await requirePortableStateRepository()).insertDeviceIfAbsent(key, value),
   remove: async (keys) => (await requirePortableStateRepository()).deleteDevice(keys),
   list: async (prefix) => (await requirePortableStateRepository()).listDevice(prefix),
 };
@@ -38,7 +41,8 @@ function mintCode(): string {
 export async function getDeviceCode(rows: DeviceRows = deviceRows): Promise<string> {
   const stored = await rows.read(DEVICE_CODE_KEY);
   if (stored !== null && DEVICE_CODE.test(stored)) return stored;
-  const code = mintCode();
-  await rows.write(DEVICE_CODE_KEY, code);
-  return code;
+  if (stored !== null) await rows.remove([DEVICE_CODE_KEY]);
+  const won = await rows.insertIfAbsent(DEVICE_CODE_KEY, mintCode());
+  if (!DEVICE_CODE.test(won)) throw new Error('Device code failed validation after insert.');
+  return won;
 }
