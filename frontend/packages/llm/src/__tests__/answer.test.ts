@@ -9,6 +9,7 @@ import {
   answerLanguage,
   chatAnswerSpec,
   datedEventLabel,
+  laymanMoonTagLabel,
   moonTagLabel,
   renderAnswer,
   renderPartialAnswer,
@@ -16,7 +17,7 @@ import {
   type ChatAnswer,
   type PeriodAnswer,
 } from "../answer";
-import { REFLECTION_WITHHELD } from "../reflection";
+import { REFLECTION_WITHHELD, reflectionIssues } from "../reflection";
 import { runToolTurn, z, type ToolCallEvent } from "../toolLoop";
 import { collect, fakeEndpoint } from "./toolLoopFake";
 
@@ -568,6 +569,15 @@ describe("moonTagLabel", () => {
     expect(moonTagLabel("saturn_return_phase_2", "es")).toBe("Saturno Return Fase 2");
     expect(moonTagLabel("venus_from_moon_x", "pt")).toBe("Vênus From Lua X");
   });
+
+  it("laymanMoonTagLabel adds crystal-clear everyday glosses across all four languages", () => {
+    expect(laymanMoonTagLabel("sade_sati_phase_1", "en")).toBe("Sade Sati, first phase (a test of emotional steadiness)");
+    expect(laymanMoonTagLabel("jupiter_from_moon_11", "en")).toBe("Jupiter 11th from your Moon (friendships)");
+    expect(laymanMoonTagLabel("kantaka_shani", "en")).toBe("Kantaka Shani (Saturn pressure on home or work)");
+    expect(laymanMoonTagLabel("ashtama_shani", "hi")).toBe("Ashtama Shani (सावधानी माँगने वाला शनि का दौर)");
+    expect(laymanMoonTagLabel("jupiter_from_moon_7", "es")).toBe("Júpiter en la casa 7 desde tu Luna (pareja)");
+    expect(laymanMoonTagLabel("jupiter_from_moon_4", "pt")).toBe("Júpiter na casa 4 a partir da sua Lua (lar)");
+  });
 });
 
 const LAYMAN_EN = `**September 2019 in Vadodara, India**
@@ -575,12 +585,12 @@ const LAYMAN_EN = `**September 2019 in Vadodara, India**
 September asks for patience at work and care with money, but friends are on your side.
 
 **Your chapters**
-- **Jupiter** is your main chapter (maha dasha). Jupiter rules your 2nd and 11th houses. Income and friendships are the long story of these years.
-- **Saturn** is the sub-chapter inside it (antar dasha). Saturn rules your 1st and 12th houses. It slows things down and asks you to carry more yourself.
+- **Jupiter** is your main chapter (maha dasha). Jupiter rules your 2nd and 11th houses (money and friendships). Income and friendships are the long story of these years.
+- **Saturn** is the sub-chapter inside it (antar dasha). Saturn rules your 1st and 12th houses (self-direction and rest). It slows things down and asks you to carry more yourself.
 
 **The Moon's sky**
-- **Sade Sati, first phase**: Saturn has begun its long pass over your Moon, so moods can feel heavier.
-- **Jupiter 11th from your Moon**: Friends and networks are generous this month.
+- **Sade Sati, first phase (a test of emotional steadiness)**: Saturn has begun its long pass over your Moon, so moods can feel heavier.
+- **Jupiter 11th from your Moon (friendships)**: Friends and networks are generous this month.
 
 **What it means**
 - **Career** (supportive, most indicators agree): A senior person speaks up for your work.
@@ -636,12 +646,12 @@ Keep a small cash buffer this month and sleep on big decisions.`);
 Septiembre pide paciencia.
 
 **Tus capítulos**
-- **Júpiter** es tu capítulo principal (maha dasha). Júpiter rige tus casas 2 y 11. Ingresos.
-- **Saturno** es el subcapítulo dentro de él (antar dasha). Saturno rige tus casas 1 y 12. Calma.
-- **Mercurio** es el capítulo corto dentro de ese (pratyantar dasha). Mercurio rige tu casa 5.
+- **Júpiter** es tu capítulo principal (maha dasha). Júpiter rige tus casas 2 y 11 (dinero y amistades). Ingresos.
+- **Saturno** es el subcapítulo dentro de él (antar dasha). Saturno rige tus casas 1 y 12 (rumbo personal y descanso). Calma.
+- **Mercurio** es el capítulo corto dentro de ese (pratyantar dasha). Mercurio rige tu casa 5 (creatividad).
 
 **El cielo de la Luna**
-- **Sade Sati, primera fase**: Ánimo pesado.
+- **Sade Sati, primera fase (etapa de madurez emocional)**: Ánimo pesado.
 
 **Qué significa**
 - **Carrera** (favorable, coinciden casi todos los indicadores): Reconocimiento.
@@ -662,16 +672,38 @@ Septiembre pide paciencia.
   it("layman and expert, Portuguese", () => {
     const layman = renderAnswer({ ...SPANISH, period: "Setembro de 2019" }, { voice: "layman", language: "pt" });
     expect(layman).toContain("**Setembro de 2019 em Vadodara, India**");
-    expect(layman).toContain("- **Júpiter** é seu capítulo principal (maha dasha). Júpiter rege suas casas 2 e 11. Ingresos.");
-    expect(layman).toContain("- **Saturno** é o subcapítulo dentro dele (antar dasha). Saturno rege suas casas 1 e 12. Calma.");
-    expect(layman).toContain("Mercúrio rege sua casa 5.");
-    expect(layman).toContain("**O céu da Lua**\n- **Sade Sati, primeira fase**");
+    expect(layman).toContain("- **Júpiter** é seu capítulo principal (maha dasha). Júpiter rege suas casas 2 e 11 (dinheiro e amizades). Ingresos.");
+    expect(layman).toContain("- **Saturno** é o subcapítulo dentro dele (antar dasha). Saturno rege suas casas 1 e 12 (direção pessoal e descanso). Calma.");
+    expect(layman).toContain("Mercúrio rege sua casa 5 (criatividade).");
+    expect(layman).toContain("**O céu da Lua**\n- **Sade Sati, primeira fase (etapa de equilíbrio emocional)**");
     expect(layman).toContain("**O que significa**\n- **Carrera** (favorável, quase todos os indicadores concordam)");
     expect(layman).toContain("**Datas para observar**\n- **25 set 2019**");
     const expert = renderAnswer(SPANISH, { voice: "expert", language: "pt" });
     expect(expert).toContain("- **Antardasha Saturno** (senhor de 1, 12): Calma.");
     expect(expert).toContain("**Gochara a partir da Lua**");
     expect(expert).toContain("**Janelas**");
+  });
+
+  it("layman, Hindi: renders plain-language house and Moon glosses cleanly under reflection scan", () => {
+    const hindi: PeriodAnswer = {
+      ...SPANISH,
+      period: "सितंबर 2019",
+      place: "वडोदरा",
+      opening: "यह महीना धैर्य की माँग करता है।",
+      dashas: {
+        maha: { lord: "jupiter", rules: [2, 11], note: "आय और मित्रता।" },
+        antar: { lord: "saturn", rules: [1, 12], note: "अनुशासन।" },
+        pratyantar: null,
+      },
+      moon: [{ tag: "jupiter_from_moon_11", meaning: "मित्रों से सहयोग।" }],
+      themes: [{ area: "करियर", direction: "supportive", confidence: "high", text: "काम में स्थिरता।", obstacle: null }],
+      windows: [{ date: "2019-09-25", what: "काग़ज़ात ध्यान से देखें।" }],
+    };
+    const rendered = renderAnswer(hindi, { voice: "layman", language: "hi" });
+    expect(rendered).toContain("बृहस्पति आपके भाव 2 और 11 (धन और मित्रता) का स्वामी है।");
+    expect(rendered).toContain("शनि आपके भाव 1 और 12 (व्यक्तिगत दिशा और विश्राम) का स्वामी है।");
+    expect(rendered).toContain("**आपके चंद्र से 11वें भाव में बृहस्पति (मित्रता)**: मित्रों से सहयोग।");
+    expect(reflectionIssues(rendered)).toEqual([]);
   });
 
   it("a blank place leaves the heading as just the period", () => {
@@ -914,7 +946,7 @@ describe("chatAnswerSpec.prepare: moon and windows come from the reading when th
       { date: "2026-10-19", what: "Saturn stations direct" },
     ]);
     const final = snapshots.at(-1) ?? "";
-    expect(final).toContain("**The Moon's sky**\n- **Jupiter 7th from your Moon**\n");
+    expect(final).toContain("**The Moon's sky**\n- **Jupiter 7th from your Moon (partnerships)**\n");
     expect(final).toContain("**Dates to watch**\n- **4 Oct 2026**: pratyantar Mars begins\n- **12 Oct 2026**: Mars enters Leo\n- **19 Oct 2026**: Saturn stations direct");
   });
 
@@ -927,7 +959,7 @@ describe("chatAnswerSpec.prepare: moon and windows come from the reading when th
   it("a filled Moon line reads as the tag in the answer's language", async () => {
     const { answer, snapshots } = await turn(OCTOBER, "es", DEEPSEEK);
     expect(answer.moon).toEqual([{ tag: "jupiter_from_moon_7", meaning: "Júpiter en la casa 7 desde tu Luna" }]);
-    expect(snapshots.at(-1)).toContain("- **Júpiter en la casa 7 desde tu Luna**\n");
+    expect(snapshots.at(-1)).toContain("- **Júpiter en la casa 7 desde tu Luna (pareja)**\n");
   });
 
   it("what the model gave is never overwritten", async () => {

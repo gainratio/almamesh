@@ -45,6 +45,13 @@ import {
   type SectionTimeLimits,
 } from "./section-timeout";
 import { LAYMAN_JARGON_TERMS } from "./layman-jargon";
+import {
+  jsonLaymanJargon,
+  laymanJargonCorrection,
+  mergeCleanSectionLeaves,
+  sectionRewordRetry,
+  VOICE_CLARITY_RULE,
+} from "./layman-reword";
 import { asPersona, asRecord, parsePersona, parseTitledPersonas } from "./persona-parse";
 import { hasUpcomingRoadAheadWindows } from "./facts";
 import { REPORT_SECTION_REASONING_MAX_TOKENS, SECTION_REASONING_MAX_TOKENS } from "./reasoning";
@@ -55,13 +62,11 @@ import { OUTPUT_DISCIPLINE_RULES, PRIVACY_RULE, type ViewMode } from "./prompt";
 import {
   isReadingWithheldText,
   jsonReflectionIssues,
-  mergeCleanJsonLeaves,
   READING_WITHHELD,
   REFLECTION_RULE,
   reflectionCorrection,
   reflectionGate,
   reflectionIssues,
-  reflectionRetry,
   rewordedOr,
   withholdFailingValues,
 } from "./reflection";
@@ -361,6 +366,8 @@ function systemPrompt(timelineNames: string): string {
     "",
     REFLECTION_RULE,
     "",
+    VOICE_CLARITY_RULE,
+    "",
     PRIVACY_RULE,
     "",
     OUTPUT_DISCIPLINE_RULES,
@@ -421,6 +428,8 @@ function systemPromptLite(timelineNames: string): string {
     "    If a yoga is not listed it DOES NOT EXIST here — never invent or name one.",
     "",
     REFLECTION_RULE,
+    "",
+    VOICE_CLARITY_RULE,
     "",
     PRIVACY_RULE,
     "",
@@ -499,28 +508,41 @@ const YOGA_TASK = [
   "  by analyzing the listed yogas more deeply, never by adding new ones.",
 ].join("\n");
 
-const GUIDANCE1_TASK = [
-  "TASK: Life Guidance Part 1 — practical application across four life areas.",
-  "Return JSON with FOUR persona objects, each { layman, technical }:",
-  "  health_guidance, education_guidance, career_guidance, relationship_guidance.",
+const GUIDANCE1_CHAIN_PREFIX = [
   "",
   "PER-AREA HOUSE-LORD CHAIN (MANDATORY in the technical field): for each area, take its",
   "  house cusp, read the cusp's `sign_lord` (= that house's lord), find WHERE that lord",
   "  sits via its `house`/`sign`, and read ITS `dignity` — narrate the path that chain",
   "  reveals. Houses by area: Health = 1st & 6th; Education = 4th & 5th; Career = 10th;",
   "  Relationships = 7th.",
+] as const;
+
+const GUIDANCE1_VOCAB_PREFIX = [
+  "DISTINCT VOCABULARY PER AREA: Health = body-mind, vitality, stress response, rest.",
+  "  Education = learning style, curiosity, which subjects flow vs. need effort.",
+  "  Career = work environment and navigating authority. Relationships = attachment,",
+  "  what builds trust and security,",
+] as const;
+
+const GUIDANCE1_CLOSING_LINES = [
+  "DEBILITY HONESTY throughout; show how strength AND effort show up in everyday",
+  "  choices, habits, and priorities, plus one practical habit that helps. Only reference",
+  "  yogas in the provided list.",
+  "Speak only to stable natal placements. Current timing belongs to the separate timeline.",
+] as const;
+
+const GUIDANCE1_TASK = [
+  "TASK: Life Guidance Part 1 — practical application across four life areas.",
+  "Return JSON with FOUR persona objects, each { layman, technical }:",
+  "  health_guidance, education_guidance, career_guidance, relationship_guidance.",
+  ...GUIDANCE1_CHAIN_PREFIX,
   "PER-AREA KARAKA CONDITION: also read the area's natural significator and report its",
   "  `dignity`, `is_combust`, `is_retrograde` — Health: Sun & Mars; Education: Mercury &",
   "  Jupiter; Career: Saturn & the Sun; Relationships: Venus & the Moon. If a karaka is",
   "  debilitated/combust, be honest that the area asks for more effort before it flowers.",
-  "DISTINCT VOCABULARY PER AREA: Health = body-mind, vitality, stress response, rest.",
-  "  Education = learning style, curiosity, which subjects flow vs. need effort.",
-  "  Career = work environment and navigating authority. Relationships = attachment,",
-  "  what makes them feel secure,",
+  ...GUIDANCE1_VOCAB_PREFIX,
   "  communication in partnership. Do NOT bleed one area's framing into another.",
-  "DEBILITY HONESTY throughout; describe what success AND struggle FEEL like, not just",
-  "  outcomes. Only reference yogas in the provided list.",
-  "Speak only to stable natal placements. Current timing belongs to the separate timeline.",
+  ...GUIDANCE1_CLOSING_LINES,
 ].join("\n");
 
 const GUIDANCE2_TASK = [
@@ -541,8 +563,9 @@ const GUIDANCE2_TASK = [
   "  a current/next period, dated window, age, transit, or months remaining.",
   "  Every challenge mentioned MUST end with a BRIDGE to a NAMED strength or yoga",
   "  (name the yoga only in the technical field; the layman field says it in plain words).",
-  "DEBILITY HONESTY throughout; give each section a distinct voice. Convey how money",
-  "  anxiety/abundance and inner seeking FEEL. Only reference yogas in the provided list.",
+  "DEBILITY HONESTY throughout; give each section a distinct voice. Show how money",
+  "  habits, saving/earning choices, and inner priorities work in everyday life. Only",
+  "  reference yogas in the provided list.",
   "Speak only to stable natal placements. Current timing belongs to the separate timeline.",
 ].join("\n");
 
@@ -556,8 +579,8 @@ const REMEDIAL_TASK = [
   "    sleep & general wellness, service & connection, creative expression. FORBIDDEN",
   "    here: Sanskrit mantras, pujas, temple/deity worship, gemstone prescriptions,",
   "    metals/fingers, hora/muhurta timing — any culture-specific religious practice.",
-  "    For EACH practice say WHAT to do, WHY it helps (plain principle), HOW it FEELS",
-  "    when it is working, and WHEN to do it. Honest framing only — practices help",
+  "    For EACH practice say WHAT to do, WHY it helps (plain principle), WHAT practical",
+  "    shift to notice over time, and WHEN to do it. Honest framing only — practices help",
   "    MANAGE a challenge gradually over weeks/months; they do not erase it overnight.",
   "  - technical: gemstones and mantras MAY appear here, but ONLY as optional",
   "    alternatives alongside the universal practices, never as the primary solution.",
@@ -664,6 +687,13 @@ const YOGA_TASK_LITE = [
   "ZERO TOLERANCE: never mention any yoga that is not in the provided list.",
 ].join("\n");
 
+const GUIDANCE1_LITE_RULES_PREFIX = [
+  "  Every field MUST be non-empty. Keep each layman and technical to 1-2 short sentences.",
+  "  - layman: warm, practical advice for THAT area, in plain words (no jargon).",
+  "  - technical: cite ONE relevant placement from the data for that area (a planet's",
+  "    sign/house/dignity). Houses: Health = 1st/6th, Education = 4th/5th, Career = 10th,",
+] as const;
+
 const GUIDANCE1_TASK_LITE = [
   "TASK: Life Guidance Part 1 — four life areas. Return JSON with EXACTLY these FOUR",
   "top-level keys, each a persona object with its own layman + technical fields. Copy",
@@ -674,10 +704,7 @@ const GUIDANCE1_TASK_LITE = [
   '  "career_guidance":       { "layman": "...", "technical": "..." },',
   '  "relationship_guidance": { "layman": "...", "technical": "..." }',
   '}',
-  "  Every field MUST be non-empty. Keep each layman and technical to 1-2 short sentences.",
-  "  - layman: warm, practical advice for THAT area, in plain words (no jargon).",
-  "  - technical: cite ONE relevant placement from the data for that area (a planet's",
-  "    sign/house/dignity). Houses: Health = 1st/6th, Education = 4th/5th, Career = 10th,",
+  ...GUIDANCE1_LITE_RULES_PREFIX,
   "    Relationships = 7th. Be honest about any debilitated/combust significator.",
 ].join("\n");
 
@@ -722,7 +749,7 @@ const UPCOMING_PERIODS_TASK_LITE = [
   "    period or a date.",
   '  - title: the period + its engine-stated window verbatim, e.g. "Sun antardasha —',
   '    2027-01 to 2028-01".',
-  "  - layman: 1-2 plain sentences on how that chapter tends to feel (no jargon).",
+  "  - layman: 1-2 short, plain everyday sentences on what that chapter highlights (no jargon).",
   "  - technical: 1-2 sentences citing that lord's own sign/house/dignity from the",
   "    chart and the dated window. Be honest about a debilitated/combust lord.",
 ].join("\n");
@@ -743,26 +770,20 @@ const SECTION_TASKS_LITE: Record<InterpretationSectionKey, string> = {
 // engine report-facts slice. Without a promptSet the legacy tasks above apply.
 // =============================================================================
 
-const GUIDANCE1_TASK_LINES = GUIDANCE1_TASK.split("\n");
-const GUIDANCE1_TASK_LITE_LINES = GUIDANCE1_TASK_LITE.split("\n");
-
 const GUIDANCE1_TASK_V2 = [
   "TASK: Life Guidance Part 1 — practical application across five life areas.",
   "Return JSON with FIVE persona objects, each { layman, technical }:",
   "  health_guidance, education_guidance, career_guidance, relationship_guidance, family_guidance.",
-  // The blank line and the house-lord chain rule, through "Relationships = 7th."
-  ...GUIDANCE1_TASK_LINES.slice(3, 9),
+  ...GUIDANCE1_CHAIN_PREFIX,
   "  Family = 2nd, 4th, 5th & 9th (home, lineage, children, elders).",
   "PER-AREA KARAKA CONDITION: also read the area's natural significator and report its",
   "  `dignity`, `is_combust`, `is_retrograde` — Health: Sun & Mars; Education: Mercury &",
   "  Jupiter; Career: Saturn & the Sun; Relationships: Venus & the Moon; Family: Jupiter.",
   "  If a karaka is debilitated/combust, be honest that the area asks for more effort before it flowers.",
-  // DISTINCT VOCABULARY through "what makes them feel secure,"
-  ...GUIDANCE1_TASK_LINES.slice(13, 17),
+  ...GUIDANCE1_VOCAB_PREFIX,
   "  communication in partnership. Family = belonging, home life, children, parents and elders.",
   "  Do NOT bleed one area's framing into another.",
-  // DEBILITY HONESTY through the closing stable-natal line.
-  ...GUIDANCE1_TASK_LINES.slice(18),
+  ...GUIDANCE1_CLOSING_LINES,
 ].join("\n");
 
 const GUIDANCE1_TASK_LITE_V2 = [
@@ -776,8 +797,7 @@ const GUIDANCE1_TASK_LITE_V2 = [
   '  "relationship_guidance": { "layman": "...", "technical": "..." },',
   '  "family_guidance":       { "layman": "...", "technical": "..." }',
   "}",
-  // "Every field MUST be non-empty" through the houses list up to Career.
-  ...GUIDANCE1_TASK_LITE_LINES.slice(9, 13),
+  ...GUIDANCE1_LITE_RULES_PREFIX,
   "    Relationships = 7th, Family = 2nd/4th/5th/9th. Be honest about any debilitated/combust",
   "    significator.",
 ].join("\n");
@@ -1676,12 +1696,14 @@ function refusalError(section: AnySectionKey, raw: string, chart: SanitizedChart
 function refusedReplyRetry(raw: string, err: SyntaxError | ReportParseError): readonly ChatMessage[] {
   if (!(err instanceof ReportParseError)) return [];
   const issues = jsonReflectionIssues(raw);
+  const jargon = jsonLaymanJargon(raw);
   const reflection = issues.length > 0 ? ` ${reflectionCorrection(issues)}` : "";
+  const plainFix = jargon.length > 0 ? ` ${laymanJargonCorrection(jargon)}` : "";
   return [
     { role: "assistant", content: raw },
     {
       role: "user",
-      content: `Your last reply was not shown (${err.message}).${reflection} Return the exact JSON shape requested in the task with only the sent keys and one entry per sent item.`,
+      content: `Your last reply was not shown (${err.message}).${reflection}${plainFix} Return the exact JSON shape requested in the task with only the sent keys and one entry per sent item.`,
     },
   ];
 }
@@ -1704,12 +1726,17 @@ async function rerequestIfRefused<Section extends AnySectionKey>(
   return requestCapped(section, [...messages, ...refusedReplyRetry(raw, err)], params);
 }
 
+function mergeAcceptedRetry(section: AnySectionKey, raw: string, retry: string, chart: SanitizedChart): string {
+  if (refusalError(section, retry, chart) !== null) return raw;
+  const candidate = mergeCleanSectionLeaves(raw, retry);
+  return refusalError(section, candidate, chart) === null ? candidate : raw;
+}
+
 /**
- * The section's completion through the parser check and the reflection check (PR #366): a refused
- * reply is re-requested once first; an accepted reply that foretells, narrates the tools or guesses
- * lived experience goes back once with the issues named; a value that still fails is withheld in
- * the reading's language, the rest of the section kept. A reword request that fails or returns a
- * parser-refused reply withholds the first text's failing values instead of failing the section.
+ * The section's completion through parser, reflection, and plain-language checks: a refused reply
+ * is re-requested once first; an accepted reply that breaks reflection OR leaks astrology/homograph
+ * words into layman fields goes back once to be reworded coherently; reflection failures still left
+ * after retry are withheld, while `asLayman` remains the final un-bypassable jargon backstop.
  */
 async function reflectedSection<Section extends AnySectionKey>(
   section: Section,
@@ -1717,18 +1744,12 @@ async function reflectedSection<Section extends AnySectionKey>(
   chart: SanitizedChart,
   params: SectionRunParams<Section>,
 ): Promise<string> {
-  const first = await requestCapped(section, messages, params);
-  const raw = await rerequestIfRefused(first, section, messages, chart, params);
+  const raw = await rerequestIfRefused(await requestCapped(section, messages, params), section, messages, chart, params);
   if (refusalError(section, raw, chart) !== null) return raw;
-  const issues = jsonReflectionIssues(raw);
-  if (issues.length === 0) return raw;
-  const retry = await rewordedOr(raw, params.signal, () =>
-    requestCapped(section, [...messages, ...reflectionRetry(raw, issues)], params),
-  );
-  const candidate =
-    refusalError(section, retry, chart) === null ? mergeCleanJsonLeaves(raw, retry) : raw;
-  const accepted = refusalError(section, candidate, chart) === null ? candidate : raw;
-  return withholdFailingValues(accepted, READING_WITHHELD[params.language ?? "en"]);
+  const [issues, jargon] = [jsonReflectionIssues(raw), jsonLaymanJargon(raw)];
+  if (issues.length === 0 && jargon.length === 0) return raw;
+  const retry = await rewordedOr(raw, params.signal, () => requestCapped(section, [...messages, ...sectionRewordRetry(raw, issues, jargon)], params));
+  return withholdFailingValues(mergeAcceptedRetry(section, raw, retry, chart), READING_WITHHELD[params.language ?? "en"]);
 }
 
 function runOneSection<Section extends AnySectionKey>(

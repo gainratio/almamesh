@@ -123,15 +123,24 @@ const NO_PARAPHRASE_BLOCK = [
   "  printed immediately above your words, verbatim. Repeating the degrees, the",
   "  dignity, the orb, or the grade adds nothing — it just spends the reader's",
   "  attention on something they have already read. Begin where the numbers stop:",
-  "  what this pattern asks of the person, how it tends to feel from the inside,",
-  "  what can be done with it.",
+  "  what this pattern highlights in everyday life, what habits or trade-offs it",
+  "  asks for, and one practical way to work with it.",
   "  Never repeat or reformat period start/end dates already printed above; if a",
   "  boundary date is ever named, it must match that observation's YYYY-MM-DD date",
   "  verbatim (never shifted by a day or converted to another timezone).",
   '  WRONG (a restatement): "Venus is debilitated in Virgo and combust the Sun."',
-  '  RIGHT (a meaning): "Affection here gets audited before it is offered, so warmth',
-  '  arrives late but lands honestly; it helps to say the kind thing before it feels',
-  '  fully earned."',
+  '  RIGHT (crystal-clear everyday meaning): "Close relationships ask for patience',
+  "  and plain speaking here. Offer warmth early instead of waiting until every",
+  '  detail is perfect."',
+].join("\n");
+
+const PLAIN_LANGUAGE_BLOCK = [
+  "CRYSTAL-CLEAR PLAIN LANGUAGE (MANDATORY): write every `interpretation` and",
+  "  `general_guidance` item in clear, direct 8th-grade everyday words (1-2 short",
+  "  sentences, 12-20 words each, active voice). Never write cryptic metaphors,",
+  "  poetic riddles, or stiff clinical jargon. Name concrete life areas (work,",
+  "  money, home, relationships, energy, rest, patience) so any reader understands",
+  "  the point on the first read.",
 ].join("\n");
 
 const EVIDENCE_SYSTEM_PROMPT = [
@@ -140,6 +149,8 @@ const EVIDENCE_SYSTEM_PROMPT = [
   SPLIT_BLOCK,
   "",
   NO_PARAPHRASE_BLOCK,
+  "",
+  PLAIN_LANGUAGE_BLOCK,
   "",
   REFLECTION_RULE,
   "",

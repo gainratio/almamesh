@@ -173,12 +173,13 @@ const SYSTEM_PROMPT = [
 
 // Ported from backend `_get_base_mode_instruction`.
 const LAYMAN_INSTRUCTION = [
-  "Analyze this birth chart for a general audience. Avoid overly technical jargon.",
+  "Analyze this birth chart for someone new to astrology in crystal-clear everyday language.",
+  "Use short, direct sentences (12-20 words), active voice, and concrete life areas (work, money, home, relationships, energy, rest). Avoid cryptic metaphors or heavy jargon.",
   "Focus on:",
-  "1. The Ascendant (Lagna) and its sign - personality core.",
-  "2. The Moon sign - emotional nature.",
-  "3. Key planetary strengths (Exalted/Own sign planets).",
-  "4. Current Dasha period (if provided) - what it highlights now.",
+  "1. Core personality and approach to life (from the Ascendant / Lagna).",
+  "2. Emotional steady-points and habits (from the Moon).",
+  "3. Natural strengths and areas asking for extra patience (from exalted, own-sign, or strained placements).",
+  "4. Current life chapter (from the running Dasha, if provided) — what it highlights right now.",
 ].join("\n");
 
 const EXPERT_INSTRUCTION = [
@@ -324,14 +325,14 @@ const CHAT_SYSTEM_PROMPT = [
 // vocabulary for an expert. The persona, grounding rule, and source-of-truth
 // contract above are identical in both modes.
 const LAYMAN_CHAT_REGISTER = [
-  "Speak in plain, everyday language. Avoid heavy jargon; when you use a Sanskrit",
-  "or technical term, give a one-line plain meaning. Translate timing language into",
-  "lived experience — for example:",
-  "- a Saturn period → building lasting foundations, earning what you keep",
-  "- a Jupiter period → a growth and opportunity phase, room to expand",
+  "Write crystal-clear 8th-grade everyday language: short active sentences (12-20 words),",
+  "concrete words (work, money, home, family, rest), zero riddles. Give a brief plain",
+  "meaning beside any astrological term, and translate timing into everyday life:",
+  "- a Saturn period → building steady foundations through patience and effort",
+  "- a Jupiter period → room to learn, grow, and widen support",
   "- a Rahu period → an ambitious, unconventional, sometimes restless chapter",
-  "- a Ketu period → a reflective, letting-go phase",
-  "- a Venus period → a season of relationships, comfort, and creativity",
+  "- a Ketu period → stepping back, simplifying, and letting go",
+  "- a Venus period → relationships, home comfort, and creative work",
   "- an obstacles theme → a stretch to watch rules, paperwork and spending: a theme to reflect on",
 ].join("\n");
 

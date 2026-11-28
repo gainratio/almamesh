@@ -169,7 +169,7 @@ describe('rendered answers pass the trip matrix checks', () => {
     const bare = renderAnswer(OBSTACLES.answer, { voice: 'layman', language: 'en' })
       .replace(/\*\*Dates to watch\*\*\n.*\n/, '')
       .replace(/(?:most|some|few) indicators agree/g, 'steady')
-      .replace(/Saturn rules your 1st and 12th houses\. |Mercury rules your 5th and 8th houses\. /g, '')
+      .replace(/Saturn rules your 1st and 12th houses \(self-direction and rest\)\. |Mercury rules your 5th and 8th houses \(creativity and shared finances\)\. /g, '')
       .replace(/looks after your 12th house/, 'touches');
     expect(misses(bare, OBSTACLES)).toEqual([
       'answer names no lordship ("Nth lord", "rules the Nth")',
