@@ -36,7 +36,10 @@ import {
 } from '@almamesh/store';
 import type { LagnaData } from '@almamesh/browser/types';
 import type { ProcessedBirthData, RectificationRecord } from '@almamesh/shared-types';
-import { useStreamingInterpretation } from '../hooks/useStreamingInterpretation';
+import {
+  displayInterpretationError,
+  useStreamingInterpretation,
+} from '../hooks/useStreamingInterpretation';
 import { useLlmStatus } from '../hooks/useLlmStatus';
 import { usePredictiveLayer, type PredictiveLayer } from '../hooks/usePredictiveLayer';
 import { useElapsedSeconds, formatElapsed } from '../hooks/useElapsedSeconds';
@@ -158,6 +161,9 @@ export default function ReportView(): ReactElement {
   const aiConfigured = useLlmStatus().configured;
   const {
     interpretation,
+    status: interpretationStatus,
+    error: streamingError,
+    failedSections: failedInterpretationSections = [],
     evidenceAnnotations,
     evidenceAnnotationError,
     withheldSections = [],
@@ -167,6 +173,9 @@ export default function ReportView(): ReactElement {
     refreshEvidenceAnnotations,
     isRefreshingAnnotations = false,
   } = useStreamingInterpretation(chartId);
+  const retryableSections = [
+    ...new Set([...failedInterpretationSections, ...withheldSections]),
+  ];
 
   // The lazy predictive layer (transits / vargas / strength / domains): auto-
   // kicks off on mount (matching Dashboard and Sky & Timing) so visiting
@@ -280,15 +289,23 @@ export default function ReportView(): ReactElement {
       {/* Natal-only hint: the report is fully usable without the written reading;
           this nudges the user to generate it for the complete report. */}
       {!readyInterpretation ? (
-        <div className="report-pending no-print" data-testid="report-narrative-hint">
-          <p>{t('narrative_hint')}</p>
+        <div
+          className="report-pending no-print"
+          role={interpretationStatus === 'error' && streamingError ? 'alert' : undefined}
+          data-testid="report-narrative-hint"
+        >
+          <p>
+            {interpretationStatus === 'error' && streamingError
+              ? displayInterpretationError(streamingError)
+              : t('narrative_hint')}
+          </p>
         </div>
-      ) : withheldSections.length > 0 ? (
+      ) : retryableSections.length > 0 ? (
         <div className="report-pending no-print" data-testid="report-unfinished-section">
           <p>
             {t('interpretation.unfinished_notice', {
-              count: withheldSections.length,
-              sections: withheldSections
+              count: retryableSections.length,
+              sections: retryableSections
                 .map((key) => t(`dashboard:sections.${key}`))
                 .join(', '),
             })}
@@ -304,7 +321,7 @@ export default function ReportView(): ReactElement {
               className="report-toolbar-button"
               disabled={isRetryingSection}
               onClick={() => {
-                void retrySections(chartId, withheldSections, {
+                void retrySections(chartId, retryableSections, {
                   intent: 'user-request',
                   view_mode: audience === 'astrologer' ? 'expert' : 'layman',
                 });
@@ -313,7 +330,7 @@ export default function ReportView(): ReactElement {
             >
               {isRetryingSection
                 ? t('interpretation.retrying_section')
-                : t('interpretation.retry_section', { count: withheldSections.length })}
+                : t('interpretation.retry_section', { count: retryableSections.length })}
             </button>
           ) : null}
         </div>

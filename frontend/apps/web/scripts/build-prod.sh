@@ -103,8 +103,8 @@ cp -R "${ORIGIN_DIR}/." "${PUBLIC_DIR}/bundle/"
 cp "${KEYS_DIR}/public.key" "${PUBLIC_DIR}/public.key"
 
 # --- 4. The real production build (no hooks, no backend URL) -------------------
-echo "==> Building the app (tsc -b && vite build) — hooks OFF, VITE_API_URL empty"
-( cd "${WEB_DIR}" && VITE_API_URL= VITE_EXIT_GATE_HOOKS= bun run build )
+echo "==> Building the app (tsc -b && vite build) — hooks OFF, VITE_API_URL empty, VITE_DRIVE_BACKUP=1"
+( cd "${WEB_DIR}" && VITE_API_URL= VITE_EXIT_GATE_HOOKS= VITE_DRIVE_BACKUP=1 bun run build )
 
 # --- Artifact sanity ------------------------------------------------------------
 DIST="${WEB_DIR}/dist"

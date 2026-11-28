@@ -277,4 +277,26 @@ describe("the mesh reading", () => {
       technical: "4th house Venus.",
     });
   });
+
+  it("propagates OpenRouter errors on regenerateNatalSection reword retry instead of failing silently", async () => {
+    const foretellingCore = JSON.stringify({
+      summary: { layman: FORETELLS, technical: CLEAN },
+      strengths: [{ title: "Focus", layman: CLEAN, technical: CLEAN }],
+      challenges: [{ title: "Limits", layman: CLEAN, technical: CLEAN }],
+      life_themes: [{ title: "Home", layman: CLEAN, technical: CLEAN }],
+    });
+    let calls = 0;
+    const fetchImpl = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) return jsonOf(foretellingCore);
+      return new Response(JSON.stringify({ error: { message: "Rate limit exceeded", code: 429 } }), {
+        status: 429,
+        statusText: "Too Many Requests",
+      });
+    }) as unknown as typeof fetch;
+
+    await expect(regenerateNatalSection("core", { chart, config, fetchImpl })).rejects.toMatchObject({
+      status: 429,
+    });
+  });
 });

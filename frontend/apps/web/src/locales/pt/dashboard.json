@@ -38,7 +38,7 @@
   "narration": {
     "chart_complete_title": "Seu mapa está completo",
     "chart_complete_body": "Seu ascendente, sua lua, seus períodos de dasha e o Atlas da Vida são calculados inteiramente no seu dispositivo — estão completos e corretos. Só falta a interpretação escrita, um extra opcional gerado por IA.",
-    "kept_title": "Sua leitura continua a mesma",
+    "kept_title": "Não foi possível atualizar sua leitura — sua leitura anterior foi mantida abaixo",
     "kept_body": "Seu mapa e a leitura abaixo estão exatamente como estavam. Apenas a atualização da interpretação escrita não foi concluída.",
     "reason_no_key": "Nenhum provedor de IA está conectado ainda.",
     "next_no_key": "Conecte um modelo de IA quando quiser uma interpretação escrita; nada mais nesta página muda.",

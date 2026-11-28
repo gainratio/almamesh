@@ -25,6 +25,7 @@ vi.mock('@almamesh/llm', async () => {
     streamNatalInterpretation: vi.fn(),
     streamCurrentTimeline: vi.fn(),
     requestEvidenceAnnotations: vi.fn(),
+    regenerateNatalSection: vi.fn(actual.regenerateNatalSection),
   };
 });
 
@@ -48,6 +49,7 @@ vi.mock('../../lib/profileDataLifecycle', () => ({
 import {
   configProvenance,
   hydrateLlmSettings,
+  regenerateNatalSection,
   streamCurrentTimeline,
   streamNatalInterpretation,
   requestEvidenceAnnotations,
@@ -1308,6 +1310,61 @@ describe('useStreamingInterpretation (structured, store-backed)', () => {
 
       await waitFor(() => expect(result.current.status).toBe('error'));
       expect(mockedAnnotate).not.toHaveBeenCalled();
+    });
+
+    it('retrying a failed section over a kept reading replaces the kept fallback instead of healing into old prose', async () => {
+      configureProvider();
+      getChart.mockReturnValue(CHART_WITH_FACTORS);
+
+      // Seed an earlier completed reading first.
+      const store = useInterpretationStore.getState();
+      const firstToken = store.startInterpretation('chart-777', 'profile-123');
+      await store.setInterpretation(
+        'chart-777',
+        SAMPLE_INTERPRETATION,
+        '2026-07-12T10:00:00.000Z',
+        { engine: 'openai-http', model: 'model-a', baseUrl: 'https://openrouter.ai/api/v1', predictiveAware: false },
+        { predictiveRequestKey: null },
+        firstToken,
+      );
+
+      // Simulate a partial regeneration where `guidance1` failed (kept old career_guidance).
+      const secondToken = store.startInterpretation('chart-777', 'profile-123');
+      store.markSectionComplete('chart-777', 'core', secondToken);
+      store.markSectionFailed('chart-777', 'guidance1', secondToken, 'ai.provider.rate_limited');
+      await store.setInterpretation(
+        'chart-777',
+        {
+          ...SAMPLE_INTERPRETATION,
+          career_guidance: { layman: '', technical: '' },
+        },
+        '2026-07-12T11:00:00.000Z',
+        { engine: 'openai-http', model: 'model-a', baseUrl: 'https://openrouter.ai/api/v1', predictiveAware: false },
+        { predictiveRequestKey: null },
+        secondToken,
+      );
+
+      expect(useInterpretationStore.getState().getEntry('chart-777')?.failedSections?.guidance1).toBe(true);
+      expect(useInterpretationStore.getState().getEntry('chart-777')?.interpretation?.career_guidance).toEqual(
+        SAMPLE_INTERPRETATION.career_guidance,
+      );
+
+      const mockedRegenerateSection = vi.mocked(regenerateNatalSection);
+      mockedRegenerateSection.mockResolvedValueOnce({
+        career_guidance: { layman: 'Brand new career reflection.', technical: 'Fresh 10th house facts.' },
+      });
+
+      const { result } = renderHook(() => useStreamingInterpretation('chart-777'));
+      await act(async () => {
+        await result.current.retrySections('chart-777', ['guidance1'], { intent: 'user-request' });
+      });
+
+      expect(mockedRegenerateSection).toHaveBeenCalledOnce();
+      expect(mockedRegenerateSection.mock.calls[0]?.[1]).not.toHaveProperty('existing');
+      const updated = useInterpretationStore.getState().getEntry('chart-777');
+      expect(updated?.failedSections).toBeUndefined();
+      expect(updated?.failedSectionCodes).toBeUndefined();
+      expect(updated?.interpretation?.career_guidance?.layman).toBe('Brand new career reflection.');
     });
   });
 });

@@ -28,8 +28,8 @@ const config: ProviderConfig = {
 const payloads: Record<InterpretationSectionKey, unknown> = {
   core: { summary: "Natal summary", strengths: [], challenges: [], life_themes: [] },
   yoga: { integrated_yoga_narrative: { layman: "Life journey", technical: "Yoga" } },
-  guidance1: {},
-  guidance2: {},
+  guidance1: { career_guidance: { layman: "Craft", technical: "10th house" } },
+  guidance2: { finances_guidance: { layman: "Savings", technical: "2nd house" } },
   remedial: { remedial_measures: { layman: "Rest", technical: "Rest" } },
   upcoming_periods: {
     upcoming_periods: [{ title: "Next", layman: "Soon", technical: "Sun antar" }],

@@ -225,6 +225,8 @@ type AnySectionKey = InterpretationSectionKey | ReportTimelineSectionKey;
 interface SectionRunParams<Section extends AnySectionKey>
   extends Omit<StructuredInterpretationParams, "onSectionProgress"> {
   readonly onSectionProgress?: (section: Section, progress: SectionProgressSnapshot) => void;
+  /** Propagate reword-retry failures instead of falling back to withheld raw text. */
+  readonly strictRetry?: boolean;
 }
 
 export interface ReportTimelineParams extends Omit<StructuredInterpretationParams, "onSectionProgress" | "promptSet"> {
@@ -1216,20 +1218,37 @@ interface CoreSlice {
   readonly life_themes: TitledPersona[];
 }
 
+function hasPersonaText(persona: Persona | null | undefined): boolean {
+  if (!persona) return false;
+  return (persona.layman ?? "").trim() !== "" || (persona.technical ?? "").trim() !== "";
+}
+
 function parseCore(json: unknown): CoreSlice {
   const rec = asRecord(json);
-  return {
+  const slice: CoreSlice = {
     summary: asPersona(rec.summary),
     strengths: parseTitledPersonas(rec.strengths),
     challenges: parseTitledPersonas(rec.challenges),
     life_themes: parseTitledPersonas(rec.life_themes),
   };
+  if (
+    !hasPersonaText(slice.summary) &&
+    slice.strengths.length === 0 &&
+    slice.challenges.length === 0 &&
+    slice.life_themes.length === 0
+  ) {
+    throw new ReportParseError("Invalid core output: empty section.");
+  }
+  return slice;
 }
 
 function parseYoga(json: unknown): IntegratedYogaNarrative {
   const rec = asRecord(json);
-  const persona = parsePersona(rec.integrated_yoga_narrative) ?? { layman: "", technical: "" };
-  return persona;
+  const persona = parsePersona(rec.integrated_yoga_narrative);
+  if (!hasPersonaText(persona)) {
+    throw new ReportParseError("Invalid yoga output: missing integrated_yoga_narrative.");
+  }
+  return persona!;
 }
 
 interface Guidance1Slice {
@@ -1242,13 +1261,23 @@ interface Guidance1Slice {
 
 function parseGuidance1(json: unknown): Guidance1Slice {
   const rec = asRecord(json);
-  return {
+  const slice: Guidance1Slice = {
     health_guidance: parsePersona(rec.health_guidance),
     education_guidance: parsePersona(rec.education_guidance),
     career_guidance: parsePersona(rec.career_guidance),
     relationship_guidance: parsePersona(rec.relationship_guidance),
     family_guidance: parsePersona(rec.family_guidance),
   };
+  if (
+    !hasPersonaText(slice.health_guidance) &&
+    !hasPersonaText(slice.education_guidance) &&
+    !hasPersonaText(slice.career_guidance) &&
+    !hasPersonaText(slice.relationship_guidance) &&
+    !hasPersonaText(slice.family_guidance)
+  ) {
+    throw new ReportParseError("Invalid guidance1 output: empty guidance section.");
+  }
+  return slice;
 }
 
 interface Guidance2Slice {
@@ -1259,16 +1288,28 @@ interface Guidance2Slice {
 
 function parseGuidance2(json: unknown): Guidance2Slice {
   const rec = asRecord(json);
-  return {
+  const slice: Guidance2Slice = {
     finances_guidance: parsePersona(rec.finances_guidance),
     spiritual_guidance: parsePersona(rec.spiritual_guidance),
     life_evolution_guidance: parsePersona(rec.life_evolution_guidance),
   };
+  if (
+    !hasPersonaText(slice.finances_guidance) &&
+    !hasPersonaText(slice.spiritual_guidance) &&
+    !hasPersonaText(slice.life_evolution_guidance)
+  ) {
+    throw new ReportParseError("Invalid guidance2 output: empty guidance section.");
+  }
+  return slice;
 }
 
 function parseRemedial(json: unknown): RemedialMeasures | null {
   const rec = asRecord(json);
-  return parsePersona(rec.remedial_measures);
+  const persona = parsePersona(rec.remedial_measures);
+  if (!hasPersonaText(persona)) {
+    throw new ReportParseError("Invalid remedial output: missing remedial_measures.");
+  }
+  return persona;
 }
 
 /** Accept only complete timeline entries that remain visible in both voices. */
@@ -1546,9 +1587,11 @@ function isTransientFailure(err: unknown): boolean {
   return err instanceof TypeError;
 }
 
-/** HTTP status of a section failure, when the endpoint reported one. */
+/** HTTP status of a section failure, when the endpoint or timeout cap reported one. */
 function outcomeStatus(err: unknown): number | undefined {
-  return err instanceof LlmRequestError ? err.status : undefined;
+  if (err instanceof LlmRequestError) return err.status;
+  if (err instanceof SectionTimeoutError) return 504;
+  return undefined;
 }
 
 /**
@@ -1748,7 +1791,8 @@ async function reflectedSection<Section extends AnySectionKey>(
   if (refusalError(section, raw, chart) !== null) return raw;
   const [issues, jargon] = [jsonReflectionIssues(raw), jsonLaymanJargon(raw)];
   if (issues.length === 0 && jargon.length === 0) return raw;
-  const retry = await rewordedOr(raw, params.signal, () => requestCapped(section, [...messages, ...sectionRewordRetry(raw, issues, jargon)], params));
+  const doReword = () => requestCapped(section, [...messages, ...sectionRewordRetry(raw, issues, jargon)], params);
+  const retry = params.strictRetry ? await doReword() : await rewordedOr(raw, params.signal, doReword);
   return withholdFailingValues(mergeAcceptedRetry(section, raw, retry, chart), READING_WITHHELD[params.language ?? "en"]);
 }
 
@@ -1834,7 +1878,8 @@ async function* streamSections<Section extends AnySectionKey>(
   launch();
   let applied = 0;
   const failures: string[] = [];
-  let representative: LlmRequestError | undefined;
+  let representativeStatus: number | undefined;
+  let representativeBody: string | undefined;
 
   while (pending.size > 0) {
     const outcome = await Promise.race(pending.values());
@@ -1844,12 +1889,13 @@ async function* streamSections<Section extends AnySectionKey>(
     launch();
 
     if (!outcome.ok) {
-      if (representative === undefined && outcome.error instanceof LlmRequestError) {
-        representative = outcome.error;
+      const status = outcomeStatus(outcome.error);
+      if (representativeStatus === undefined && status !== undefined) {
+        representativeStatus = status;
+        representativeBody = outcome.error instanceof LlmRequestError ? outcome.error.body : undefined;
       }
       const message = outcomeErrorMessage(outcome.error);
       failures.push(message);
-      const status = outcomeStatus(outcome.error);
       yield {
         type: "error",
         section: outcome.section,
@@ -1873,7 +1919,9 @@ async function* streamSections<Section extends AnySectionKey>(
   if (applied === 0) {
     throw new LlmRequestError(
       `Interpretation failed: all ${sections.length} sections failed. ${summarizeFailures(failures)}`,
-      representative ? { status: representative.status, body: representative.body } : undefined,
+      representativeStatus !== undefined
+        ? { status: representativeStatus, body: representativeBody }
+        : undefined,
     );
   }
 
@@ -2073,7 +2121,10 @@ export async function regenerateNatalSection(
   section: NatalInterpretationSectionKey,
   params: RegenerateNatalSectionParams,
 ): Promise<Partial<NatalInterpretation>> {
-  const gen = streamSections({ ...params, chart: stableNatalChart(params.chart) }, [section]);
+  const gen = streamSections(
+    { ...params, chart: stableNatalChart(params.chart), strictRetry: true },
+    [section],
+  );
   let step = await gen.next();
   while (!step.done) {
     step = await gen.next();

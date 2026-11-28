@@ -43,12 +43,16 @@ export function NarrationUnavailable({
   const kept = context === 'kept';
   return (
     <div
-      role="status"
+      role={kept ? 'alert' : 'status'}
       data-testid={testId}
-      className="flex items-start gap-3 rounded-lg border border-ui-border bg-background-tertiary/40 px-4 py-3"
+      className={
+        kept
+          ? 'flex items-start gap-3 rounded-lg border border-accent-gold/50 bg-accent-gold/10 px-4 py-3'
+          : 'flex items-start gap-3 rounded-lg border border-ui-border bg-background-tertiary/40 px-4 py-3'
+      }
     >
       <svg
-        className="mt-0.5 h-4 w-4 shrink-0 text-text-muted"
+        className={kept ? 'mt-0.5 h-4 w-4 shrink-0 text-accent-gold' : 'mt-0.5 h-4 w-4 shrink-0 text-text-muted'}
         fill="none"
         viewBox="0 0 24 24"
         stroke="currentColor"
@@ -58,7 +62,11 @@ export function NarrationUnavailable({
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeWidth={2}
-          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          d={
+            kept
+              ? 'M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z'
+              : 'M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z'
+          }
         />
       </svg>
       <div className="min-w-0 flex-1 space-y-2">
@@ -68,17 +76,33 @@ export function NarrationUnavailable({
         >
           {t(kept ? 'narration.kept_title' : 'narration.chart_complete_title')}
         </p>
-        <p className="max-w-prose text-sm leading-relaxed text-text-secondary">
-          {t(kept ? 'narration.kept_body' : 'narration.chart_complete_body')}
-        </p>
-        <p
-          className="max-w-prose text-xs leading-relaxed text-text-muted"
-          data-testid={`${testId}-reason`}
-        >
-          {t(`narration.reason_${outage}`)} {t(`narration.next_${outage}`)}
-        </p>
+        {kept ? (
+          <>
+            <p
+              className="max-w-prose text-sm leading-relaxed text-text-primary"
+              data-testid={`${testId}-reason`}
+            >
+              {t(`narration.reason_${outage}`)} {t(`narration.next_${outage}`)}
+            </p>
+            <p className="max-w-prose text-xs leading-relaxed text-text-secondary">
+              {t('narration.kept_body')}
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="max-w-prose text-sm leading-relaxed text-text-secondary">
+              {t('narration.chart_complete_body')}
+            </p>
+            <p
+              className="max-w-prose text-xs leading-relaxed text-text-muted"
+              data-testid={`${testId}-reason`}
+            >
+              {t(`narration.reason_${outage}`)} {t(`narration.next_${outage}`)}
+            </p>
+          </>
+        )}
         {actions != null && (
-          <div className="flex flex-wrap items-center gap-3 text-xs text-text-muted">{actions}</div>
+          <div className="flex flex-wrap items-center gap-3 text-xs text-text-secondary">{actions}</div>
         )}
       </div>
     </div>

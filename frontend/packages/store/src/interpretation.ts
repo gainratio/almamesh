@@ -130,6 +130,11 @@ export interface ChartInterpretationEntry {
    * unchanged; cleared by `startInterpretation`.
    */
   readonly failedSections?: Readonly<Record<string, boolean>>;
+  /**
+   * Section key -> canonical error code (e.g. `ai.provider.rate_limited`) of a
+   * failed natal section, so partial-failure banners name the exact cause.
+   */
+  readonly failedSectionCodes?: Readonly<Record<string, string>>;
   /** ISO-8601 timestamp of the last mutation; supplied by the caller. */
   readonly updatedAt?: string;
   /**
@@ -196,7 +201,15 @@ export interface InterpretationStore {
     chartId: string,
     section: string,
     runToken?: InterpretationRunToken,
+    /** Canonical error code of the failure, shown next to the section name. */
+    code?: string,
   ) => void;
+  /**
+   * End a natal run nobody is waiting for any more (cancelled, superseded by
+   * switching charts, or unmounted). Restores a kept reading as 'complete' or
+   * clears an empty first run so the chart never stays stuck in 'generating'.
+   */
+  abandonInterpretation: (chartId: string, runToken: InterpretationRunToken) => void;
   /**
    * Store the finished reading: status -> 'complete'. `provenance` is the
    * identity of the config that produced it; omitting it (legacy callers)
@@ -767,6 +780,65 @@ function entryOf(
   return byChart[chartId] ?? EMPTY_ENTRY;
 }
 
+/**
+ * Preserve already-saved natal prose for any section that failed during a
+ * partial regeneration so keep-old-until-success holds per section too.
+ */
+function preserveKeptNatalSections(
+  prior: NatalInterpretation | undefined,
+  fresh: NatalInterpretation,
+  failed: Readonly<Record<string, boolean>> | undefined,
+): NatalInterpretation {
+  if (!prior || !failed) return fresh;
+  let merged: NatalInterpretation = { ...fresh };
+  if (failed.core) {
+    merged = {
+      ...merged,
+      summary: prior.summary,
+      strengths: prior.strengths,
+      challenges: prior.challenges,
+      life_themes: prior.life_themes,
+    };
+  }
+  if (failed.yoga && prior.integrated_yoga_narrative !== undefined) {
+    merged = { ...merged, integrated_yoga_narrative: prior.integrated_yoga_narrative };
+  }
+  if (failed.guidance1) {
+    merged = {
+      ...merged,
+      health_guidance: prior.health_guidance,
+      education_guidance: prior.education_guidance,
+      career_guidance: prior.career_guidance,
+      relationship_guidance: prior.relationship_guidance,
+      ...(prior.family_guidance !== undefined ? { family_guidance: prior.family_guidance } : {}),
+    };
+  }
+  if (failed.guidance2) {
+    merged = {
+      ...merged,
+      finances_guidance: prior.finances_guidance,
+      spiritual_guidance: prior.spiritual_guidance,
+      life_evolution_guidance: prior.life_evolution_guidance,
+    };
+  }
+  if (failed.remedial && prior.remedial_measures !== undefined) {
+    merged = { ...merged, remedial_measures: prior.remedial_measures };
+  }
+  return merged;
+}
+
+function preserveKeptTimelineSections(
+  prior: CurrentTimelineContent | undefined,
+  fresh: CurrentTimelineContent,
+  failed: Readonly<Record<string, boolean>> | undefined,
+): CurrentTimelineContent {
+  if (!prior || !failed) return fresh;
+  return {
+    upcoming_periods: failed.upcoming_periods ? prior.upcoming_periods : fresh.upcoming_periods,
+    current_sky: failed.current_sky ? prior.current_sky : fresh.current_sky,
+  };
+}
+
 /** Pure: write one chart's entry, leaving the rest of the map untouched. */
 function withEntry(
   byChart: Record<string, ChartInterpretationEntry>,
@@ -851,14 +923,63 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
       });
     },
 
-    markSectionFailed: (chartId, section, runToken) => {
+    markSectionFailed: (chartId, section, runToken, code) => {
       set((state) => {
         if (!acceptsRun(chartId, runToken)) {
           return state;
         }
         const current = entryOf(state.byChart, chartId);
         const failedSections = { ...current.failedSections, [section]: true };
-        return { byChart: withEntry(state.byChart, chartId, { ...current, failedSections }) };
+        return {
+          byChart: withEntry(state.byChart, chartId, {
+            ...current,
+            failedSections,
+            ...(code === undefined
+              ? {}
+              : { failedSectionCodes: { ...current.failedSectionCodes, [section]: code } }),
+          }),
+        };
+      });
+    },
+
+    abandonInterpretation: (chartId, runToken) => {
+      if (!acceptsRun(chartId, runToken)) return;
+      activeRuns.delete(chartId);
+      set((state) => {
+        const current = state.byChart[chartId];
+        if (current?.status !== 'generating') return state;
+        if (current.interpretation) {
+          const {
+            failedSections: _failed,
+            failedSectionCodes: _codes,
+            error: _err,
+            errorKind: _kind,
+            ...kept
+          } = current;
+          return {
+            byChart: withEntry(state.byChart, chartId, {
+              ...kept,
+              status: 'complete',
+              sections: {},
+            }),
+          };
+        }
+        if (current.timeline?.content) {
+          return {
+            byChart: withEntry(state.byChart, chartId, {
+              ...current,
+              status: 'idle',
+              sections: {},
+              failedSections: undefined,
+              failedSectionCodes: undefined,
+              error: undefined,
+              errorKind: undefined,
+            }),
+          };
+        }
+        const byChart = { ...state.byChart };
+        delete byChart[chartId];
+        return { byChart };
       });
     },
 
@@ -894,11 +1015,17 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
         // `evidenceAnnotations` is cleared for the same reason: the previous
         // reading's model prose must never appear beside a reading it was not
         // written for. The annotation step re-runs after this and refills it.
+        const mergedInterpretation = preserveKeptNatalSections(
+          current.interpretation,
+          natalInterpretation,
+          current.failedSections,
+        );
         const entry: ChartInterpretationEntry = {
           ...current,
           status: 'complete',
-          interpretation: natalInterpretation,
+          interpretation: mergedInterpretation,
           error: undefined,
+          errorKind: undefined,
           updatedAt,
           provenance,
           inputProvenance,
@@ -929,6 +1056,9 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
         const { [section]: _cleared, ...remainingFailed } = current.failedSections ?? {};
         const nextFailed =
           Object.keys(remainingFailed).length > 0 ? remainingFailed : undefined;
+        const { [section]: _clearedCode, ...remainingCodes } = current.failedSectionCodes ?? {};
+        const nextFailedCodes =
+          Object.keys(remainingCodes).length > 0 ? remainingCodes : undefined;
         const mergedProvenance =
           provenance !== undefined
             ? {
@@ -946,6 +1076,7 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
           },
           sections: { ...current.sections, [section]: true },
           failedSections: nextFailed,
+          failedSectionCodes: nextFailedCodes,
           error: undefined,
           errorKind: undefined,
           updatedAt,
@@ -1095,12 +1226,17 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
         if (!acceptsTimelineRun(chartId, runToken)) return state;
         const current = entryOf(state.byChart, chartId);
         const previous = current.timeline;
+        const mergedContent = preserveKeptTimelineSections(
+          previous?.content,
+          content,
+          previous?.failedSections,
+        );
         return {
           byChart: withEntry(state.byChart, chartId, {
             ...current,
             timeline: {
               status: 'complete',
-              content,
+              content: mergedContent,
               sections: previous?.sections ?? {},
               ...(previous?.failedSections !== undefined
                 ? { failedSections: previous.failedSections }
@@ -1143,11 +1279,20 @@ export const interpretationStoreCreator: StateCreator<InterpretationStore> = (se
       set((state) => {
         const current = state.byChart[chartId];
         if (current?.timeline?.status !== 'generating') return state;
-        const { content } = current.timeline;
+        const {
+          content,
+          failedSections: _failed,
+          failedSectionCodes: _codes,
+          error: _err,
+          errorKind: _kind,
+          ...keptTimeline
+        } = current.timeline;
         return {
           byChart: withEntry(state.byChart, chartId, {
             ...current,
-            timeline: content ? { ...current.timeline, status: 'complete', sections: {} } : undefined,
+            timeline: content
+              ? { ...keptTimeline, content, status: 'complete', sections: {} }
+              : undefined,
           }),
         };
       });

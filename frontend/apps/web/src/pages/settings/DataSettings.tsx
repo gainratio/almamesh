@@ -23,7 +23,13 @@ import {
 } from '@almamesh/store';
 import { Button, Card, Input } from '../../components/ui';
 import { buildBackupExport, exportBackupFilename } from '../../lib/backupService';
-import { openBackupSaveTarget, type BackupSaveTarget } from '../../lib/backupFile';
+import {
+  canShareBackupFiles,
+  openBackupSaveTarget,
+  shareBackupFile,
+  type BackupFileContent,
+  type BackupSaveTarget,
+} from '../../lib/backupFile';
 import { repairNoteLines } from '../../lib/dataRepairNotice';
 import { type BackupDrive, createDriveForCurrentOrigin, createDriveSafetyTarget } from '../../lib/drive';
 import { useBackupRestore } from '../../hooks/useBackupRestore';
@@ -83,6 +89,14 @@ export function DataSettingsPanel({ driveOverride }: { readonly driveOverride?: 
   const [exporting, setExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
+  const [pendingShare, setPendingShare] = useState<{
+    readonly filename: string;
+    readonly content: BackupFileContent;
+    readonly note: string;
+  } | null>(null);
+  const shareSupported = canShareBackupFiles();
+  const driveOptionAvailable = driveController.enabled && !driveController.inMemoryOnly;
+  const driveSectionRef = useRef<HTMLDivElement>(null);
 
   // One status/error banner for the panel: the latest action's message.
   const status = exportStatus ?? restore.status;
@@ -97,23 +111,33 @@ export function DataSettingsPanel({ driveOverride }: { readonly driveOverride?: 
   const clearBanners = () => {
     setExportStatus(null);
     setExportError(null);
+    setPendingShare(null);
     restore.clearMessages();
   };
+
+  function validatePassphraseForExport(): boolean {
+    if (passwordProblem === 'mismatch') {
+      setConfirmationTouched(true);
+      return false;
+    }
+    if (passwordProblem !== null) {
+      setExportError(
+        t(
+          passwordProblem === 'empty'
+            ? 'backup.error_passphrase_empty'
+            : 'backup.error_passphrase_too_short',
+        ),
+      );
+      return false;
+    }
+    return true;
+  }
 
   // Synchronous on purpose: the save picker must open inside the click
   // (Chrome's user activation lasts ~5 s; building the backup can take longer).
   function handleExport() {
     clearBanners();
-    if (passwordProblem === 'mismatch') {
-      setConfirmationTouched(true);
-      return;
-    }
-    if (passwordProblem !== null) {
-      setExportError(
-        t(passwordProblem === 'empty' ? 'backup.error_passphrase_empty' : 'backup.error_passphrase_too_short'),
-      );
-      return;
-    }
+    if (!validatePassphraseForExport()) return;
     let target: BackupSaveTarget;
     try {
       target = openBackupSaveTarget(exportBackupFilename());
@@ -122,6 +146,83 @@ export function DataSettingsPanel({ driveOverride }: { readonly driveOverride?: 
       return;
     }
     void finishExport(target, password);
+  }
+
+  async function handleShareExport() {
+    clearBanners();
+    if (!validatePassphraseForExport()) return;
+    setExporting(true);
+    try {
+      const built = await buildBackupExport(password);
+      const note = repairNoteLines(t, built.repairs).map((line) => ` ${line}`).join('');
+      const outcome = await shareBackupFile(built.filename, built.content);
+      if (outcome === 'shared') {
+        setExportStatus(`${t('backup.status_shared')}${note}`);
+        clearPasswords();
+      } else if (outcome === 'gesture_expired') {
+        setPendingShare({ filename: built.filename, content: built.content, note });
+      }
+    } catch (err) {
+      const key = exportErrorKey(err);
+      setExportError(key ? t(key) : t('backup.error_export_failed', { reason: reasonOf(err) }));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function handleConfirmPendingShare() {
+    if (!pendingShare) return;
+    const staged = pendingShare;
+    setExporting(true);
+    try {
+      const outcome = await shareBackupFile(staged.filename, staged.content);
+      if (outcome === 'shared') {
+        setPendingShare(null);
+        setExportStatus(`${t('backup.status_shared')}${staged.note}`);
+        clearPasswords();
+      } else if (outcome === 'cancelled') {
+        setPendingShare(null);
+      }
+    } catch (err) {
+      setPendingShare(null);
+      setExportError(t('backup.error_export_failed', { reason: reasonOf(err) }));
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function handleDriveExportChoice() {
+    clearBanners();
+    if (password.length > 0 || confirmation.length > 0) {
+      if (!validatePassphraseForExport()) return;
+      driveSectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+      if (!driveController.connected || driveController.needsReconnect) {
+        void driveController.connect();
+        return;
+      }
+      void driveController.backUpNow(password).then((ok) => {
+        if (ok === true) clearPasswords();
+      });
+      return;
+    }
+    driveSectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    if (!driveController.connected || driveController.needsReconnect) {
+      void driveController.connect();
+      return;
+    }
+    void driveController.backUpNow();
+  }
+
+  function handleDriveRestoreChoice() {
+    clearBanners();
+    driveSectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+    if (!driveController.connected || driveController.needsReconnect) {
+      void driveController.connect();
+      return;
+    }
+    if (!driveController.listLoaded) {
+      void driveController.refresh();
+    }
   }
 
   function clearPasswords() {
@@ -194,7 +295,9 @@ export function DataSettingsPanel({ driveOverride }: { readonly driveOverride?: 
       )}
 
       {/* Cloud Drive Backup (Google Drive when enabled for this origin) */}
-      <DriveBackupPanel controller={driveController} />
+      <div ref={driveSectionRef}>
+        <DriveBackupPanel controller={driveController} />
+      </div>
 
       {/* Export */}
       <Card title={t('backup.export_heading')}>
@@ -228,14 +331,64 @@ export function DataSettingsPanel({ driveOverride }: { readonly driveOverride?: 
             }}
             showMismatch={showMismatch}
           />
-          <Button
-            type="button"
-            onClick={handleExport}
-            disabled={exporting}
-            data-testid="backup-export-button"
-          >
-            {t('backup.export_button')}
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              onClick={handleExport}
+              disabled={exporting}
+              data-testid="backup-export-button"
+            >
+              {t('backup.export_button')}
+            </Button>
+            {shareSupported && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void handleShareExport()}
+                disabled={exporting}
+                data-testid="backup-share-button"
+              >
+                {t('backup.share_button')}
+              </Button>
+            )}
+            {driveOptionAvailable && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleDriveExportChoice}
+                disabled={exporting || driveController.busy || !driveController.online}
+                data-testid="backup-drive-export-button"
+              >
+                {t('backup.export_to_drive_button')}
+              </Button>
+            )}
+          </div>
+          {pendingShare && (
+            <div
+              role="status"
+              data-testid="backup-share-ready"
+              className="flex flex-wrap items-center gap-3 rounded-lg border border-accent-gold/40 bg-accent-gold/10 px-4 py-3 text-sm text-text-primary"
+            >
+              <span>{t('backup.share_ready_hint')}</span>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void handleConfirmPendingShare()}
+                disabled={exporting}
+                data-testid="backup-share-ready-button"
+              >
+                {t('backup.share_ready_button')}
+              </Button>
+              <button
+                type="button"
+                onClick={() => setPendingShare(null)}
+                className="text-xs text-text-secondary underline hover:text-text-primary"
+                data-testid="backup-share-cancel"
+              >
+                {t('backup.cancel')}
+              </button>
+            </div>
+          )}
           <p className="text-text-muted text-xs">{t('backup.sensitivity_note')}</p>
         </div>
       </Card>
@@ -244,14 +397,27 @@ export function DataSettingsPanel({ driveOverride }: { readonly driveOverride?: 
       <Card title={t('backup.import_heading')}>
         <div className="space-y-4">
           <p className="text-text-secondary text-sm">{t('backup.import_hint')}</p>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleImport}
-            data-testid="backup-import-button"
-          >
-            {t('backup.import_button')}
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleImport}
+              data-testid="backup-import-button"
+            >
+              {t('backup.import_button')}
+            </Button>
+            {driveOptionAvailable && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleDriveRestoreChoice}
+                disabled={driveController.busy || !driveController.online}
+                data-testid="backup-drive-restore-button"
+              >
+                {t('drive.restore_dialog_title')}
+              </Button>
+            )}
+          </div>
         </div>
       </Card>
 

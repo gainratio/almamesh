@@ -215,4 +215,35 @@ describe('useMeshReading durability', () => {
     await waitFor(() => expect(result.current.status).toBe('complete'));
     expect(mocks.stream).toHaveBeenCalledOnce();
   });
+
+  it('preserves prior section prose AND keeps failed section state when saveCompleted updates the store', async () => {
+    let persisted: MeshReadingEntry | undefined = storedReading();
+    mocks.getExact.mockImplementation(() => persisted);
+    const freshReading: MeshReading = {
+      connection: { title: 'New Connection', layman: 'Fresh warm.', technical: 'Fresh facts.' },
+      timing_together: { title: 'New Timing', layman: 'Fresh steady.', technical: 'Fresh windows.' },
+      care: { title: '', layman: '', technical: '' },
+    };
+    mocks.stream.mockImplementation(async function* () {
+      yield { type: 'section_complete', section: 'connection' };
+      yield { type: 'section_complete', section: 'timing_together' };
+      yield { type: 'error', section: 'care', message: 'rate limited', status: 429 };
+      yield { type: 'complete', reading: freshReading };
+    });
+    const { result, rerender } = renderHook(() => useMeshReading(EDGE, CONTEXT));
+    await waitFor(() => expect(result.current.status).toBe('complete'));
+
+    mocks.saveCompleted.mockImplementationOnce(async (entry: MeshReadingEntry) => {
+      persisted = { ...entry, reading: { ...entry.reading } };
+    });
+
+    act(() => result.current.generate());
+    await waitFor(() => expect(mocks.saveCompleted).toHaveBeenCalledOnce());
+    rerender();
+
+    expect(result.current.status).toBe('complete');
+    expect(result.current.failed?.has('care')).toBe(true);
+    expect(result.current.reading?.connection).toEqual(freshReading.connection);
+    expect(result.current.reading?.care).toEqual(READING.care);
+  });
 });

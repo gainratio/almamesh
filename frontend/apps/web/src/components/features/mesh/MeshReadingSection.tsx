@@ -81,16 +81,28 @@ export function MeshReadingSection({
   readingContext,
   onDiscuss,
 }: MeshReadingSectionProps): ReactElement {
-  const { t } = useTranslation('mesh');
+  const { t } = useTranslation(['mesh', 'dashboard']);
   // Live: connecting from the CTA's dialog swaps the CTA for the reading at once.
   const aiConfigured = useLlmStatus().configured;
-  const { status, reading, error, completed, generate } = useMeshReading(edge, readingContext);
+  const { status, reading, error, completed, failed, generate } = useMeshReading(edge, readingContext);
   const elapsed = useElapsedSeconds(status === 'streaming');
+  const failedList = failed ? SECTION_ORDER.filter((s) => failed.has(s)) : [];
 
   let body: ReactElement;
   if (status === 'complete' && reading) {
     body = (
       <div className="space-y-6">
+        {failedList.length > 0 && (
+          <p
+            role="alert"
+            data-testid="mesh-reading-partial-error"
+            className="rounded-lg border border-accent-gold/40 bg-accent-gold/10 px-4 py-3 text-sm text-text-primary"
+          >
+            {t('dashboard:generation.partial_failure', {
+              sections: failedList.map((s) => t(`reading.sections.${s}`)).join(', '),
+            })}
+          </p>
+        )}
         {SECTION_ORDER.map((section) => (
           <ReadingBlock key={section} sectionKey={section} persona={reading[section]} />
         ))}
@@ -113,14 +125,26 @@ export function MeshReadingSection({
           <span>{t('reading.generating', { elapsed: formatElapsed(elapsed) })}</span>
         </p>
         <ul className="max-w-sm space-y-1 text-sm text-text-secondary">
-          {SECTION_ORDER.map((section) => (
-            <li key={section} className="flex items-center justify-between">
-              <span>{t(`reading.sections.${section}`)}</span>
-              <span className={completed.has(section) ? 'text-status-success' : 'text-text-tertiary'}>
-                {completed.has(section) ? '✓' : '…'}
-              </span>
-            </li>
-          ))}
+          {SECTION_ORDER.map((section) => {
+            const didFail = Boolean(failed?.has(section));
+            const isDone = completed.has(section);
+            return (
+              <li key={section} className="flex items-center justify-between">
+                <span>{t(`reading.sections.${section}`)}</span>
+                <span
+                  className={
+                    didFail
+                      ? 'text-status-error'
+                      : isDone
+                        ? 'text-status-success'
+                        : 'text-text-tertiary'
+                  }
+                >
+                  {didFail ? '✗' : isDone ? '✓' : '…'}
+                </span>
+              </li>
+            );
+          })}
         </ul>
       </div>
     );

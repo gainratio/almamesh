@@ -1283,4 +1283,64 @@ describe('forgetChart: a replaced chart takes its reading with it', () => {
 
     expect(store.getState().byChart.c2?.status).toBe('complete');
   });
+
+  it('preserves kept natal and timeline sections on partial regeneration failure and records error codes', async () => {
+    const store = newStore();
+    const initialRun = store.getState().startInterpretation('c1', 'p1');
+    await store.getState().setInterpretation(
+      'c1',
+      {
+        summary: { layman: 'Original summary.', technical: 'Original technical.' },
+        strengths: [{ title: 'Focus', layman: 'Steady.', technical: 'Saturn.' }],
+        challenges: [],
+        life_themes: [],
+        career_guidance: { layman: 'Original career.', technical: '10th house.' },
+      },
+      '2026-10-05T00:00:00Z',
+      undefined,
+      { predictiveRequestKey: null },
+      initialRun,
+    );
+
+    const partialRun = store.getState().startInterpretation('c1', 'p1');
+    store.getState().markSectionFailed('c1', 'core', partialRun, 'ai.provider.rate_limited');
+    store.getState().markSectionComplete('c1', 'guidance1', partialRun);
+    await store.getState().setInterpretation(
+      'c1',
+      {
+        summary: { layman: '', technical: '' },
+        strengths: [],
+        challenges: [],
+        life_themes: [],
+        career_guidance: { layman: 'Updated career.', technical: 'Updated 10th.' },
+      },
+      '2026-10-06T00:00:00Z',
+      undefined,
+      { predictiveRequestKey: null },
+      partialRun,
+    );
+
+    const entry = store.getState().byChart.c1;
+    expect(entry?.status).toBe('complete');
+    expect(entry?.interpretation?.summary.layman).toBe('Original summary.');
+    expect(entry?.interpretation?.career_guidance?.layman).toBe('Updated career.');
+    expect(entry?.failedSections).toEqual({ core: true });
+    expect(entry?.failedSectionCodes).toEqual({ core: 'ai.provider.rate_limited' });
+    expect(entry?.errorKind).toBeUndefined();
+  });
+
+  it('abandonInterpretation restores a kept reading to complete or drops an empty first run', async () => {
+    const store = newStore();
+    const first = store.getState().startInterpretation('c-empty', 'p1');
+    store.getState().abandonInterpretation('c-empty', first);
+    expect(store.getState().byChart['c-empty']).toBeUndefined();
+
+    const ok = store.getState().startInterpretation('c-kept', 'p1');
+    await store.getState().setInterpretation('c-kept', makeInterpretation('Kept.'), '2026-10-05T00:00:00Z', undefined, undefined, ok);
+    const regen = store.getState().startInterpretation('c-kept', 'p1');
+    expect(store.getState().byChart['c-kept']?.status).toBe('generating');
+    store.getState().abandonInterpretation('c-kept', regen);
+    expect(store.getState().byChart['c-kept']?.status).toBe('complete');
+    expect(store.getState().byChart['c-kept']?.interpretation?.summary.layman).toBe('Kept.');
+  });
 });

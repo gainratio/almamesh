@@ -324,6 +324,17 @@ describe("streamStructuredInterpretation — degrade gracefully", () => {
     expect((thrown as LlmRequestError).status).toBe(402);
     expect((thrown as Error).message).toMatch(/all .*sections? failed/i);
   });
+
+  it("rejects empty {} natal section responses instead of accepting blank prose as complete", async () => {
+    const fetchEmptyObjects = vi.fn(async () => jsonResponse("{}")) as unknown as typeof fetch;
+    const gen = streamStructuredInterpretation({
+      chart: realChart,
+      config: LOCAL_CFG,
+      asOf: { basis: "chart", instant: NOW },
+      fetchImpl: fetchEmptyObjects,
+    });
+    await expect(collect(gen)).rejects.toThrow(/all .*sections? failed/i);
+  });
 });
 
 describe("streamStructuredInterpretation — dual-voice summary", () => {

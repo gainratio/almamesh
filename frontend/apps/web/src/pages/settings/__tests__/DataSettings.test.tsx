@@ -36,6 +36,8 @@ vi.mock('@almamesh/store', async (importOriginal) => {
     clearPortableImportRevisionFence: vi.fn(),
     listSetAsideRecords: vi.fn(async () => []),
     portableStatePersistence: vi.fn(() => 'opfs'),
+    supportsPortableState: vi.fn(() => false),
+    getDeviceCode: vi.fn(async () => '7f3a2c'),
   };
 });
 
@@ -76,6 +78,7 @@ import {
 import { saveBackupFile, pickBackupFile, openBackupSaveTarget } from '../../../lib/backupFile';
 import { listSetAsideRecords, portableStatePersistence } from '@almamesh/store';
 import { adoptRestoredDatasetInPlace } from '../../../lib/profileDataLifecycle';
+import { passphraseSealedFixtureBytes } from '../../../lib/drive/testing/sealedFixture';
 import DataSettings, { DataSettingsPanel } from '../DataSettings';
 
 const SAMPLE_ENVELOPE: BackupEnvelopePlain = {
@@ -139,7 +142,7 @@ describe('DataSettings — Backup & Restore panel', () => {
     expect(screen.getByTestId('backup-export-button')).toBeTruthy();
     expect(screen.getByTestId('backup-import-button')).toBeTruthy();
     expect(screen.getByText('Import / Restore')).toBeTruthy();
-    expect(screen.getByText('Import a backup')).toBeTruthy();
+    expect(screen.getByText('Import from device, Files, or Google Drive')).toBeTruthy();
   });
 
   // CONTRACT REVERSED (2026-10-05, product rule "SQLite on OPFS or no dice"):
@@ -1058,5 +1061,90 @@ describe('DataSettings — confirm the password you create', () => {
     expect(message.getAttribute('role')).toBe('alert');
     expect(confirm.getAttribute('aria-describedby')).toBe(message.id);
     expect(confirm.getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('offers Web Share destination choice (Google Drive / Files) and recovers cleanly on expired user gesture', async () => {
+    let attempts = 0;
+    const sharedFiles: File[] = [];
+    const origShare = navigator.share;
+    const origCanShare = navigator.canShare;
+    Object.defineProperty(navigator, 'canShare', {
+      configurable: true,
+      value: () => true,
+    });
+    Object.defineProperty(navigator, 'share', {
+      configurable: true,
+      value: vi.fn(async (data: { files?: File[] }) => {
+        attempts += 1;
+        if (attempts === 1) {
+          throw new DOMException('User activation expired during scrypt', 'NotAllowedError');
+        }
+        if (data.files?.[0]) sharedFiles.push(data.files[0]);
+      }),
+    });
+
+    try {
+      vi.mocked(buildBackupExport).mockResolvedValueOnce({
+        filename: 'almamesh-backup-2026-07-01T12-34-56-000Z.almamesh',
+        content: new Uint8Array([1, 2, 3]),
+        repairs: EMPTY_PORTABLE_REPAIR_REPORT,
+      });
+      render(<DataSettingsPanel />);
+      typeExportPasswords('hunter2-long', 'hunter2-long');
+
+      const shareBtn = screen.getByTestId('backup-share-button');
+      fireEvent.click(shareBtn);
+
+      const readyBtn = await screen.findByTestId('backup-share-ready-button');
+      fireEvent.click(readyBtn);
+
+      await waitFor(() =>
+        expect(screen.getByTestId('backup-status').textContent).toContain('Encrypted backup shared.'),
+      );
+      expect(sharedFiles).toHaveLength(1);
+      expect(sharedFiles[0]?.name).toBe('almamesh-backup-2026-07-01T12-34-56-000Z.almamesh');
+      expect(sharedFiles[0]?.type).toBe('application/octet-stream');
+    } finally {
+      Object.defineProperty(navigator, 'share', { configurable: true, value: origShare });
+      Object.defineProperty(navigator, 'canShare', { configurable: true, value: origCanShare });
+    }
+  });
+
+  it('refuses mismatched Export-card passwords on Google Drive backup and preserves passwords on upload failure', async () => {
+    const sealed = await passphraseSealedFixtureBytes('sqlite-bytes');
+    vi.mocked(buildBackupExport).mockResolvedValue({
+      filename: 'almamesh-backup-2026-07-01T12-34-56-000Z.almamesh',
+      content: sealed,
+      repairs: EMPTY_PORTABLE_REPAIR_REPORT,
+    });
+    const upload = vi.fn().mockRejectedValueOnce(new Error('Drive quota exceeded'));
+    const fakeDrive = {
+      provider: 'google-drive' as const,
+      isConnected: vi.fn(async () => true),
+      hasFreshAccessToken: vi.fn(() => true),
+      connect: vi.fn(async () => 'connected' as const),
+      disconnect: vi.fn(async () => undefined),
+      list: vi.fn(async () => []),
+      upload,
+      download: vi.fn(),
+      remove: vi.fn(async () => undefined),
+    };
+
+    render(<DataSettingsPanel driveOverride={fakeDrive} />);
+    const driveBtn = await screen.findByTestId('backup-drive-export-button');
+    await waitFor(() => expect(fakeDrive.list).toHaveBeenCalled());
+
+    // 1. Mismatched passwords on Export card must block Drive upload instead of falling through.
+    typeExportPasswords('hunter2-long', 'hunter2-typo');
+    fireEvent.click(driveBtn);
+    expect(screen.getByTestId('backup-passphrase-mismatch')).toBeTruthy();
+    expect(upload).not.toHaveBeenCalled();
+
+    // 2. Matching passwords that fail upload must NOT clear the typed passwords.
+    typeExportPasswords('hunter2-long', 'hunter2-long');
+    fireEvent.click(driveBtn);
+    await waitFor(() => expect(upload).toHaveBeenCalledOnce());
+    expect((screen.getByTestId('backup-passphrase-input') as HTMLInputElement).value).toBe('hunter2-long');
+    expect((screen.getByTestId('backup-passphrase-confirm-input') as HTMLInputElement).value).toBe('hunter2-long');
   });
 });

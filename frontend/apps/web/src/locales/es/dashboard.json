@@ -38,7 +38,7 @@
   "narration": {
     "chart_complete_title": "Tu carta está completa",
     "chart_complete_body": "Tu ascendente, tu luna, tus periodos de dasha y tu Atlas de Vida se calculan por completo en tu dispositivo: están completos y son correctos. Solo falta la interpretación escrita, un extra opcional que aporta la IA.",
-    "kept_title": "Tu lectura no ha cambiado",
+    "kept_title": "No se pudo actualizar tu lectura — tu lectura anterior se conserva abajo",
     "kept_body": "Tu carta y la lectura de abajo están exactamente igual que antes. Lo único que no se completó fue la actualización de la interpretación escrita.",
     "reason_no_key": "Todavía no hay ningún proveedor de IA conectado.",
     "next_no_key": "Conecta un modelo de IA cuando quieras una interpretación escrita; nada más de esta página cambia.",
