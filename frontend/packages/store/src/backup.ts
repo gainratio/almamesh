@@ -278,13 +278,14 @@ export async function applyBrowserBackupAtomically(
   deps: BackupDeps,
   epoch: number,
   setAside: readonly SetAsideRecord[] = [],
+  hold: (records: readonly SetAsideRecord[]) => Promise<void> = holdSetAsideRecords,
 ): Promise<void> {
   if (envelope.format !== 'almamesh-backup' || envelope.formatVersion !== 1) {
     await applyBackup(envelope, deps);
     return;
   }
   await enforceArmedPortableImportRevision();
-  await holdSetAsideRecords(setAside);
+  if (setAside.length > 0) await hold(setAside);
   const writes = BACKUP_STORES.map((entry) => {
     const snapshot = envelope.stores[entry.key];
     return {

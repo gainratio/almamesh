@@ -14,13 +14,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function dropRecordKeys(
-  value: unknown,
+  value: Record<string, unknown>,
   shouldDrop: (key: string, entry: unknown) => boolean,
 ): Record<string, unknown> {
-  if (!isRecord(value)) return {};
   return Object.fromEntries(
     Object.entries(value).filter(([key, entry]) => !shouldDrop(key, entry)),
   );
+}
+
+function dropIfRecord(
+  value: unknown,
+  shouldDrop: (key: string, entry: unknown) => boolean,
+): unknown {
+  return isRecord(value) ? dropRecordKeys(value, shouldDrop) : value;
 }
 
 function entryOwner(entry: unknown): string | undefined {
@@ -53,6 +59,7 @@ function sanitizeProfiles(
   state: Record<string, unknown>,
   profileIds: ReadonlySet<string>,
 ): Record<string, unknown> {
+  if (!isRecord(state.profiles)) return state;
   const kept = dropRecordKeys(state.profiles, (profileId) => profileIds.has(profileId));
   const profiles = Object.fromEntries(
     Object.entries(kept).map(([profileId, profile]) => {
@@ -65,7 +72,7 @@ function sanitizeProfiles(
   );
   const active = state.activeProfileId;
   const activeProfileId =
-    typeof active === 'string' && active in profiles ? active : firstProfileByCreatedAt(profiles);
+    typeof active === 'string' && profileIds.has(active) ? firstProfileByCreatedAt(profiles) : active;
   return { ...state, profiles, activeProfileId };
 }
 
@@ -74,12 +81,13 @@ function sanitizeChat(
   profileIds: ReadonlySet<string>,
   threadIds: ReadonlySet<string>,
 ): Record<string, unknown> {
+  if (!isRecord(state.threads)) return state;
   const threads = dropRecordKeys(
     state.threads,
     (threadId, thread) => threadIds.has(threadId) || profileIds.has(entryOwner(thread) ?? ''),
   );
-  const messages = dropRecordKeys(state.messages, (threadId) => !(threadId in threads));
-  const summaries = dropRecordKeys(state.summaries, (threadId) => !(threadId in threads));
+  const messages = dropIfRecord(state.messages, (threadId) => !(threadId in threads));
+  const summaries = dropIfRecord(state.summaries, (threadId) => !(threadId in threads));
   return { ...state, threads, messages, summaries };
 }
 
@@ -97,7 +105,7 @@ function sanitizeState(
     case 'almamesh-chart-library':
       return {
         ...state,
-        charts: dropRecordKeys(
+        charts: dropIfRecord(
           state.charts,
           (chartId, chart) => chartIds.has(chartId) || profileIds.has(entryOwner(chart) ?? ''),
         ),
@@ -105,14 +113,14 @@ function sanitizeState(
     case 'almamesh-life-events':
       return {
         ...state,
-        eventsByProfile: dropRecordKeys(state.eventsByProfile, (profileId) =>
+        eventsByProfile: dropIfRecord(state.eventsByProfile, (profileId) =>
           profileIds.has(profileId),
         ),
       };
     case 'almamesh-rectification-records':
       return {
         ...state,
-        recordsByProfile: dropRecordKeys(state.recordsByProfile, (profileId) =>
+        recordsByProfile: dropIfRecord(state.recordsByProfile, (profileId) =>
           profileIds.has(profileId),
         ),
       };
@@ -126,7 +134,7 @@ function sanitizeState(
     case 'almamesh-interpretations':
       return {
         ...state,
-        byChart: dropRecordKeys(
+        byChart: dropIfRecord(
           state.byChart,
           (chartId, entry) =>
             chartIds.has(chartId) || profileIds.has(interpretationOwner(entry) ?? ''),
@@ -135,8 +143,8 @@ function sanitizeState(
     case 'almamesh-mesh-readings':
       return {
         ...state,
-        byPair: dropRecordKeys(state.byPair, (_pairKey, entry) => {
-          if (!isRecord(entry) || !Array.isArray(entry.profileIds)) return true;
+        byPair: dropIfRecord(state.byPair, (_pairKey, entry) => {
+          if (!isRecord(entry) || !Array.isArray(entry.profileIds)) return false;
           return entry.profileIds.some(
             (profileId) => typeof profileId === 'string' && profileIds.has(profileId),
           );

@@ -405,6 +405,7 @@ export class PortableStateRepository {
     expectedEpoch?: number,
   ): Promise<void> {
     if (records.length === 0) return;
+    validateSetAsideRecordList(records);
     const rows = await Promise.all(records.map(async (record) => ({
       key: `${record.personId}/${record.row}/${await sha256Hex(record.value)}`,
       value: JSON.stringify({ ...record, setAsideAt: at }),
@@ -514,7 +515,7 @@ export class PortableStateRepository {
       // A reference our own app left pointing at a person or chart that is
       // gone is repairable, not corruption; it must never block the export.
       const repaired = repairPortableReferences(snapshot.values);
-      validatePortableSnapshot({ ...snapshot, values: repaired.values });
+      validatePortableSnapshot({ ...snapshot, values: repaired.values }, repaired.repairs);
       // Backups carry the canonical dataset only; the quarantine stays local.
       // The raw file is never what leaves: it may hold quarantine rows (their
       // writes are not fenced by the dataset epoch, so no re-read here could be
@@ -896,7 +897,7 @@ function readValidTombstoneList(candidate: unknown): readonly string[] | null {
 }
 
 function canSynthesizeEpochZeroLedger(values: ReadonlyMap<string, string>): boolean {
-  if (values.size === 0) return false;
+  if (!PORTABLE_STATE_KEYS.some((key) => values.has(key))) return false;
   for (const key of PORTABLE_DATASET_KEYS) {
     const raw = values.get(key);
     if (raw === undefined) continue;
@@ -1036,9 +1037,8 @@ function normalizeImportedPortableValues(rawValues: ReadonlyMap<string, string>)
   }
 }
 
-function validateSetAsideRepairs(repairs: PortableRepairReport | undefined): void {
-  if (repairs === undefined) return;
-  for (const record of repairs.setAside) {
+export function validateSetAsideRecordList(records: readonly SetAsideRecord[]): void {
+  for (const record of records) {
     assertIdentifier(record.personId, record.row);
     if (record.personId.includes('\0') || record.personId.includes('/')) {
       throw new PortableStateCorruptError(
@@ -1047,6 +1047,11 @@ function validateSetAsideRepairs(repairs: PortableRepairReport | undefined): voi
     }
     assertJsonTextWithinBounds(record.value, record.row);
   }
+}
+
+function validateSetAsideRepairs(repairs: PortableRepairReport | undefined): void {
+  if (repairs === undefined) return;
+  validateSetAsideRecordList(repairs.setAside);
 }
 
 function validatePortableSnapshot(

@@ -1674,5 +1674,36 @@ describe('LLM chatContextTokens preference parity and raw OPFS SQLite import hea
       ),
     ).resolves.toBeUndefined();
     expect((await dupRepo.listSetAside()).size).toBe(1);
+
+    // Tombstone sanitization never coerces corrupt non-object maps or non-string activeProfileId into valid shapes.
+    const corruptWithTombstones = new MemorySqliteStore();
+    await corruptWithTombstones.batch([
+      {
+        type: 'put',
+        namespace: PORTABLE_STATE_NAMESPACE,
+        key: PORTABLE_LEDGER_KEY,
+        value: enc.encode(
+          JSON.stringify({
+            version: 1,
+            activeEpoch: 0,
+            restoreEpoch: 0,
+            restoreInProgress: true,
+            profileIds: ['victim'],
+            threadIds: [],
+            chartIds: [],
+          }),
+        ),
+      },
+      {
+        type: 'put',
+        namespace: PORTABLE_STATE_NAMESPACE,
+        key: 'almamesh-chart-library',
+        value: enc.encode(JSON.stringify({ state: { charts: 'not-an-object' }, version: 1, datasetEpoch: 0 })),
+      },
+    ]);
+    corruptWithTombstones.epoch = 0;
+    await expect(
+      readPortableStateDatabase(new Uint8Array([1]), { createStore: async () => corruptWithTombstones }),
+    ).rejects.toBeInstanceOf(PortableStateCorruptError);
   });
 });

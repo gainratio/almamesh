@@ -53,6 +53,7 @@ import {
   repairPortableReferences,
   holdSetAsideRecords,
   type SetAsideRecord,
+  validateSetAsideRecordList,
   sealBackup,
   type PortableStateSnapshot,
   type StorageTier,
@@ -438,6 +439,14 @@ function repairEnvelopeReferences(envelope: BackupEnvelopePlain): {
     Object.entries(envelope.stores).map(([key, snapshot]) => [key, JSON.stringify(snapshot)]),
   );
   const repaired = repairPortableReferences(values);
+  try {
+    validateSetAsideRecordList(repaired.repairs.setAside);
+  } catch (error) {
+    if (error instanceof PortableStateCorruptError) {
+      throw new BackupError('corrupt', error.message);
+    }
+    throw error;
+  }
   if (repaired.values === values) return { envelope, repairs: repaired.repairs };
   const stores: BackupEnvelopePlain['stores'] = {};
   for (const [key, value] of repaired.values) {
@@ -569,12 +578,13 @@ export async function commitBackupImport(
     recordsToHold: readonly SetAsideRecord[] = [],
   ): Promise<void> => {
     if (browserEffects) {
-      if (recordsToHold.length > 0 && override?.holdSetAside !== undefined) {
-        await applyBrowserBackupAtomically(envelope, resolveDeps(override), generation);
-        await override.holdSetAside(recordsToHold);
-      } else {
-        await applyBrowserBackupAtomically(envelope, resolveDeps(override), generation, recordsToHold);
-      }
+      await applyBrowserBackupAtomically(
+        envelope,
+        resolveDeps(override),
+        generation,
+        recordsToHold,
+        override?.holdSetAside ?? holdSetAsideRecords,
+      );
     } else {
       if (recordsToHold.length > 0) {
         await (override?.holdSetAside ?? holdSetAsideRecords)(recordsToHold);
