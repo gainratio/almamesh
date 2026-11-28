@@ -59,6 +59,119 @@
     "dur_months": "{{count}} m",
     "dur_days": "{{count}} d"
   },
+  "subperiod": {
+    "bullets_heading": "Key themes & timing aspects in this sub-period",
+    "current_antar_kicker": "Active sub-period: {{lord}} ({{start}} – {{end}})",
+    "meaning": {
+      "antar_same": {
+        "layman": "Opening phase of this major chapter: {{subTheme}} take center stage directly, setting the baseline tone for the years ahead.",
+        "astrologer": "Svabhukti ({{maha}} Antardaśā within {{maha}} Mahādaśā): concentrates {{maha}}'s primary significations ({{subTheme}}) as the opening leg of the major period."
+      },
+      "antar_pair": {
+        "layman": "Within a broader chapter centered on {{mahaTheme}}, this sub-period turns everyday attention toward {{subTheme}}.",
+        "astrologer": "{{sub}} Antardaśā within {{maha}} Mahādaśā: channels the overarching {{maha}} agenda ({{mahaTheme}}) through {{sub}}'s significations ({{subTheme}})."
+      },
+      "pratyantar": {
+        "layman": "Short-term window inside this sub-period: near-term weeks lean toward {{subTheme}}.",
+        "astrologer": "{{sub}} Pratyantardaśā ({{maha}}–{{antar}}–{{sub}}): modulates the running {{antar}} Antardaśā with short-horizon {{sub}} themes ({{subTheme}})."
+      }
+    },
+    "core": {
+      "sun": { "layman": "personal authority, visibility, and core vitality", "astrologer": "ātma/authority, vitality, and leadership" },
+      "moon": { "layman": "emotional steadiness, home life, and belonging", "astrologer": "manas/mind, domestic security, and receptivity" },
+      "mars": { "layman": "decisive action, initiative, and firm boundaries", "astrologer": "parākrama/drive, courage, and execution" },
+      "mercury": { "layman": "learning, clear communication, and practical planning", "astrologer": "buddhi/intellect, commerce, and analytical skill" },
+      "jupiter": { "layman": "growth, wisdom, mentorship, and long-range purpose", "astrologer": "guru/dharma, counsel, expansion, and judgment" },
+      "venus": { "layman": "relationships, creative work, comfort, and shared harmony", "astrologer": "kalatra/sukha, partnership agreements, and refinement" },
+      "saturn": { "layman": "steady discipline, long-term commitments, and lasting structure", "astrologer": "karma/endurance, duty, structure, and accountability" },
+      "rahu": { "layman": "ambitious reach, unconventional paths, and rapid change", "astrologer": "nodal amplification, outer ambition, and disruption of habit" },
+      "ketu": { "layman": "simplification, inner clarity, and letting go of clutter", "astrologer": "mokṣa/detachment, inward discernment, and pruning" }
+    },
+    "focus": {
+      "sun": {
+        "layman": "Stepping into responsibility, clarifying personal standards, and guarding physical energy.",
+        "astrologer": "Sūrya kārakatva emphasis: authority roles, recognition, paternal/mentor ties, and vitality management."
+      },
+      "moon": {
+        "layman": "Nurturing daily rhythms, tending to home and close bonds, and listening to emotional needs.",
+        "astrologer": "Chandra kārakatva emphasis: mental equilibrium, domestic environment, caregiving, and public rapport."
+      },
+      "mars": {
+        "layman": "Tackling delayed tasks head-on, channeling physical drive constructively, and avoiding hasty friction.",
+        "astrologer": "Maṅgala kārakatva emphasis: technical execution, property/competitive matters, courage, and measured assertion."
+      },
+      "mercury": {
+        "layman": "Sharpening skills, writing, negotiating details, and organizing workflows or study.",
+        "astrologer": "Budha kārakatva emphasis: contracts, study, communication channels, trade, and analytical problem-solving."
+      },
+      "jupiter": {
+        "layman": "Broadening perspective through study, teaching, trusted counsel, and ethical long-term choices.",
+        "astrologer": "Guru kārakatva emphasis: dharmic direction, mentorship, higher learning, and sustainable resource stewardship."
+      },
+      "venus": {
+        "layman": "Investing care in close partnerships, creative craft, mutual fairness, and restorative rest.",
+        "astrologer": "Śukra kārakatva emphasis: relational reciprocity, artistic/design output, agreements, and material comfort."
+      },
+      "saturn": {
+        "layman": "Showing up with patience, honoring obligations, and building durable routines step by step.",
+        "astrologer": "Śani kārakatva emphasis: disciplined labor, structural commitments, perseverance under load, and realistic pacing."
+      },
+      "rahu": {
+        "layman": "Exploring unfamiliar territory or new methods while staying grounded and checking assumptions.",
+        "astrologer": "Rāhu emphasis: unconventional ambition, cross-boundary reach, heightened desire, and need for grounded verification."
+      },
+      "ketu": {
+        "layman": "Stepping back from noise, finishing lingering loose ends, and favoring depth over external display.",
+        "astrologer": "Ketu emphasis: selective detachment, spiritual or specialized inquiry, and release of outgrown attachments."
+      }
+    },
+    "house_area": {
+      "1": "personal identity and vitality",
+      "2": "personal finances, speech, and family foundations",
+      "3": "daily initiative, communication, and siblings",
+      "4": "home, inner peace, and property",
+      "5": "creative expression, study, and joy",
+      "6": "daily work routines, service, and health habits",
+      "7": "committed partnerships and one-to-one agreements",
+      "8": "shared resources, deep transitions, and resilience",
+      "9": "higher learning, guiding principles, and long journeys",
+      "10": "career direction, public work, and reputation",
+      "11": "community networks, collaborations, and long-term aims",
+      "12": "rest, solitude, quiet reflection, and letting go"
+    },
+    "placement": {
+      "ruled_layman": "In your birth chart, this sub-period spotlights {{placedArea}} and connects it with {{ruledAreas}}.",
+      "single_layman": "In your birth chart, this sub-period concentrates attention on {{placedArea}}.",
+      "ruled_astrologer": "Natal placement: {{sub}} occupies House {{house}} ({{sign}}) and rules {{ruledHouses}}, linking those bhāvas across this span.",
+      "node_astrologer": "Natal placement: {{sub}} occupies House {{house}} ({{sign}}), channeling nodal emphasis through its sign dispositor.",
+      "plain_astrologer": "Natal placement: {{sub}} occupies House {{house}} ({{sign}})."
+    },
+    "condition": {
+      "steady_layman": "Pacing & footing: grounded on steady footing in your birth chart, supporting consistent follow-through.",
+      "careful_layman": "Pacing & footing: asks for extra patience and deliberate care in your birth chart rather than quick shortcuts.",
+      "balanced_layman": "Pacing & footing: operates on even footing in your birth chart, rewarding steady practical effort.",
+      "retro_layman": "Apparent backward motion at birth favors revisiting and refining unfinished plans.",
+      "combust_layman": "Close solar proximity at birth favors pacing energy and avoiding burnout.",
+      "tag_yogakaraka": "Yogakāraka",
+      "tag_combust": "Combust (Asta)",
+      "tag_yogas": "Natal yogas: {{yogas}}",
+      "astrologer_line": "Natal condition ({{sub}}): {{notes}}."
+    },
+    "sky": {
+      "target_moon_layman": "emotional steadiness and home life",
+      "target_lagna_layman": "personal direction and vitality",
+      "target_planet_layman": "a key natal theme",
+      "slow_hit_layman": "Dated timing contact ({{date}}): a slow-moving cycle touches {{target}} ({{tone}} tone).",
+      "slow_hit_astrologer": "Sky aspect ({{date}}): transiting {{graha}} contacts {{target}} ({{tone}} tone).",
+      "event_ingress_layman": "a slow-moving cycle shifts into a new chapter",
+      "event_station_retro_layman": "a slow-moving cycle pauses in apparent backward motion, favoring review",
+      "event_station_direct_layman": "a slow-moving cycle resumes steady forward pace",
+      "event_return_layman": "a full-cycle milestone resets a long-running theme",
+      "timeline_event": "Sky shift ({{date}}): {{event}}.",
+      "sade_sati_layman": "Multi-year maturity cycle ({{phase}} phase): {{start}} – {{end}}, favoring patience and steady habits.",
+      "sade_sati_astrologer": "Sade Sati overlap: {{phase}} phase runs {{start}} – {{end}}."
+    }
+  },
   "gate": {
     "zone_missing_title": "Your birthplace timezone is missing",
     "zone_missing_body": "Your saved chart has no birthplace timezone, so the timing layer cannot place your sunrise or weekday. Re-select your birthplace in Settings to fix it.",

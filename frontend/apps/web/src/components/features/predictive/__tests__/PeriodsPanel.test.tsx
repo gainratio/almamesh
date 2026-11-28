@@ -11,12 +11,14 @@ import { render, screen, within, fireEvent } from '@testing-library/react';
 import { useLanguageStore } from '@almamesh/store';
 
 import i18n from '../../../../i18n/config';
+import { useContentModeStore } from '../../../../stores/contentMode';
 import { PeriodsPanel } from '../PeriodsPanel';
 import { FOUNDER_DASHAS, FOUNDER_DASHAS_NO_DEPTH } from '../../../../test/dashaFixtures';
 
 describe('PeriodsPanel', () => {
   beforeEach(async () => {
     useLanguageStore.setState({ language: 'en' });
+    useContentModeStore.setState({ contentMode: 'layman' });
     // In the app a provider hook syncs the store into i18next; tests do it directly.
     await i18n.changeLanguage('en');
   });
@@ -114,5 +116,27 @@ describe('PeriodsPanel', () => {
     // Localized graha name + es date order (DD/MM/YYYY).
     expect(screen.getByTestId('dasha-tree-maha-saturn').textContent).toContain('Saturno');
     expect(screen.getByTestId('dasha-tree-pd-mercury').textContent).toContain('13/06/2026');
+  });
+
+  it('surfaces sub-period meaning and bullet points in both For You and For Astrologer modes', () => {
+    const planets = {
+      venus: { house: 10, sign: 'pisces', houses_ruled: [3, 8], dignity: 'exalted', is_yogakaraka: true },
+    };
+    const { rerender } = render(<PeriodsPanel dashas={FOUNDER_DASHAS} planets={planets} />);
+    const currentGuide = screen.getByTestId('periods-current-subperiod-guide');
+    expect(currentGuide.textContent).toContain('12/01/2023');
+    expect(currentGuide.textContent).toContain('01/31/2027');
+    expect(currentGuide.textContent).toContain('career direction, public work, and reputation');
+    expect(currentGuide.textContent).not.toContain('House 10');
+
+    // Non-running antars and every pratyantar carry their own guide block without duplicating the running antar.
+    expect(screen.queryByTestId('subperiod-guide-antar-saturn-venus')).toBeNull();
+    expect(screen.getByTestId('subperiod-guide-antar-saturn-sun')).toBeTruthy();
+    expect(screen.getByTestId('subperiod-guide-pd-saturn')).toBeTruthy();
+
+    // Switching global contentMode to technical updates the guide to astrologer precision immediately.
+    useContentModeStore.setState({ contentMode: 'technical' });
+    rerender(<PeriodsPanel dashas={FOUNDER_DASHAS} planets={planets} />);
+    expect(screen.getByTestId('periods-current-subperiod-guide').textContent).toContain('House 10 (Pisces)');
   });
 });
