@@ -21,6 +21,7 @@ import type {
   BackupStoreSnapshot,
   BackupStores,
 } from '@almamesh/shared-types';
+import { SqliteStateConflictError } from '@gainratio/browser/sqlite';
 import {
   abortBackupRestore,
   beginBackupRestore,
@@ -306,7 +307,22 @@ export async function applyBrowserBackupAtomically(
  */
 export async function holdSetAsideRecords(records: readonly SetAsideRecord[]): Promise<void> {
   if (records.length === 0) return;
-  await (await requirePortableStateRepository()).holdSetAside(records, new Date().toISOString());
+  const repository = await requirePortableStateRepository();
+  const safetyRevision = armedPortableImportRevision;
+  if (safetyRevision === undefined) {
+    await repository.holdSetAside(records, new Date().toISOString());
+    return;
+  }
+  try {
+    await repository.holdSetAside(records, new Date().toISOString(), safetyRevision);
+    armedPortableImportRevision = safetyRevision + 1;
+  } catch (error) {
+    armedPortableImportRevision = undefined;
+    if (error instanceof SqliteStateConflictError) {
+      throw new PortableImportRevisionConflictError(safetyRevision, (await repository.runtimeInfo()).epoch);
+    }
+    throw error;
+  }
 }
 
 /** Export the canonical browser dataset as a real, standard SQLite database. */

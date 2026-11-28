@@ -14,6 +14,7 @@ import {
   forceDownloadAndFileInputPaths,
   gotoSettled,
   onboard,
+  spaNavigate,
   watchBrowser,
   type Native,
 } from './portableInvariants.helpers';
@@ -177,6 +178,71 @@ test('a brand-new browser restores a backup from the landing page and opens the 
     await gotoSettled(page, '/');
     await expect.poll(() => new URL(page.url()).pathname).toBe('/dashboard');
     await expectDashboardChart(page, PERSON.name);
+    expectCleanBrowser(b.problems, 'browser B');
+  });
+  await b.close();
+});
+
+const OTHER_PERSON: Native = {
+  name: 'Local Bheem',
+  date: '04121992',
+  time: '0915',
+  meridiem: 'a',
+  city: 'Bengaluru',
+};
+
+test('settings restore replaces a non-empty browser cleanly with safety backup and custom chatContextTokens', async ({ browser }, testInfo) => {
+  const exportPath = testInfo.outputPath('with-context-tokens.almamesh');
+
+  const a = await freshBrowser(browser, testInfo);
+  await a.context.route('http://127.0.0.1:11434/**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ choices: [{ message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }] }),
+    });
+  });
+  await test.step('browser A: onboard, save custom chatContextTokens (65536), and export', async () => {
+    await gotoSettled(a.page, '/onboarding');
+    await onboard(a.page, PERSON);
+    await spaNavigate(a.page, '/settings/ai');
+    await a.page.getByTestId('llm-advanced-summary').click();
+    await a.page.getByTestId('llm-api-base').fill('http://127.0.0.1:11434/v1');
+    await a.page.getByTestId('llm-model').fill('qwen3:8b');
+    await a.page.getByTestId('llm-context-tokens').fill('65536');
+    await a.page.getByTestId('llm-save-advanced').click();
+    await expect(a.page.getByTestId('llm-connection-result')).toContainText('✓');
+    await exportBackup(a.page, exportPath);
+    expectCleanBrowser(a.problems, 'browser A');
+  });
+  await a.close();
+
+  const b = await freshBrowser(browser, testInfo);
+  await test.step('browser B: onboard existing local data, then restore A backup with safety copy', async () => {
+    await gotoSettled(b.page, '/onboarding');
+    await onboard(b.page, OTHER_PERSON);
+    await spaNavigate(b.page, '/settings/data');
+    await expect(b.page.getByTestId('backup-import-button')).toBeEnabled();
+    const [chooser] = await Promise.all([
+      b.page.waitForEvent('filechooser'),
+      b.page.getByTestId('backup-import-button').click(),
+    ]);
+    await chooser.setFiles(exportPath);
+    await b.page.getByTestId('backup-passphrase-prompt-input').fill(PASSPHRASE);
+    await b.page.getByTestId('backup-passphrase-prompt-submit').click();
+
+    const confirm = b.page.getByTestId('backup-confirm-import');
+    await expect(confirm).toBeVisible();
+    // First click triggers the fallback safety download (`unverified`) and asks for explicit second confirmation.
+    const [safetyDownload] = await Promise.all([b.page.waitForEvent('download'), confirm.click()]);
+    expect(safetyDownload.suggestedFilename()).toMatch(/^almamesh-backup-before-import-.*\.almamesh$/);
+    await Promise.all([b.page.waitForEvent('domcontentloaded', { timeout: 120_000 }), confirm.click()]);
+
+    await gotoSettled(b.page, '/dashboard');
+    await expectDashboardChart(b.page, PERSON.name);
+    await spaNavigate(b.page, '/settings/ai');
+    await b.page.getByTestId('llm-advanced-summary').click();
+    await expect(b.page.getByTestId('llm-context-tokens')).toHaveValue('65536');
     expectCleanBrowser(b.problems, 'browser B');
   });
   await b.close();

@@ -50,11 +50,27 @@ const SQLITE_PICKER_TYPE: BackupPickerType = {
   accept: { 'application/vnd.sqlite3': ['.sqlite3', '.sqlite', '.db'] },
 };
 
-const ALL_BACKUP_PICKER_TYPES = [ALMAMESH_PICKER_TYPE, SQLITE_PICKER_TYPE, JSON_PICKER_TYPE];
+const BINARY_BACKUP_PICKER_TYPE: BackupPickerType = {
+  description: 'Cloud or binary AlmaMesh backup',
+  accept: { 'application/octet-stream': ['.almamesh', '.sqlite3', '.sqlite', '.db'] },
+};
+
+const ALL_BACKUP_PICKER_TYPES = [
+  ALMAMESH_PICKER_TYPE,
+  SQLITE_PICKER_TYPE,
+  JSON_PICKER_TYPE,
+  BINARY_BACKUP_PICKER_TYPE,
+];
 /** FileSaver.js's figure: WebKit can read a download's Blob URL long after the click. */
 const DOWNLOAD_BLOB_URL_LIFETIME_MS = 40_000;
-/** Give Safari's file input time to publish `change` after the window refocuses. */
-const FILE_PICKER_CANCEL_GRACE_MS = 300;
+/**
+ * Allow cloud file providers (Google Drive, iCloud Drive, Android DocumentsUI)
+ * time to materialize a chosen file and fire `change` after the window refocuses.
+ * Modern browsers fire `cancel` immediately when dismissed; a fresh click also
+ * supersedes any unsettled fallback input.
+ */
+const FILE_PICKER_CANCEL_GRACE_MS = 30_000;
+let cancelPendingInputPick: (() => void) | undefined;
 const SQLITE_HEADER = new Uint8Array([
   0x53, 0x51, 0x4c, 0x69, 0x74, 0x65, 0x20, 0x66,
   0x6f, 0x72, 0x6d, 0x61, 0x74, 0x20, 0x33, 0x00,
@@ -240,24 +256,34 @@ export async function pickBackupFile(): Promise<BackupFileContent | null> {
 }
 
 function pickFileViaInput(): Promise<BackupFileContent | null> {
+  cancelPendingInputPick?.();
   return new Promise<BackupFileContent | null>((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'application/vnd.almamesh.backup,application/vnd.sqlite3,application/json,.almamesh,.sqlite3,.sqlite,.db,.json';
+    input.accept =
+      'application/octet-stream,application/vnd.almamesh.backup,application/vnd.sqlite3,application/x-sqlite3,application/json,.almamesh,.sqlite3,.sqlite,.db,.json';
 
     let settled = false;
     let reading = false;
     let focusTimer: ReturnType<typeof setTimeout> | undefined;
+    const clearPending = () => {
+      if (cancelPendingInputPick === cancelThisPick) cancelPendingInputPick = undefined;
+    };
     const settle = (value: BackupFileContent | null) => {
       if (settled) return;
       settled = true;
+      clearPending();
       clearTimeout(focusTimer);
       window.removeEventListener('focus', onFocus);
       resolve(value);
     };
+    const cancelThisPick = () => settle(null);
+    cancelPendingInputPick = cancelThisPick;
     const fail = (error: unknown) => {
       if (settled) return;
       settled = true;
+      clearPending();
+      clearTimeout(focusTimer);
       window.removeEventListener('focus', onFocus);
       reject(error instanceof Error ? error : new Error(String(error)));
     };

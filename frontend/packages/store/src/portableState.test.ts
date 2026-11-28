@@ -27,6 +27,9 @@ import {
   repairPortableReferences,
   EMPTY_PORTABLE_REPAIR_REPORT,
   seedPortableLedger,
+  readPortableStateDatabase,
+  PORTABLE_LEDGER_KEY,
+  PortableStateCorruptError,
 } from './portableState';
 import { CHAT_PERSIST_VERSION } from './chat';
 import { PREDICTIVE_PERSIST_VERSION } from './predictive';
@@ -1458,5 +1461,135 @@ describe('visible tool-call parts in a backup (chat store v4)', () => {
     await expect(repository.exportBytes()).rejects.toThrow(
       `Portable state row "almamesh-chat-history" message "m1" has an invalid ${field}.`,
     );
+  });
+});
+
+describe('LLM chatContextTokens preference parity and raw OPFS SQLite import healing', () => {
+  it('accepts a positive integer chatContextTokens in almamesh-llm-settings and rejects malformed values', () => {
+    const valid = JSON.stringify({
+      version: 1,
+      values: {
+        'almamesh-llm-settings': JSON.stringify({
+          apiBase: 'http://localhost:11434/v1',
+          chatModel: 'qwen3:8b',
+          chatContextTokens: 65_536,
+        }),
+      },
+    });
+    expect(decodePortablePreferences(valid).values['almamesh-llm-settings']).toContain('65536');
+
+    for (const bad of [0, -1, 1.5, 20_000_000, '65536', null]) {
+      const candidate = JSON.stringify({
+        version: 1,
+        values: {
+          'almamesh-llm-settings': JSON.stringify({ chatContextTokens: bad }),
+        },
+      });
+      expect(() => decodePortablePreferences(candidate)).toThrow(/chatContextTokens/);
+    }
+  });
+
+  it('heals an OPFS SQLite database captured with an abandoned restore lease, stale-epoch row, and loading predictive state', async () => {
+    const raw = new MemorySqliteStore();
+    const enc = new TextEncoder();
+    await raw.batch([
+      {
+        type: 'put',
+        namespace: PORTABLE_STATE_NAMESPACE,
+        key: PORTABLE_LEDGER_KEY,
+        value: enc.encode(
+          JSON.stringify({
+            version: 1,
+            activeEpoch: 2,
+            restoreEpoch: 2,
+            restoreInProgress: true,
+            restoreStartedAt: 1_700_000_000_000,
+            leaseOwner: 'crashed-tab',
+          }),
+        ),
+      },
+      {
+        type: 'put',
+        namespace: PORTABLE_STATE_NAMESPACE,
+        key: 'almamesh-profiles',
+        value: enc.encode(
+          JSON.stringify({
+            state: {
+              profiles: {
+                p1: {
+                  id: 'p1',
+                  name: 'Asha',
+                  createdAt: '2026-01-01T00:00:00.000Z',
+                  avatarTint: '#C9A24B',
+                  memoryFacts: [{ id: 'f1', category: 'career', text: 'Software engineer', createdAt: '2026-01-02T00:00:00.000Z' }],
+                },
+              },
+              activeProfileId: 'p1',
+            },
+            version: 1,
+            datasetEpoch: 2,
+          }),
+        ),
+      },
+      {
+        type: 'put',
+        namespace: PORTABLE_STATE_NAMESPACE,
+        key: 'almamesh-life-events',
+        // Stale row left behind from epoch 0 (before Start Fresh bumped activeEpoch to 2).
+        value: enc.encode(
+          JSON.stringify({
+            state: { eventsByProfile: { deleted_person: [{ id: 'e1', date: '', createdAt: '2026-01-01T00:00:00.000Z' }] } },
+            version: 4,
+            datasetEpoch: 0,
+          }),
+        ),
+      },
+      {
+        type: 'put',
+        namespace: PORTABLE_STATE_NAMESPACE,
+        key: 'almamesh-predictive',
+        value: enc.encode(
+          JSON.stringify({
+            state: { status: 'loading', profileKey: 'p1' },
+            version: 7,
+            datasetEpoch: 2,
+          }),
+        ),
+      },
+    ]);
+    raw.epoch = 0;
+    const imported = await readPortableStateDatabase(new Uint8Array([1]), {
+      createStore: async () => raw,
+    });
+
+    expect(imported.values.has('almamesh-profiles')).toBe(true);
+    expect(imported.values.has('almamesh-life-events')).toBe(false);
+    expect(JSON.parse(imported.values.get('almamesh-predictive')!).state).toEqual({ status: 'idle' });
+    expect(JSON.parse(imported.values.get(PORTABLE_LEDGER_KEY)!)).toMatchObject({
+      activeEpoch: 2,
+      restoreEpoch: 2,
+      restoreInProgress: false,
+    });
+
+    // Genuine corruption inside an AlmaMesh database throws PortableStateCorruptError.
+    const corrupt = new MemorySqliteStore();
+    await corrupt.batch([
+      {
+        type: 'put',
+        namespace: PORTABLE_STATE_NAMESPACE,
+        key: PORTABLE_LEDGER_KEY,
+        value: enc.encode(JSON.stringify({ version: 1, activeEpoch: 0, restoreEpoch: 0, restoreInProgress: false })),
+      },
+      {
+        type: 'put',
+        namespace: PORTABLE_STATE_NAMESPACE,
+        key: 'almamesh-profiles',
+        value: enc.encode(JSON.stringify({ state: { profiles: { p1: null }, activeProfileId: 'p1' }, version: 1, datasetEpoch: 0 })),
+      },
+    ]);
+    corrupt.epoch = 0;
+    await expect(
+      readPortableStateDatabase(new Uint8Array([1]), { createStore: async () => corrupt }),
+    ).rejects.toBeInstanceOf(PortableStateCorruptError);
   });
 });

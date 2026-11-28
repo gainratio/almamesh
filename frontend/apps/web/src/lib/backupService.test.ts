@@ -23,6 +23,7 @@ import {
   BackupError,
   collectBackup,
   EMPTY_PORTABLE_REPAIR_REPORT,
+  PortableStateCorruptError,
   PortableStateUnavailableError,
   PortableStateTooNewError,
   type PortableStateSnapshot,
@@ -1043,5 +1044,24 @@ describe('legacy JSON import repairs dangling references (2026-10-05 audit)', ()
     });
 
     expect(staged.repairs).toBe(repairs);
+  });
+
+  it('surfaces corrupt AlmaMesh SQLite rows as BackupError corrupt with the row reason, instead of claiming the file is not an AlmaMesh backup', async () => {
+    const sqlite = new Uint8Array([...new TextEncoder().encode('SQLite format 3\0'), 1]);
+    await expect(
+      stageBackupImport(sqlite, undefined, {
+        readPortableState: vi
+          .fn()
+          .mockRejectedValue(
+            new PortableStateCorruptError(
+              'Portable state row "almamesh-profiles" profile "p1" is not an object.',
+            ),
+          ),
+      }),
+    ).rejects.toMatchObject({
+      name: 'BackupError',
+      code: 'corrupt',
+      message: 'Portable state row "almamesh-profiles" profile "p1" is not an object.',
+    });
   });
 });

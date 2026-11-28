@@ -39,6 +39,7 @@ import {
   PORTABLE_DATASET_KEYS,
   PORTABLE_PREFERENCES_KEY,
   PORTABLE_STATE_KEYS,
+  PortableStateCorruptError,
   PortableStateTooNewError,
   PortableStateUnavailableError,
   readDeletionTombstones,
@@ -462,6 +463,9 @@ async function readPortableEnvelope(
         'too_new',
         'This backup was made by a newer version of AlmaMesh. Update the app first.',
       );
+    }
+    if (error instanceof PortableStateCorruptError) {
+      throw new BackupError('corrupt', error.message);
     }
     throw new BackupError('bad_format', 'This SQLite file is not a valid AlmaMesh backup.');
   }
