@@ -60,6 +60,119 @@
     "dur_months": "{{count}} m",
     "dur_days": "{{count}} d"
   },
+  "subperiod": {
+    "bullets_heading": "Temas clave y aspectos temporales en este subperíodo",
+    "current_antar_kicker": "Subperíodo activo: {{lord}} ({{start}} – {{end}})",
+    "meaning": {
+      "antar_same": {
+        "layman": "Fase inicial de esta etapa principal: {{subTheme}} ocupan el primer plano y marcan el tono base de los próximos años.",
+        "astrologer": "Svabhukti (Antardaśā de {{maha}} dentro de Mahādaśā de {{maha}}): concentra las significaciones primarias de {{maha}} ({{subTheme}}) como tramo inicial del período mayor."
+      },
+      "antar_pair": {
+        "layman": "Dentro de una etapa amplia centrada en {{mahaTheme}}, este subperíodo orienta la atención diaria hacia {{subTheme}}.",
+        "astrologer": "Antardaśā de {{sub}} dentro de Mahādaśā de {{maha}}: canaliza la agenda general de {{maha}} ({{mahaTheme}}) a través de las significaciones de {{sub}} ({{subTheme}})."
+      },
+      "pratyantar": {
+        "layman": "Ventana breve dentro de este subperíodo: las semanas cercanas ponen el acento en {{subTheme}}.",
+        "astrologer": "Pratyantardaśā de {{sub}} ({{maha}}–{{antar}}–{{sub}}): modula el Antardaśā vigente de {{antar}} con temas de corto alcance de {{sub}} ({{subTheme}})."
+      }
+    },
+    "core": {
+      "sun": { "layman": "la autoridad personal, la visibilidad y la vitalidad", "astrologer": "ātma/autoridad, vitalidad y liderazgo" },
+      "moon": { "layman": "la calma emocional, la vida doméstica y el arraigo", "astrologer": "manas/mente, seguridad doméstica y receptividad" },
+      "mars": { "layman": "la acción decidida, la iniciativa y los límites claros", "astrologer": "parākrama/impulso, coraje y ejecución" },
+      "mercury": { "layman": "el aprendizaje, la comunicación clara y la organización práctica", "astrologer": "buddhi/intelecto, comercio y destreza analítica" },
+      "jupiter": { "layman": "el crecimiento, el criterio, la mentoría y el propósito de fondo", "astrologer": "guru/dharma, consejo, expansión y juicio" },
+      "venus": { "layman": "los vínculos, la creatividad, el bienestar y los acuerdos justos", "astrologer": "kalatra/sukha, acuerdos de pareja y refinamiento" },
+      "saturn": { "layman": "la disciplina constante, los compromisos serios y la estructura duradera", "astrologer": "karma/constancia, deber, estructura y responsabilidad" },
+      "rahu": { "layman": "las metas ambiciosas, los caminos poco habituales y el cambio rápido", "astrologer": "amplificación nodal, ambición externa y ruptura de inercias" },
+      "ketu": { "layman": "la simplificación, la claridad interior y el soltar lo superfluo", "astrologer": "mokṣa/desapego, discernimiento interno y depuración" }
+    },
+    "focus": {
+      "sun": {
+        "layman": "Asumir responsabilidades con claridad, definir criterios propios y cuidar la energía física.",
+        "astrologer": "Énfasis kārakatva de Sūrya: roles de dirección, reconocimiento, figuras de autoridad y gestión de la vitalidad."
+      },
+      "moon": {
+        "layman": "Cuidar los ritmos cotidianos, atender el hogar y los vínculos cercanos y escuchar las necesidades emocionales.",
+        "astrologer": "Énfasis kārakatva de Chandra: equilibrio anímico, entorno doméstico, cuidado mutuo y sintonía pública."
+      },
+      "mars": {
+        "layman": "Abordar tareas pendientes con decisión, encauzar el impulso físico de forma constructiva y evitar roces apresurados.",
+        "astrologer": "Énfasis kārakatva de Maṅgala: ejecución técnica, asuntos de bienes o competencia, coraje y firmeza medida."
+      },
+      "mercury": {
+        "layman": "Pulir habilidades, redactar, negociar detalles y ordenar flujos de estudio o trabajo.",
+        "astrologer": "Énfasis kārakatva de Budha: contratos, estudio, canales de comunicación, intercambio y análisis."
+      },
+      "jupiter": {
+        "layman": "Ampliar perspectiva mediante el estudio, la enseñanza, el buen consejo y decisiones éticas sostenibles.",
+        "astrologer": "Énfasis kārakatva de Guru: orientación dhármica, mentoría, estudios superiores y administración prudente."
+      },
+      "venus": {
+        "layman": "Dedicar cuidado a las relaciones cercanas, el oficio creativo, la reciprocidad y el descanso reparador.",
+        "astrologer": "Énfasis kārakatva de Śukra: reciprocidad vincular, producción artística, acuerdos y bienestar material."
+      },
+      "saturn": {
+        "layman": "Sostener la paciencia, cumplir compromisos y construir rutinas sólidas paso a paso.",
+        "astrologer": "Énfasis kārakatva de Śani: trabajo disciplinado, compromisos estructurales, perseverancia y ritmo realista."
+      },
+      "rahu": {
+        "layman": "Explorar terrenos o métodos nuevos manteniendo los pies en la tierra y verificando cada supuesto.",
+        "astrologer": "Énfasis de Rāhu: ambición no convencional, alcance externo y necesidad de verificación rigurosa."
+      },
+      "ketu": {
+        "layman": "Tomar distancia del ruido, cerrar asuntos pendientes y priorizar la profundidad frente a la apariencia.",
+        "astrologer": "Énfasis de Ketu: desapego selectivo, investigación especializada o interior y cierre de etapas cumplidas."
+      }
+    },
+    "house_area": {
+      "1": "la identidad personal y la vitalidad",
+      "2": "los recursos propios, la palabra y la base familiar",
+      "3": "la iniciativa diaria, la comunicación y el entorno cercano",
+      "4": "el hogar, la calma interior y el patrimonio doméstico",
+      "5": "la expresión creativa, el estudio y los proyectos propios",
+      "6": "las rutinas de trabajo, el servicio y los hábitos de cuidado",
+      "7": "los vínculos comprometidos y los acuerdos directos",
+      "8": "los recursos compartidos, las transiciones profundas y la resiliencia",
+      "9": "el aprendizaje superior, los principios guía y los viajes largos",
+      "10": "la dirección profesional, el rol público y la reputación",
+      "11": "las redes de colaboración, la comunidad y las metas a largo plazo",
+      "12": "el descanso, el recogimiento, la reflexión tranquila y el cierre de ciclos"
+    },
+    "placement": {
+      "ruled_layman": "En tu mapa natal, este subperíodo ilumina {{placedArea}} y la conecta con {{ruledAreas}}.",
+      "single_layman": "En tu mapa natal, este subperíodo concentra la atención en {{placedArea}}.",
+      "ruled_astrologer": "Posición natal: {{sub}} ocupa la Casa {{house}} ({{sign}}) y rige {{ruledHouses}}, vinculando esas bhāvas durante este tramo.",
+      "node_astrologer": "Posición natal: {{sub}} ocupa la Casa {{house}} ({{sign}}), canalizando el énfasis nodal mediante su regente de signo.",
+      "plain_astrologer": "Posición natal: {{sub}} ocupa la Casa {{house}} ({{sign}})."
+    },
+    "condition": {
+      "steady_layman": "Ritmo y base: cuenta con apoyo firme en tu mapa natal, favoreciendo la constancia práctica.",
+      "careful_layman": "Ritmo y base: pide paciencia adicional y cuidado deliberado en lugar de atajos.",
+      "balanced_layman": "Ritmo y base: actúa sobre una base equilibrada, premiando el esfuerzo sostenido.",
+      "retro_layman": "Al estar en retroceso aparente al nacer, revisar y pulir planes en marcha resulta especialmente útil.",
+      "combust_layman": "Al situarse cerca del Sol al nacer, conviene dosificar la energía y evitar el desgaste.",
+      "tag_yogakaraka": "Yogakāraka",
+      "tag_combust": "Combusto (Asta)",
+      "tag_yogas": "Yogas natales: {{yogas}}",
+      "astrologer_line": "Condición natal ({{sub}}): {{notes}}."
+    },
+    "sky": {
+      "target_moon_layman": "la calma emocional y el hogar",
+      "target_lagna_layman": "la dirección personal y la vitalidad",
+      "target_planet_layman": "un tema natal clave",
+      "slow_hit_layman": "Contacto temporal ({{date}}): un ciclo lento toca {{target}} (tono {{tone}}).",
+      "slow_hit_astrologer": "Aspecto de tránsito ({{date}}): {{graha}} en tránsito contacta {{target}} (tono {{tone}}).",
+      "event_ingress_layman": "un ciclo lento pasa a una nueva etapa",
+      "event_station_retro_layman": "un ciclo lento entra en retroceso aparente, invitando a revisar",
+      "event_station_direct_layman": "un ciclo lento retoma su avance constante",
+      "event_return_layman": "un cierre de ciclo renueva un tema de fondo",
+      "timeline_event": "Cambio en el cielo ({{date}}): {{event}}.",
+      "sade_sati_layman": "Ciclo plurianual de madurez (fase {{phase}}): {{start}} – {{end}}, propicio para la paciencia y los hábitos constantes.",
+      "sade_sati_astrologer": "Cruce con Sade Sati: fase {{phase}} entre {{start}} – {{end}}."
+    }
+  },
   "gate": {
     "zone_missing_title": "Falta la zona horaria de tu lugar de nacimiento",
     "zone_missing_body": "Tu carta guardada no tiene la zona horaria del lugar de nacimiento, así que la capa de tiempos no puede ubicar tu amanecer ni tu día de la semana. Vuelve a elegir tu lugar de nacimiento en Ajustes para corregirlo.",

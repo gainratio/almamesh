@@ -1,22 +1,19 @@
 /**
  * PeriodsPanel — the Vimśottarī explorer: the chart's full 120-year daśā tree
- * as a quiet typographic drill-down. Nine mahā rows (lord · dated span ·
- * duration) → a mahā opens onto its antar-daśās → the RUNNING antar opens onto
- * its pratyantar-daśās. Nine per level, except the birth mahā (and its first
- * antar): the native is born part-way through, so it lists only the periods
- * still running at birth, the first starting at birth. The running leg at every level is marked and
- * open by default, so "you are here" reads at a glance.
+ * as a quiet typographic drill-down, enriched with plain-language ("For You")
+ * and technical ("For Astrologer") sub-period meaning descriptions and bullet
+ * points of themes & dated sky aspects inside each sub-period.
  *
- * Data is the NATAL chart's engine-emitted dasha payload (no predictive
- * compute): sequences render verbatim — the only derivations are locale date
- * display and the pure `durationParts` unit re-expression. Older stored charts
- * without the depth fields degrade to the plain mahā table plus an honest
- * note; no payload at all renders an honest unavailable card.
+ * Data is the NATAL chart's engine-emitted dasha + planet payload (renders
+ * instantly with zero compute), optionally enriched with dated `TransitCtx`
+ * events when the predictive layer is ready. Older stored charts without depth
+ * fields degrade to the plain mahā table plus an honest note.
  */
 
-import type { ReactElement } from 'react';
+import { useMemo, type ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
+import type { TransitCtx } from '@almamesh/shared-types';
 
 import { Card, Disclosure } from '../../ui';
 import { cn } from '../../ui/cn';
@@ -25,12 +22,35 @@ import {
   type DashaTreeRow,
   type DashaTreeSource,
 } from '../../../lib/dashaPeriods';
-import { formatPredictiveDate } from '../../../lib/predictive';
+import { formatPredictiveDate, sortSlowHits } from '../../../lib/predictive';
 import { grahaName } from '../../../lib/predictiveEventCopy';
+import {
+  buildSubperiodGuide,
+  type SubperiodAudience,
+  type SubperiodPlanetFact,
+  type SubperiodYogaFact,
+} from '../../../lib/subperiodGuide';
+import type { SlowHitItem } from '../../../lib/subperiodSky';
+import { useContentModeStore } from '../../../stores/contentMode';
+import { SubperiodGuideBlock } from './SubperiodGuideBlock';
 
 export interface PeriodsPanelProps {
   /** The natal `sidereal_chart.dashas` payload; absent on older stored charts. */
   readonly dashas?: DashaTreeSource;
+  /** Verbatim natal `sidereal_chart.planets` map for chart-specific house/dignity context. */
+  readonly planets?: Readonly<Record<string, SubperiodPlanetFact>> | null;
+  /** Verbatim natal `sidereal_chart.yogas` list for yoga-activation context. */
+  readonly yogas?: readonly SubperiodYogaFact[] | null;
+  /** Optional lazy predictive `TransitCtx` for dated transits/hits inside sub-period spans. */
+  readonly transitCtx?: TransitCtx;
+}
+
+interface GuideEnv {
+  readonly audience: SubperiodAudience;
+  readonly planets?: Readonly<Record<string, SubperiodPlanetFact>> | null;
+  readonly yogas?: readonly SubperiodYogaFact[] | null;
+  readonly transitCtx?: TransitCtx;
+  readonly sortedHits?: readonly SlowHitItem[];
 }
 
 /** True when `row` is the same dated period as `leg` (lord + start). */
@@ -42,19 +62,13 @@ function isLeg(row: DashaTreeRow, leg: DashaTreeRow | null): boolean {
 function durationLabel(t: TFunction, durationYears: number): string {
   const parts = durationParts(durationYears);
   const out: string[] = [];
-  if (parts.years > 0) {
-    out.push(t('periods.dur_years', { count: parts.years }));
-  }
-  if (parts.months > 0) {
-    out.push(t('periods.dur_months', { count: parts.months }));
-  }
-  if (out.length === 0) {
-    out.push(t('periods.dur_days', { count: parts.days }));
-  }
+  if (parts.years > 0) out.push(t('periods.dur_years', { count: parts.years }));
+  if (parts.months > 0) out.push(t('periods.dur_months', { count: parts.months }));
+  if (out.length === 0) out.push(t('periods.dur_days', { count: parts.days }));
   return out.join(' ');
 }
 
-/** One aligned period line: lord (+ running tag) · dated span · duration. */
+/** One aligned period line: wraps cleanly on 390px mobile, 3-column grid on `sm+`. */
 function PeriodLine({
   row,
   running,
@@ -62,15 +76,14 @@ function PeriodLine({
 }: {
   row: DashaTreeRow;
   running: boolean;
-  /** Mahā rows carry slightly more typographic weight than sub-rows. */
   emphasis?: boolean;
 }): ReactElement {
   const { t } = useTranslation('predictive');
   return (
-    <span className="grid min-w-0 flex-1 grid-cols-[minmax(7rem,max-content)_1fr_auto] items-baseline gap-x-4 py-2">
+    <span className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 py-2 sm:grid sm:grid-cols-[minmax(7rem,max-content)_1fr_auto] sm:gap-x-4">
       <span
         className={cn(
-          'truncate font-medium',
+          'font-medium',
           emphasis ? 'text-[0.95rem] text-text-primary' : 'text-sm text-text-primary',
         )}
       >
@@ -81,7 +94,7 @@ function PeriodLine({
           </span>
         )}
       </span>
-      <span className="truncate font-mono text-xs text-text-secondary">
+      <span className="font-mono text-xs text-text-secondary">
         {formatPredictiveDate(row.start_date)} – {formatPredictiveDate(row.end_date)}
       </span>
       <span className="justify-self-end whitespace-nowrap font-mono text-xs text-text-tertiary">
@@ -91,15 +104,19 @@ function PeriodLine({
   );
 }
 
-/** The pratyantar list of the running antar (the engine emits only this one). */
+/** The pratyantar list of the running antar, each expandable for its short-window guide. */
 function PratyantarList({
   rows,
   currentPratyantar,
+  mahaLord,
   antarLord,
+  env,
 }: {
   rows: readonly DashaTreeRow[];
   currentPratyantar: DashaTreeRow | null;
+  mahaLord: string;
   antarLord: string;
+  env: GuideEnv;
 }): ReactElement {
   const { t } = useTranslation('predictive');
   return (
@@ -110,6 +127,20 @@ function PratyantarList({
     >
       {rows.map((pd, index) => {
         const running = isLeg(pd, currentPratyantar);
+        const guide = buildSubperiodGuide({
+          mahaLord,
+          subLord: pd.lord,
+          parentAntarLord: antarLord,
+          level: 'pratyantar',
+          startDate: pd.start_date,
+          endDate: pd.end_date,
+          audience: env.audience,
+          planets: env.planets,
+          yogas: env.yogas,
+          transitCtx: env.transitCtx,
+          sortedHits: env.sortedHits,
+          t,
+        });
         return (
           <li
             key={`${pd.lord}-${index}`}
@@ -120,7 +151,14 @@ function PratyantarList({
               running && '-ml-[calc(1rem+1px)] border-l-2 border-l-accent-gold/70 bg-accent-gold/[0.05] pl-[calc(1rem-1px)]',
             )}
           >
-            <PeriodLine row={pd} running={running} />
+            <Disclosure
+              defaultOpen={running}
+              summary={<PeriodLine row={pd} running={running} />}
+              triggerClassName="rounded-none"
+              contentClassName="pb-3 pt-1"
+            >
+              <SubperiodGuideBlock guide={guide} testid={`subperiod-guide-pd-${pd.lord}`} />
+            </Disclosure>
           </li>
         );
       })}
@@ -128,13 +166,16 @@ function PratyantarList({
   );
 }
 
-interface MahaItemProps {
+/** One mahā row; expandable onto its antar-daśās and each antar's meaning + aspect bullets. */
+function MahaItem({
+  maha,
+  dashas,
+  env,
+}: {
   readonly maha: DashaTreeRow;
   readonly dashas: DashaTreeSource;
-}
-
-/** One mahā row; expandable onto its antar-daśās when the payload has depth. */
-function MahaItem({ maha, dashas }: MahaItemProps): ReactElement {
+  readonly env: GuideEnv;
+}): ReactElement {
   const { t } = useTranslation(['predictive', 'astrology']);
   const running = isLeg(maha, dashas.current_maha);
   const antars = maha.antar_sequence ?? null;
@@ -149,7 +190,20 @@ function MahaItem({ maha, dashas }: MahaItemProps): ReactElement {
       >
         {antars.map((antar, index) => {
           const antarRunning = running && isLeg(antar, dashas.current_antar);
-          const expandable = antarRunning && pratyantars !== null && pratyantars.length > 0;
+          const hasPds = antarRunning && pratyantars !== null && pratyantars.length > 0;
+          const guide = buildSubperiodGuide({
+            mahaLord: maha.lord,
+            subLord: antar.lord,
+            level: 'antar',
+            startDate: antar.start_date,
+            endDate: antar.end_date,
+            audience: env.audience,
+            planets: env.planets,
+            yogas: env.yogas,
+            transitCtx: env.transitCtx,
+            sortedHits: env.sortedHits,
+            t,
+          });
           return (
             <li
               key={`${antar.lord}-${index}`}
@@ -161,21 +215,29 @@ function MahaItem({ maha, dashas }: MahaItemProps): ReactElement {
                   '-ml-[calc(1rem+1px)] border-l-2 border-l-accent-gold/70 bg-accent-gold/[0.05] pl-[calc(1rem-1px)]',
               )}
             >
-              {expandable ? (
-                <Disclosure
-                  defaultOpen
-                  summary={<PeriodLine row={antar} running={antarRunning} />}
-                  triggerClassName="rounded-none"
-                >
+              <Disclosure
+                defaultOpen={antarRunning}
+                summary={<PeriodLine row={antar} running={antarRunning} />}
+                triggerClassName="rounded-none"
+                contentClassName="space-y-3 pb-3 pt-1"
+              >
+                {/* When running PDs are shown below, YouAreHerePath already displays the running Antar guide at the top. */}
+                {!hasPds && (
+                  <SubperiodGuideBlock
+                    guide={guide}
+                    testid={`subperiod-guide-antar-${maha.lord}-${antar.lord}`}
+                  />
+                )}
+                {hasPds && (
                   <PratyantarList
                     rows={pratyantars}
                     currentPratyantar={dashas.current_pratyantar}
+                    mahaLord={maha.lord}
                     antarLord={antar.lord}
+                    env={env}
                   />
-                </Disclosure>
-              ) : (
-                <PeriodLine row={antar} running={antarRunning} />
-              )}
+                )}
+              </Disclosure>
             </li>
           );
         })}
@@ -207,21 +269,34 @@ function MahaItem({ maha, dashas }: MahaItemProps): ReactElement {
   );
 }
 
-/** The "you are here" band: the running stack + its next dated boundary. */
-function YouAreHerePath({ dashas }: { dashas: DashaTreeSource }): ReactElement | null {
+/** The "you are here" band: running stack + next boundary + labeled active Antardaśā guide. */
+function YouAreHerePath({ dashas, env }: { dashas: DashaTreeSource; env: GuideEnv }): ReactElement | null {
   const { t } = useTranslation(['predictive', 'astrology']);
   const legs: ReadonlyArray<{ row: DashaTreeRow; level: 'maha' | 'antar' | 'pratyantar' }> = [
     dashas.current_maha ? ({ row: dashas.current_maha, level: 'maha' } as const) : null,
     dashas.current_antar ? ({ row: dashas.current_antar, level: 'antar' } as const) : null,
-    dashas.current_pratyantar
-      ? ({ row: dashas.current_pratyantar, level: 'pratyantar' } as const)
-      : null,
+    dashas.current_pratyantar ? ({ row: dashas.current_pratyantar, level: 'pratyantar' } as const) : null,
   ].filter((leg): leg is { row: DashaTreeRow; level: 'maha' | 'antar' | 'pratyantar' } => leg !== null);
 
-  if (legs.length === 0) {
-    return null;
-  }
-  const innermost = legs[legs.length - 1];
+  if (legs.length === 0) return null;
+  const innermost = legs[legs.length - 1]!;
+  const activeAntar = dashas.current_maha && dashas.current_antar ? dashas.current_antar : null;
+  const activeGuide =
+    dashas.current_maha && activeAntar
+      ? buildSubperiodGuide({
+          mahaLord: dashas.current_maha.lord,
+          subLord: activeAntar.lord,
+          level: 'antar',
+          startDate: activeAntar.start_date,
+          endDate: activeAntar.end_date,
+          audience: env.audience,
+          planets: env.planets,
+          yogas: env.yogas,
+          transitCtx: env.transitCtx,
+          sortedHits: env.sortedHits,
+          t,
+        })
+      : null;
 
   return (
     <section
@@ -244,13 +319,32 @@ function YouAreHerePath({ dashas }: { dashas: DashaTreeSource }): ReactElement |
       <p className="mt-1 font-mono text-xs text-text-secondary">
         {t('periods.path_until', { date: formatPredictiveDate(innermost.row.end_date) })}
       </p>
+      {activeGuide && activeAntar && (
+        <SubperiodGuideBlock
+          guide={activeGuide}
+          kicker={t('subperiod.current_antar_kicker', {
+            lord: grahaName(t, activeAntar.lord),
+            start: formatPredictiveDate(activeAntar.start_date),
+            end: formatPredictiveDate(activeAntar.end_date),
+          })}
+          testid="periods-current-subperiod-guide"
+          className="mt-3 max-w-3xl"
+        />
+      )}
     </section>
   );
 }
 
 /** The Periods tab: you-are-here band + convention note + the 120-year tree. */
-export function PeriodsPanel({ dashas }: PeriodsPanelProps): ReactElement {
+export function PeriodsPanel({ dashas, planets, yogas, transitCtx }: PeriodsPanelProps): ReactElement {
   const { t } = useTranslation('predictive');
+  const contentMode = useContentModeStore((s) => s.contentMode);
+  const audience: SubperiodAudience = contentMode === 'technical' ? 'astrologer' : 'layman';
+  const sortedHits = useMemo(
+    () => (transitCtx ? sortSlowHits(transitCtx.slow_hits) : undefined),
+    [transitCtx],
+  );
+  const env: GuideEnv = { audience, planets, yogas, transitCtx, sortedHits };
 
   if (!dashas || dashas.maha_dasha_sequence.length === 0) {
     return (
@@ -262,13 +356,11 @@ export function PeriodsPanel({ dashas }: PeriodsPanelProps): ReactElement {
     );
   }
 
-  const hasDepth = dashas.maha_dasha_sequence.some(
-    (row) => (row.antar_sequence?.length ?? 0) > 0,
-  );
+  const hasDepth = dashas.maha_dasha_sequence.some((row) => (row.antar_sequence?.length ?? 0) > 0);
 
   return (
     <div className="space-y-6" data-testid="periods-panel">
-      <YouAreHerePath dashas={dashas} />
+      <YouAreHerePath dashas={dashas} env={env} />
 
       <Card title={t('periods.title')} subtitle={t('periods.subtitle')}>
         {dashas.convention && (
@@ -290,7 +382,7 @@ export function PeriodsPanel({ dashas }: PeriodsPanelProps): ReactElement {
 
         <ol className="ml-5" data-testid="dasha-tree">
           {dashas.maha_dasha_sequence.map((maha, index) => (
-            <MahaItem key={`${maha.lord}-${index}`} maha={maha} dashas={dashas} />
+            <MahaItem key={`${maha.lord}-${index}`} maha={maha} dashas={dashas} env={env} />
           ))}
         </ol>
       </Card>

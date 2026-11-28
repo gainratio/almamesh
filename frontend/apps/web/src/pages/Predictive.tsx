@@ -19,6 +19,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useChartLibraryStore, useProfilesStore } from '@almamesh/store';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui';
+import { ContentModeToggle } from '../components/ui/ContentModeToggle';
 import {
   DomainsPanel,
   PeriodsPanel,
@@ -82,13 +83,16 @@ export default function PredictivePage(): ReactElement {
             </p>
           )}
         </div>
-        <Link
-          to="/dashboard"
-          className="text-sm text-accent-gold transition-colors hover:text-accent-gold-bright"
-          data-testid="predictive-back-dashboard"
-        >
-          {t('common:nav.dashboard')}
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          {layer.hasBirthData && tab === 'periods' && <ContentModeToggle />}
+          <Link
+            to="/dashboard"
+            className="text-sm text-accent-gold transition-colors hover:text-accent-gold-bright"
+            data-testid="predictive-back-dashboard"
+          >
+            {t('common:nav.dashboard')}
+          </Link>
+        </div>
       </div>
 
       {/* No chart at all → the single honest gate (no tabs to offer). */}
@@ -121,7 +125,12 @@ export default function PredictivePage(): ReactElement {
 
           {/* Natal-payload tab: renders instantly, independent of the compute. */}
           <TabsContent value="periods">
-            <PeriodsPanel dashas={layer.natalDashas} />
+            <PeriodsPanel
+              dashas={layer.natalDashas}
+              planets={siderealChart?.planets}
+              yogas={siderealChart?.yogas}
+              transitCtx={layer.transitCtx}
+            />
           </TabsContent>
 
           <TabsContent value="vargas">
