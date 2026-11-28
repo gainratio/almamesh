@@ -86,7 +86,13 @@ interface OpenAiMessage {
 
 /** HTTP status for an in-band failure: its numeric code when it is one, else 502. */
 function inBandStatus(code: unknown): number {
-  return typeof code === "number" && code >= 400 && code <= 599 ? code : 502;
+  if (typeof code === "number" && Number.isInteger(code) && code >= 400 && code <= 599) {
+    return code;
+  }
+  if (typeof code === "string" && /^[45]\d\d$/.test(code.trim())) {
+    return Number(code.trim());
+  }
+  return 502;
 }
 
 /**
@@ -99,10 +105,12 @@ function inBandStatus(code: unknown): number {
 function inBandFailure(payload: OpenAiMessage): LlmRequestError | undefined {
   const choice = payload.choices?.[0];
   const error = payload.error ?? choice?.error;
-  if (error === undefined && choice?.finish_reason !== "error") return undefined;
+  if ((error === undefined || error === null) && choice?.finish_reason !== "error") return undefined;
   const detail = typeof error?.message === "string" ? `: ${error.message}` : "";
+  const body = JSON.stringify({ error: error ?? null }).slice(0, MAX_ERROR_BODY_CHARS);
   return new LlmRequestError(`LLM provider failed mid-generation${detail}`, {
     status: inBandStatus(error?.code),
+    body,
   });
 }
 
@@ -218,7 +226,15 @@ export async function chatCompletionJson(
   if (!response.ok) {
     throw await requestErrorFor(response);
   }
-  return completionJsonContent(await response.json());
+  return completionJsonContent(await readCompletionJsonBody(response));
+}
+
+async function readCompletionJsonBody(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    throw new LlmRequestError("LLM endpoint returned invalid JSON", { status: 502 });
+  }
 }
 
 /**
@@ -227,12 +243,15 @@ export async function chatCompletionJson(
  * for endpoints that ignore `stream: true`.
  */
 export function completionJsonContent(body: unknown): string {
+  if (typeof body !== "object" || body === null) {
+    throw new LlmRequestError("LLM endpoint returned invalid JSON", { status: 502 });
+  }
   const payload = body as OpenAiMessage;
   const failure = inBandFailure(payload);
   if (failure) throw failure;
   const content = payload.choices?.[0]?.message?.content;
   if (typeof content !== "string" || content.trim() === "") {
-    throw new LlmRequestError("LLM endpoint returned an empty completion");
+    throw new LlmRequestError("LLM endpoint returned an empty completion", { status: 502 });
   }
   return stripJsonFence(content);
 }
@@ -290,6 +309,9 @@ export async function testProviderConnection(options: TestConnectionOptions): Pr
   });
   if (!response.ok) {
     throw await requestErrorFor(response);
+  }
+  if (typeof response.json === "function") {
+    completionJsonContent(await readCompletionJsonBody(response));
   }
 }
 
@@ -489,7 +511,7 @@ function deltaContent(payload: OpenAiDelta): string | null {
   return payload.choices?.[0]?.delta?.content ?? null;
 }
 
-/** Parse the `data:` lines in one SSE chunk, yielding token deltas. */
+/** Parse the `data:` lines in one SSE chunk, yielding token deltas or throwing on in-band errors. */
 function* parseSseChunk(chunk: string): Generator<string> {
   for (const line of chunk.split("\n")) {
     const trimmed = line.trim();
@@ -500,7 +522,15 @@ function* parseSseChunk(chunk: string): Generator<string> {
     if (data === "" || data === "[DONE]") {
       continue;
     }
-    const token = deltaContent(JSON.parse(data) as OpenAiDelta);
+    let parsed: OpenAiDelta & OpenAiMessage;
+    try {
+      parsed = JSON.parse(data) as OpenAiDelta & OpenAiMessage;
+    } catch {
+      throw new LlmRequestError("LLM endpoint returned invalid streaming JSON", { status: 502 });
+    }
+    const failure = inBandFailure(parsed);
+    if (failure) throw failure;
+    const token = deltaContent(parsed);
     if (token) {
       yield token;
     }
@@ -545,7 +575,7 @@ export async function* streamChatCompletion(
     }
     buffer += decoder.decode(value, { stream: true });
     // SSE events are separated by a blank line; process complete events only.
-    const events = buffer.split("\n\n");
+    const events = buffer.split(/\r?\n\r?\n/);
     buffer = events.pop() ?? "";
     for (const event of events) {
       yield* parseSseChunk(event);

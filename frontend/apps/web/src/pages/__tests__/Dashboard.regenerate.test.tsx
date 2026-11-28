@@ -972,4 +972,64 @@ describe('Dashboard — regenerate reading', () => {
     fireEvent.click(connect as HTMLButtonElement);
     expect(screen.getByRole('dialog', { name: 'Connect AI' })).toBeTruthy();
   });
+
+  it('REGRESSION: surfaces reading-regen-error even when a kept reading has an empty summary (!summaryReady)', async () => {
+    configureCloudAi();
+    const emptySummaryReading: VedicInterpretation = {
+      ...INTERPRETATION,
+      summary: { layman: '', technical: '' },
+    };
+    useInterpretationStore.setState({ byChart: {} });
+    await useInterpretationStore
+      .getState()
+      .setInterpretation(
+        'chart-1',
+        emptySummaryReading,
+        '2026-06-20T00:00:00Z',
+        currentProvenance(),
+        NATAL_ONLY_INPUT,
+      );
+    mockedStream.mockImplementation(
+      failingStream(new LlmRequestError('HTTP 402: Insufficient credits', { status: 402 })),
+    );
+    renderDashboard();
+
+    fireEvent.click(await screen.findByTestId('regenerate-reading'));
+    const strip = await screen.findByTestId('reading-regen-error');
+    expect(strip.getAttribute('role')).toBe('alert');
+    expect(strip.textContent ?? '').toMatch(/out of credits/i);
+  });
+
+  it('REGRESSION: surfaces partial natal failure with OpenRouter error code and keeps prior summary', async () => {
+    configureCloudAi();
+    seedCompleteReading(currentProvenance());
+    mockedStream.mockImplementation(async function* () {
+      yield {
+        type: 'error',
+        section: 'core',
+        message: 'Rate limit exceeded',
+        status: 429,
+      } as NatalInterpretationEvent;
+      yield {
+        type: 'section_complete',
+        section: 'guidance1',
+      } as NatalInterpretationEvent;
+      yield {
+        type: 'complete',
+        interpretation: {
+          summary: { layman: '', technical: '' },
+          strengths: [],
+          challenges: [],
+          life_themes: [],
+          career_guidance: { layman: 'Fresh career prose.', technical: '10th house.' },
+        },
+      } as NatalInterpretationEvent;
+    });
+    renderDashboard();
+
+    fireEvent.click(await screen.findByTestId('regenerate-reading'));
+    const partial = await screen.findByTestId('interpretation-partial-failure');
+    expect(partial.textContent ?? '').toContain('Identity & personality (ai.provider.rate_limited)');
+    expect(screen.getByTestId('reading-section').textContent ?? '').toContain(LAYMAN_SUMMARY);
+  });
 });

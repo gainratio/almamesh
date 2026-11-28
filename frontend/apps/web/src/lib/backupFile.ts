@@ -133,6 +133,59 @@ function mimeTypeFor(suggestedName: string, content: BackupFileContent): string 
 }
 
 export type BackupSaveResult = 'saved' | 'cancelled' | 'unverified';
+export type BackupShareResult = 'shared' | 'cancelled' | 'gesture_expired';
+
+function toBackupFileObject(suggestedName: string, content: BackupFileContent): File {
+  const part =
+    typeof content === 'string'
+      ? content
+      : Uint8Array.from(content).buffer;
+  // Use application/octet-stream for Web Share so iOS/macOS/Android cloud targets
+  // (Google Drive, Files, iCloud Drive) accept `.almamesh` without filtering out vnd.* types.
+  return new File([part], suggestedName, { type: 'application/octet-stream' });
+}
+
+/** True when this browser supports sharing `.almamesh` files to native Save/Cloud apps (Files, Google Drive, iCloud). */
+export function canShareBackupFiles(): boolean {
+  if (
+    typeof navigator === 'undefined' ||
+    typeof navigator.share !== 'function' ||
+    typeof navigator.canShare !== 'function' ||
+    typeof File === 'undefined'
+  ) {
+    return false;
+  }
+  try {
+    const probe = new File([new Uint8Array([0])], 'almamesh-backup.almamesh', {
+      type: 'application/octet-stream',
+    });
+    return navigator.canShare({ files: [probe] });
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Open the OS Share / Save sheet (`Save to Files`, `Google Drive`, `iCloud Drive`) for an
+ * already-encrypted backup. Returns `'gesture_expired'` if scrypt outlived transient user
+ * activation so the UI can complete sharing on a fresh 1-tap gesture without re-sealing.
+ */
+export async function shareBackupFile(
+  suggestedName: string,
+  content: BackupFileContent,
+): Promise<BackupShareResult> {
+  const file = toBackupFileObject(suggestedName, content);
+  try {
+    await navigator.share({ files: [file], title: suggestedName });
+    return 'shared';
+  } catch (error) {
+    if (isAbortError(error)) return 'cancelled';
+    if (error instanceof DOMException && error.name === 'NotAllowedError') {
+      return 'gesture_expired';
+    }
+    throw error;
+  }
+}
 
 /**
  * Where a backup will be saved, chosen BEFORE the backup is built.

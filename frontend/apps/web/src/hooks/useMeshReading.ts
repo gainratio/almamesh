@@ -32,7 +32,7 @@ import {
   type MeshReading,
   type MeshReadingSectionKey,
 } from '@almamesh/llm';
-import { classifyConnectionError, privacyBlockedMessage } from '../lib/errors';
+import { chatErrorMessage, classifyConnectionError, privacyBlockedMessage } from '../lib/errors';
 import { whenDataLifecycleReady } from '../lib/profileDataLifecycle';
 
 export type MeshReadingStatus = 'idle' | 'streaming' | 'complete' | 'error';
@@ -43,6 +43,8 @@ export interface MeshReadingLayer {
   readonly error?: string;
   /** Sections that finished (drives the honest per-section checklist). */
   readonly completed: ReadonlySet<MeshReadingSectionKey>;
+  /** Sections that failed during a partial run. */
+  readonly failed?: ReadonlySet<MeshReadingSectionKey>;
   /** Explicitly start (or restart) the narration. No-op while streaming. */
   readonly generate: () => void;
 }
@@ -64,9 +66,10 @@ interface ReadingState {
   readonly reading?: MeshReading;
   readonly error?: string;
   readonly completed: ReadonlySet<MeshReadingSectionKey>;
+  readonly failed: ReadonlySet<MeshReadingSectionKey>;
 }
 
-const IDLE_STATE: ReadingState = { status: 'idle', completed: new Set() };
+const IDLE_STATE: ReadingState = { status: 'idle', completed: new Set(), failed: new Set() };
 
 export interface MeshReadingContext {
   readonly pairKey: string;
@@ -75,12 +78,13 @@ export interface MeshReadingContext {
 }
 
 /**
- * The text shown after "The reading failed:". A privacy refusal gets localized
- * copy (its own message is an English log line); other failures keep their
- * message as diagnostic detail.
+ * The text shown after "The reading failed:". Known provider/privacy failures
+ * map to actionable localized copy; unclassified errors keep their message.
  */
 function meshReadingErrorText(err: unknown): string {
-  if (classifyConnectionError(err) === 'privacy') return privacyBlockedMessage(err);
+  const kind = classifyConnectionError(err);
+  if (kind === 'privacy') return privacyBlockedMessage(err);
+  if (kind !== 'unknown') return chatErrorMessage(err);
   return err instanceof Error ? err.message : String(err);
 }
 
@@ -114,21 +118,44 @@ export function useMeshReading(
   const saved = useMeshReadingsStore((store) =>
     identity === undefined ? undefined : store.getExact(identity),
   );
+  const identityKey =
+    identity === undefined
+      ? undefined
+      : `${identity.pairKey}\u0000${identity.edgeRequestKey}\u0000${identity.language}`;
+  const prevIdentityKeyRef = useRef<string | undefined>(identityKey);
+  const lastLocalSaveAtRef = useRef<string | null>(null);
 
-  // A new exact edge/language identity loads its durable reading if one exists.
-  // In-flight requests are aborted; no stale text crosses an identity boundary.
   useEffect(() => {
-    abortRef.current?.abort();
-    abortRef.current = null;
-    setState(
-      saved === undefined
-        ? IDLE_STATE
-        : { status: 'complete', reading: saved.reading, completed: new Set() },
-    );
     return () => {
       abortRef.current?.abort();
     };
-  }, [identity?.pairKey, identity?.edgeRequestKey, identity?.language, saved]);
+  }, []);
+
+  // A new exact edge/language identity aborts in-flight requests and resets state.
+  // Same-identity store updates hydrate durable readings while idle without wiping
+  // `failed` sections from our own just-completed partial generation.
+  useEffect(() => {
+    if (prevIdentityKeyRef.current !== identityKey) {
+      prevIdentityKeyRef.current = identityKey;
+      lastLocalSaveAtRef.current = null;
+      abortRef.current?.abort();
+      abortRef.current = null;
+      setState(
+        saved === undefined
+          ? IDLE_STATE
+          : { status: 'complete', reading: saved.reading, completed: new Set(), failed: new Set() },
+      );
+      return;
+    }
+    if (saved !== undefined && saved.generatedAt === lastLocalSaveAtRef.current) {
+      return;
+    }
+    setState((prev) => {
+      if (prev.status === 'streaming') return prev;
+      if (saved === undefined) return prev.status === 'error' ? prev : IDLE_STATE;
+      return { status: 'complete', reading: saved.reading, completed: new Set(), failed: new Set() };
+    });
+  }, [identityKey, saved]);
 
   const generate = useCallback(() => {
     if (!edge || !identity) {
@@ -140,6 +167,7 @@ export function useMeshReading(
     setState((previous) => ({
       status: 'streaming',
       completed: new Set(),
+      failed: new Set(),
       ...(previous.reading !== undefined ? { reading: previous.reading } : {}),
     }));
 
@@ -151,6 +179,7 @@ export function useMeshReading(
       if (controller.signal.aborted) return;
       const config = resolveProviderConfig(readMeshLlmEnv());
       const generationMode = contentMode === 'technical' ? 'expert' : 'layman';
+      const failedKeys = new Set<MeshReadingSectionKey>();
       const events = streamMeshReading({
         edge: llmEdge,
         config,
@@ -168,18 +197,35 @@ export function useMeshReading(
             ...prev,
             completed: new Set([...prev.completed, event.section]),
           }));
+        } else if (event.type === 'error' && event.section !== undefined) {
+          failedKeys.add(event.section);
+          setState((prev) => ({
+            ...prev,
+            failed: new Set([...prev.failed, event.section!]),
+          }));
         } else if (event.type === 'complete') {
+          let mergedReading = event.reading;
+          const prior = useMeshReadingsStore.getState().getExact(identity)?.reading;
+          if (prior && failedKeys.size > 0) {
+            mergedReading = {
+              connection: failedKeys.has('connection') ? prior.connection : event.reading.connection,
+              timing_together: failedKeys.has('timing_together')
+                ? prior.timing_together
+                : event.reading.timing_together,
+              care: failedKeys.has('care') ? prior.care : event.reading.care,
+            };
+          }
+          const generatedAt = new Date().toISOString();
+          lastLocalSaveAtRef.current = generatedAt;
           await useMeshReadingsStore.getState().saveCompleted({
             ...identity,
             generationMode,
             provider: configProvenance(config),
-            generatedAt: new Date().toISOString(),
-            reading: event.reading,
+            generatedAt,
+            reading: mergedReading,
           });
-          setState((prev) => ({ ...prev, status: 'complete', reading: event.reading }));
+          setState((prev) => ({ ...prev, status: 'complete', reading: mergedReading }));
         }
-        // Per-section errors degrade quietly (the merged reading still lands);
-        // an all-sections failure throws and is caught below.
       }
     };
     run().catch((err: unknown) => {

@@ -100,7 +100,11 @@ async function openJsonStream(options: StreamChatCompletionJsonOptions): Promise
 
 function validatedJson(parts: readonly string[]): string {
   const content = stripJsonFence(parts.join(""));
-  if (content === "") throw new LlmRequestError("LLM endpoint returned an empty completion");
+  if (content === "") {
+    throw new LlmRequestError("LLM endpoint returned an empty completion", {
+      status: DROPPED_GENERATION_STATUS,
+    });
+  }
   try {
     JSON.parse(content);
   } catch {
@@ -109,6 +113,16 @@ function validatedJson(parts: readonly string[]): string {
     });
   }
   return content;
+}
+
+async function readNonStreamJsonBody(response: Response): Promise<unknown> {
+  try {
+    return await response.json();
+  } catch {
+    throw new LlmRequestError("LLM endpoint returned invalid JSON", {
+      status: DROPPED_GENERATION_STATUS,
+    });
+  }
 }
 
 export async function streamChatCompletionJson(
@@ -122,7 +136,7 @@ export async function streamChatCompletionJson(
   // answer is done, so on a remote endpoint a report section that takes over
   // REPORT_SECTION_IDLE_TIMEOUT_MS fails `idle` here, before the total cap.
   if (response.headers.get("content-type")?.includes("application/json")) {
-    const content = completionJsonContent(await response.json());
+    const content = completionJsonContent(await readNonStreamJsonBody(response));
     options.onDelta?.(content);
     return validatedJson([content]);
   }

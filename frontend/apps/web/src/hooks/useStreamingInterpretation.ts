@@ -59,6 +59,7 @@ import type { ProcessedBirthData, VedicInterpretation } from '@almamesh/shared-t
 
 import {
   aiErrorRegistry,
+  aiErrorText,
   chatErrorMessage,
   classifyConnectionError,
   privacyBlockedMessage,
@@ -131,6 +132,8 @@ export interface UseStreamingInterpretationResult {
   sections: readonly SectionProgress[];
   /** The keys of sections whose generation failed (degraded to empty). */
   failedSections: readonly InterpretationSectionKey[];
+  /** Canonical error code (e.g. `ai.provider.rate_limited`) per failed natal section. */
+  failedSectionCodes: Readonly<Partial<Record<InterpretationSectionKey, string>>>;
   /** The keys of sections containing an unfinished `READING_WITHHELD` placeholder. */
   withheldSections: readonly InterpretationSectionKey[];
   /** Regenerate only the given natal section(s), preserving completed sections and evidence annotations. */
@@ -192,6 +195,12 @@ export interface UseStreamingInterpretationResult {
  * the raw endpoint response body never reaches the screen.
  */
 export const READING_MODEL_UNAVAILABLE = 'reading_model_unavailable';
+
+/** Translate internal sentinels (`READING_MODEL_UNAVAILABLE`) for non-Dashboard surfaces. */
+export function displayInterpretationError(error: string | null | undefined): string | null {
+  if (!error) return null;
+  return error === READING_MODEL_UNAVAILABLE ? aiErrorText('ai.model.unavailable') : error;
+}
 
 /** Shown instead of starting a paid run while unreadable saved readings are not held. */
 const SAVED_READINGS_UNREADABLE =
@@ -465,6 +474,7 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
   const setCurrentTimeline = useInterpretationStore((s) => s.setCurrentTimeline);
   const setCurrentTimelineError = useInterpretationStore((s) => s.setCurrentTimelineError);
   const resetEntry = useInterpretationStore((s) => s.reset);
+  const abandonInterpretation = useInterpretationStore((s) => s.abandonInterpretation);
   const abandonCurrentTimeline = useInterpretationStore((s) => s.abandonCurrentTimeline);
 
   // The persisted UI language threads into the prompt so the reading is narrated
@@ -473,6 +483,7 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
   const language = useLanguageStore((s) => s.language);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const natalRunRef = useRef<TimelineRun | null>(null);
   const sectionRetryAbortRef = useRef<AbortController | null>(null);
   const annotationRefreshAbortRef = useRef<AbortController | null>(null);
   const timelineAbortControllerRef = useRef<AbortController | null>(null);
@@ -483,10 +494,15 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
 
   // Leaving the page cancels background streams: nobody is watching them, and a
   // slow model would otherwise keep a connection (and tokens) running for
-  // minutes. The store timeline run is closed so it never reads as 'generating' again.
+  // minutes. The store natal + timeline runs are closed so neither reads as 'generating' again.
   useEffect(
     () => () => {
       progressBatcherRef.current?.cancel();
+      const natalRun = natalRunRef.current;
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+      natalRunRef.current = null;
+      if (natalRun) abandonInterpretation(natalRun.chartId, natalRun.runToken);
       sectionRetryAbortRef.current?.abort();
       sectionRetryAbortRef.current = null;
       annotationRefreshAbortRef.current?.abort();
@@ -494,9 +510,10 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
       const run = timelineRunRef.current;
       timelineAbortControllerRef.current?.abort();
       timelineAbortControllerRef.current = null;
+      timelineRunRef.current = null;
       if (run) abandonCurrentTimeline(run.chartId, run.runToken);
     },
-    [abandonCurrentTimeline],
+    [abandonCurrentTimeline, abandonInterpretation],
   );
   // `setInterpretation` publishes to the zustand store synchronously but its
   // Promise resolves only after the SQLite snapshot commits. Keep that new
@@ -525,22 +542,28 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
   }, [chartId, resetEntry]);
 
   const cancel = useCallback(() => {
+    const natalRun = natalRunRef.current;
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    natalRunRef.current = null;
+    if (natalRun) abandonInterpretation(natalRun.chartId, natalRun.runToken);
     sectionRetryAbortRef.current?.abort();
     sectionRetryAbortRef.current = null;
     annotationRefreshAbortRef.current?.abort();
     annotationRefreshAbortRef.current = null;
-  }, []);
+  }, [abandonInterpretation]);
 
   const cancelCurrentTimeline = useCallback(() => {
+    const run = timelineRunRef.current;
     if (timelineAbortControllerRef.current) {
       timelineAbortControllerRef.current.abort();
       timelineAbortControllerRef.current = null;
     }
-  }, []);
+    timelineRunRef.current = null;
+    if (run) abandonCurrentTimeline(run.chartId, run.runToken);
+  }, [abandonCurrentTimeline]);
 
   // One paid run per chart per kind: a repeat click while a run is starting
   // or streaming attaches to it (see useSingleFlight).
@@ -551,44 +574,49 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
 
   const runNatal = useCallback(
     async (id: string, options: StreamInterpretationOptions, release: () => void) => {
-      // Startup may reconcile a newer portable dataset after Zustand's first
-      // hydration. Both phases can replace the live map, so paid work must wait
-      // for the whole lifecycle boundary before reading or mutating the store.
-      await whenDataLifecycleReady();
-      await whenInterpretationHydrated();
-      if (interpretationWriteRefusal() !== undefined) {
-        // Saved readings could not be read or held: a new run would overwrite them.
-        startInterpretation(id);
-        setError(id, SAVED_READINGS_UNREADABLE, 'unknown');
-        return;
-      }
-      const stored = useChartLibraryStore.getState().getChart(id);
-      const chart = stored?.sidereal_chart;
-      if (!chart) {
-        // No raw engine output to interpret (e.g. a pre-structured persisted chart).
-        startInterpretation(id);
-        setError(
-          id,
-          'This chart needs to be regenerated before it can be interpreted.',
-          'needs_regeneration',
-        );
-        return;
-      }
-
-      const config = resolveInterpretationConfig();
-      sectionRetryAbortRef.current?.abort();
-      sectionRetryAbortRef.current = null;
-      annotationRefreshAbortRef.current?.abort();
-      annotationRefreshAbortRef.current = null;
-      setSectionRetryError(null);
+      let runToken: number | undefined;
+      let readingCompleted = false;
+      let stored: ReturnType<ReturnType<typeof useChartLibraryStore.getState>['getChart']>;
+      let chart: SiderealChart | undefined;
+      let config: ProviderConfig | undefined;
       const controller = new AbortController();
       abortControllerRef.current = controller;
-
-      const runToken = startInterpretation(id, stored.profile_id);
-      // Whether the reading itself landed. Gates the annotation step below: a run
-      // that errored or was cancelled has nothing to annotate.
-      let readingCompleted = false;
       try {
+        // Startup may reconcile a newer portable dataset after Zustand's first
+        // hydration. Both phases can replace the live map, so paid work must wait
+        // for the whole lifecycle boundary before reading or mutating the store.
+        await whenDataLifecycleReady();
+        await whenInterpretationHydrated();
+        if (controller.signal.aborted) return;
+        if (interpretationWriteRefusal() !== undefined) {
+          // Saved readings could not be read or held: a new run would overwrite them.
+          startInterpretation(id);
+          setError(id, SAVED_READINGS_UNREADABLE, 'unknown');
+          return;
+        }
+        stored = useChartLibraryStore.getState().getChart(id);
+        chart = stored?.sidereal_chart;
+        if (!stored || !chart) {
+          // No raw engine output to interpret (e.g. a pre-structured persisted chart).
+          startInterpretation(id);
+          setError(
+            id,
+            'This chart needs to be regenerated before it can be interpreted.',
+            'needs_regeneration',
+          );
+          return;
+        }
+
+        config = resolveInterpretationConfig();
+        sectionRetryAbortRef.current?.abort();
+        sectionRetryAbortRef.current = null;
+        annotationRefreshAbortRef.current?.abort();
+        annotationRefreshAbortRef.current = null;
+        setSectionRetryError(null);
+
+        runToken = startInterpretation(id, stored.profile_id);
+        natalRunRef.current = { chartId: id, runToken };
+
         for await (const event of streamNatalInterpretation({
           chart,
           asOf: storedChartAnalysisInstant(stored),
@@ -597,23 +625,23 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
           language,
           signal: controller.signal,
         })) {
-          if (controller.signal.aborted) return;
+          if (controller.signal.aborted) {
+            abandonInterpretation(id, runToken);
+            return;
+          }
           if (event.type === 'section_complete') {
             markSectionComplete(id, event.section, runToken);
           } else if (event.type === 'error' && event.section != null) {
-            // A per-section failure degrades that section to empty while the
-            // run still completes — record it so the UI can show the gap and
-            // offer a regenerate instead of a silently blank section.
-            // (`section` is optional on the event type; sectionless errors
-            // have no slot to mark and surface via the fatal path instead.)
-            markSectionFailed(id, event.section, runToken);
+            // A per-section failure degrades that section while the run still
+            // completes — record both the section and its typed error code so
+            // the UI can name the exact OpenRouter cause and offer a retry.
+            markSectionFailed(
+              id,
+              event.section,
+              runToken,
+              sectionErrorCode(event.message, event.status),
+            );
           } else if (event.type === 'complete') {
-            // Stamp the reading with the identity of the config that produced
-            // it (engine/model/endpoint — never a key), so the UI can caption
-            // it and a later config change is detectable as a provenance
-            // mismatch after an explicit regeneration. `predictiveAware` records whether
-            // the full predictive superset was actually composed into THIS
-            // reading, gating the one-shot enrich-when-ready upgrade.
             setDurabilityPendingRun(runToken);
             await setInterpretation(
               id,
@@ -623,56 +651,64 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
               { predictiveRequestKey: null },
               runToken,
             );
-            setDurabilityPendingRun((pending) => pending === runToken ? null : pending);
+            setDurabilityPendingRun((pending) => (pending === runToken ? null : pending));
             readingCompleted = true;
           }
           // `section_start` is informational.
         }
       } catch (err) {
-        setDurabilityPendingRun((pending) => pending === runToken ? null : pending);
-        if (err instanceof Error && err.name === 'AbortError') return;
+        if (runToken !== undefined) {
+          setDurabilityPendingRun((pending) => (pending === runToken ? null : pending));
+        }
+        if ((err instanceof Error && err.name === 'AbortError') || controller?.signal.aborted) {
+          if (runToken !== undefined) abandonInterpretation(id, runToken);
+          return;
+        }
         const failure = describeError(err);
+        if (runToken === undefined) {
+          runToken = startInterpretation(id, stored?.profile_id);
+        }
         setError(id, failure.message, failure.kind, runToken);
         return;
       } finally {
+        if (natalRunRef.current?.runToken === runToken) {
+          natalRunRef.current = null;
+        }
         // The reading phase ends here: annotations below are background work
         // and must not swallow a deliberate new request.
         release();
       }
 
-      // ---------------------------------------------------------------------
-      // SEPARATE STEP: evidence annotations. Strictly after the reading.
-      // ---------------------------------------------------------------------
-      // The reading is already stored as `complete` and already on screen by the
-      // time we get here, so nothing below can take it away. `fetchEvidenceAnnotations`
-      // never throws and returns null when it made no call or the call failed —
-      // in which case the evidence table simply renders keyless (observation,
-      // evidence, confidence and alternative, with an empty interpretation cell).
-      // `runToken` keeps a slow response from landing on a newer reading.
-      if (!readingCompleted || controller.signal.aborted) {
+      if (!readingCompleted || !stored || !chart || !config || runToken === undefined || controller.signal.aborted) {
         return;
       }
+      const completedToken = runToken;
+      const completedChart = chart;
+      const completedStored = stored;
+      const completedConfig = config;
+      const completedController = controller;
       await trackEvidenceAnnotationFlight(
         id,
         (async () => {
           const outcome = await fetchEvidenceAnnotationsOutcome({
-            chart,
-            asOf: storedChartAnalysisInstant(stored),
-            config,
+            chart: completedChart,
+            asOf: storedChartAnalysisInstant(completedStored),
+            config: completedConfig,
             language,
-            signal: controller.signal,
+            signal: completedController.signal,
             timeZone: viewerTimeZone(),
           });
-          if (controller.signal.aborted) return;
+          if (completedController.signal.aborted) return;
           if (outcome.kind === 'ok') {
-            await setEvidenceAnnotations(id, outcome.payload, runToken);
+            await setEvidenceAnnotations(id, outcome.payload, completedToken);
           } else if (outcome.kind === 'failed') {
-            await setEvidenceAnnotationError(id, outcome.errorCode, runToken);
+            await setEvidenceAnnotationError(id, outcome.errorCode, completedToken);
           }
         })(),
       );
     },
     [
+      abandonInterpretation,
       language,
       markSectionComplete,
       markSectionFailed,
@@ -695,52 +731,57 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
 
   const runTimeline = useCallback(
     async (id: string, options: StreamInterpretationOptions) => {
-      await whenDataLifecycleReady();
-      await whenInterpretationHydrated();
-      const stored = useChartLibraryStore.getState().getChart(id);
-      if (interpretationWriteRefusal() !== undefined) {
-        startCurrentTimeline(id, stored?.profile_id);
-        setCurrentTimelineError(id, SAVED_READINGS_UNREADABLE, 'unknown');
-        return;
-      }
-      const chart = stored?.sidereal_chart;
-      if (!chart) {
-        startCurrentTimeline(id, stored?.profile_id);
-        setCurrentTimelineError(
-          id,
-          'This chart needs to be regenerated before its current timeline can be interpreted.',
-          'needs_regeneration',
-        );
-        return;
-      }
-
-      const predictive = currentPredictiveFacts(id);
-      if (predictive === null) {
-        startCurrentTimeline(id, stored.profile_id);
-        setCurrentTimelineError(
-          id,
-          'Current timing facts are not ready. Retry after Sky & Timing finishes.',
-          'unknown',
-        );
-        return;
-      }
-      const input: NarrationInput = {
-        chart: { ...chart, ...predictive.rawContexts },
-        provenance: { predictiveRequestKey: predictive.requestKey },
-      };
-      const config = resolveInterpretationConfig();
+      let runToken: number | undefined;
       const controller = new AbortController();
       timelineAbortControllerRef.current = controller;
-      const runToken = startCurrentTimeline(id, stored.profile_id);
-      timelineRunRef.current = { chartId: id, runToken };
-      progressBatcherRef.current?.cancel();
-      const progress = createFrameBatcher<SectionProgressSnapshot>((latest) =>
-        setTimelineProgress((previous) => ({ ...previous, ...latest })),
-      );
-      progressBatcherRef.current = progress;
-      setTimelineProgress({});
-
+      let progress: FrameBatcher<SectionProgressSnapshot> | undefined;
+      let stored: ReturnType<ReturnType<typeof useChartLibraryStore.getState>['getChart']>;
       try {
+        await whenDataLifecycleReady();
+        await whenInterpretationHydrated();
+        if (controller.signal.aborted) return;
+        stored = useChartLibraryStore.getState().getChart(id);
+        if (interpretationWriteRefusal() !== undefined) {
+          startCurrentTimeline(id, stored?.profile_id);
+          setCurrentTimelineError(id, SAVED_READINGS_UNREADABLE, 'unknown');
+          return;
+        }
+        const chart = stored?.sidereal_chart;
+        if (!stored || !chart) {
+          startCurrentTimeline(id, stored?.profile_id);
+          setCurrentTimelineError(
+            id,
+            'This chart needs to be regenerated before its current timeline can be interpreted.',
+            'needs_regeneration',
+          );
+          return;
+        }
+
+        const predictive = currentPredictiveFacts(id);
+        if (predictive === null) {
+          startCurrentTimeline(id, stored.profile_id);
+          setCurrentTimelineError(
+            id,
+            'Current timing facts are not ready. Retry after Sky & Timing finishes.',
+            'unknown',
+          );
+          return;
+        }
+        const input: NarrationInput = {
+          chart: { ...chart, ...predictive.rawContexts },
+          provenance: { predictiveRequestKey: predictive.requestKey },
+        };
+        const config = resolveInterpretationConfig();
+        runToken = startCurrentTimeline(id, stored.profile_id);
+        timelineRunRef.current = { chartId: id, runToken };
+        progressBatcherRef.current?.cancel();
+        const activeProgress = createFrameBatcher<SectionProgressSnapshot>((latest) =>
+          setTimelineProgress((previous) => ({ ...previous, ...latest })),
+        );
+        progress = activeProgress;
+        progressBatcherRef.current = activeProgress;
+        setTimelineProgress({});
+
         for await (const event of streamCurrentTimeline({
           chart: input.chart,
           asOf: storedChartAnalysisInstant(stored),
@@ -748,9 +789,12 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
           mode: options.view_mode === 'expert' ? 'expert' : 'layman',
           language,
           signal: controller.signal,
-          onSectionProgress: (section, snapshot) => progress.push(section, snapshot),
+          onSectionProgress: (section, snapshot) => activeProgress.push(section, snapshot),
         })) {
-          if (controller.signal.aborted) return;
+          if (controller.signal.aborted) {
+            abandonCurrentTimeline(id, runToken);
+            return;
+          }
           if (event.type === 'section_complete') {
             markCurrentTimelineSectionComplete(id, event.section, runToken);
           } else if (event.type === 'error') {
@@ -776,13 +820,21 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
           }
         }
       } catch (err) {
-        setTimelineDurabilityPendingRun((pending) => pending === runToken ? null : pending);
-        if (err instanceof Error && err.name === 'AbortError') return;
+        if (runToken !== undefined) {
+          setTimelineDurabilityPendingRun((pending) => (pending === runToken ? null : pending));
+        }
+        if ((err instanceof Error && err.name === 'AbortError') || controller?.signal.aborted) {
+          if (runToken !== undefined) abandonCurrentTimeline(id, runToken);
+          return;
+        }
         const failure = describeError(err);
+        if (runToken === undefined) {
+          runToken = startCurrentTimeline(id, stored?.profile_id);
+        }
         setCurrentTimelineError(id, failure.message, failure.kind, runToken);
       } finally {
-        progress.cancel();
-        if (progressBatcherRef.current === progress) {
+        progress?.cancel();
+        if (progress && progressBatcherRef.current === progress) {
           progressBatcherRef.current = null;
           setTimelineProgress({});
         }
@@ -790,6 +842,7 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
       }
     },
     [
+      abandonCurrentTimeline,
       language,
       markCurrentTimelineSectionComplete,
       markCurrentTimelineSectionFailed,
@@ -819,32 +872,38 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
       );
       if (validTargets.length === 0) return;
       setSectionRetryError(null);
-      await whenDataLifecycleReady();
-      await whenInterpretationHydrated();
-      if (interpretationWriteRefusal() !== undefined) {
-        setSectionRetryError(SAVED_READINGS_UNREADABLE);
-        return;
-      }
-      const stored = useChartLibraryStore.getState().getChart(id);
-      const chart = stored?.sidereal_chart;
-      const storeState = useInterpretationStore.getState();
-      const currentEntry = storeState.getEntry(id);
-      if (!chart || !currentEntry?.interpretation || currentEntry.status === 'generating') {
-        return;
-      }
-
-      const tokenSnapshot = storeState.getActiveRunToken(id);
-      const config = resolveInterpretationConfig();
-      sectionRetryAbortRef.current?.abort();
-      const controller = new AbortController();
-      sectionRetryAbortRef.current = controller;
+      let controller: AbortController | undefined;
       try {
+        await whenDataLifecycleReady();
+        await whenInterpretationHydrated();
+        if (interpretationWriteRefusal() !== undefined) {
+          setSectionRetryError(SAVED_READINGS_UNREADABLE);
+          return;
+        }
+        const stored = useChartLibraryStore.getState().getChart(id);
+        const chart = stored?.sidereal_chart;
+        if (!stored || !chart) {
+          setSectionRetryError('This chart needs to be regenerated before it can be interpreted.');
+          return;
+        }
+        const storeState = useInterpretationStore.getState();
+        const currentEntry = storeState.getEntry(id);
+        if (!currentEntry?.interpretation || currentEntry.status === 'generating') {
+          return;
+        }
+
+        const tokenSnapshot = storeState.getActiveRunToken(id);
+        const config = resolveInterpretationConfig();
+        sectionRetryAbortRef.current?.abort();
+        controller = new AbortController();
+        sectionRetryAbortRef.current = controller;
         for (const section of validTargets) {
           if (controller.signal.aborted) return;
           const latestState = useInterpretationStore.getState();
           if (latestState.getActiveRunToken(id) !== tokenSnapshot) return;
           const latestEntry = latestState.getEntry(id);
           if (!latestEntry?.interpretation || latestEntry.status === 'generating') return;
+          const isFailed = Boolean(latestEntry.failedSections?.[section]);
           const patch = await regenerateNatalSection(section, {
             chart,
             asOf: storedChartAnalysisInstant(stored),
@@ -852,7 +911,7 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
             mode: options.view_mode === 'expert' ? 'expert' : 'layman',
             language,
             signal: controller.signal,
-            existing: latestEntry.interpretation,
+            ...(isFailed ? {} : { existing: latestEntry.interpretation }),
           });
           if (controller.signal.aborted) return;
           const prePatchEntry = useInterpretationStore.getState().getEntry(id);
@@ -868,14 +927,25 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
             tokenSnapshot,
           );
         }
+        const afterEntry = useInterpretationStore.getState().getEntry(id);
+        const stillWithheld = withheldNatalSections(afterEntry?.interpretation).filter((s) =>
+          validTargets.includes(s),
+        );
+        if (stillWithheld.length > 0) {
+          setSectionRetryError(
+            'The model still returned non-reflective phrasing for that section. Try again, or pick another model in AI settings.',
+          );
+        }
       } catch (err) {
-        if (err instanceof Error && err.name === 'AbortError') return;
+        if ((err instanceof Error && err.name === 'AbortError') || controller?.signal.aborted) {
+          return;
+        }
         const failure = describeError(err);
         setSectionRetryError(
           failure.message === READING_MODEL_UNAVAILABLE ? chatErrorMessage(err) : failure.message,
         );
       } finally {
-        if (sectionRetryAbortRef.current === controller) {
+        if (controller && sectionRetryAbortRef.current === controller) {
           sectionRetryAbortRef.current = null;
         }
       }
@@ -907,19 +977,22 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
 
   const runAnnotationRefresh = useCallback(
     async (id: string) => {
-      await whenDataLifecycleReady();
-      await whenInterpretationHydrated();
-      if (interpretationWriteRefusal() !== undefined) return;
-      const stored = useChartLibraryStore.getState().getChart(id);
-      const chart = stored?.sidereal_chart;
-      const storeState = useInterpretationStore.getState();
-      if (!chart || storeState.getEntry(id)?.status === 'generating') return;
-      const tokenSnapshot = storeState.getActiveRunToken(id);
-      const config = resolveInterpretationConfig();
-      annotationRefreshAbortRef.current?.abort();
-      const controller = new AbortController();
-      annotationRefreshAbortRef.current = controller;
+      let controller: AbortController | undefined;
+      let tokenSnapshot: number | null = null;
       try {
+        await whenDataLifecycleReady();
+        await whenInterpretationHydrated();
+        if (interpretationWriteRefusal() !== undefined) return;
+        const stored = useChartLibraryStore.getState().getChart(id);
+        const chart = stored?.sidereal_chart;
+        const storeState = useInterpretationStore.getState();
+        if (!stored || !chart || storeState.getEntry(id)?.status === 'generating') return;
+        tokenSnapshot = storeState.getActiveRunToken(id);
+        const config = resolveInterpretationConfig();
+        annotationRefreshAbortRef.current?.abort();
+        const activeController = new AbortController();
+        controller = activeController;
+        annotationRefreshAbortRef.current = activeController;
         await trackEvidenceAnnotationFlight(
           id,
           (async () => {
@@ -928,10 +1001,10 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
               asOf: storedChartAnalysisInstant(stored),
               config,
               language,
-              signal: controller.signal,
+              signal: activeController.signal,
               timeZone: viewerTimeZone(),
             });
-            if (controller.signal.aborted) return;
+            if (activeController.signal.aborted) return;
             if (outcome.kind === 'ok') {
               await setEvidenceAnnotations(id, outcome.payload, tokenSnapshot);
             } else if (outcome.kind === 'failed') {
@@ -939,8 +1012,13 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
             }
           })(),
         );
+      } catch (err) {
+        if ((err instanceof Error && err.name === 'AbortError') || controller?.signal.aborted) {
+          return;
+        }
+        await setEvidenceAnnotationError(id, aiErrorRegistry.classify(err), tokenSnapshot);
       } finally {
-        if (annotationRefreshAbortRef.current === controller) {
+        if (controller && annotationRefreshAbortRef.current === controller) {
           annotationRefreshAbortRef.current = null;
         }
       }
@@ -1005,6 +1083,7 @@ export function useStreamingInterpretation(chartId?: string | null): UseStreamin
     status,
     sections,
     failedSections: sections.filter((s) => s.failed).map((s) => s.key),
+    failedSectionCodes: entry?.failedSectionCodes ?? {},
     withheldSections: !waitingForDurability ? withheldNatalSections(entry?.interpretation) : [],
     retrySections,
     isRetryingSection: chartId != null && sectionRetryFlight.activeKey === chartId,

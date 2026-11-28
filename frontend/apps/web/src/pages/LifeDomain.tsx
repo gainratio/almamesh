@@ -18,6 +18,7 @@
 import type { ReactElement, ReactNode } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { isReadingWithheldText } from '@almamesh/llm';
 import { useChartLibraryStore, useInterpretationStore, useProfilesStore } from '@almamesh/store';
 import type { LifeDomain, LifeDomainForecastData } from '@almamesh/shared-types';
 import type { DomainStrengthReceipt } from '@almamesh/browser/types';
@@ -34,7 +35,10 @@ import { BandBadge } from '../components/features/predictive/PredictiveBadges';
 import { StrengthEvidencePanels } from '../components/features/predictive/StrengthEvidencePanels';
 import { useElapsedSeconds, formatElapsed } from '../hooks/useElapsedSeconds';
 import { usePredictiveLayer, type PredictiveLayer } from '../hooks/usePredictiveLayer';
-import { displayInterpretationForChart } from '../hooks/useStreamingInterpretation';
+import {
+  displayInterpretationError,
+  displayInterpretationForChart,
+} from '../hooks/useStreamingInterpretation';
 import { domainGuidance, DOMAIN_GUIDANCE_KEY, DOMAIN_NOTE_KEY, isLifeDomain, showsStrengthBand } from '../lib/lifeAtlas';
 import { formatRupas, selectPrimaryStoredChart } from '../lib/predictive';
 import { grahaName } from '../lib/predictiveEventCopy';
@@ -150,27 +154,63 @@ function EngineSection({
   );
 }
 
+function natalSectionOfDomain(domain: LifeDomain): 'guidance1' | 'guidance2' | null {
+  switch (domain) {
+    case 'health':
+    case 'education':
+    case 'career':
+    case 'relationships':
+      return 'guidance1';
+    case 'finances':
+    case 'spiritual':
+      return 'guidance2';
+    case 'family':
+    case 'obstacles':
+      return null;
+  }
+}
+
 function AiSection({ domain }: { domain: LifeDomain }): ReactElement {
-  const { t } = useTranslation('life');
+  const { t } = useTranslation(['life', 'dashboard']);
   const charts = useChartLibraryStore((s) => s.charts);
   const activeProfileId = useProfilesStore((s) => s.activeProfileId);
   const chartId = selectPrimaryStoredChart(charts, activeProfileId)?.chart_id ?? null;
-  useInterpretationStore((s) => (chartId ? s.byChart[chartId] : undefined));
+  const entry = useInterpretationStore((s) => (chartId ? s.byChart[chartId] : undefined));
   const interpretation = displayInterpretationForChart(chartId);
   const guidance = domainGuidance(interpretation, domain);
+  const rawLayman = guidance?.layman ?? '';
+  const rawTechnical = guidance?.technical ?? '';
+  const cleanLayman = !isReadingWithheldText(rawLayman) ? rawLayman : '';
+  const cleanTechnical = !isReadingWithheldText(rawTechnical) ? rawTechnical : '';
+  const hasCleanGuidance = cleanLayman.trim().length > 0 || cleanTechnical.trim().length > 0;
+  const sectionKey = natalSectionOfDomain(domain);
 
   let body: ReactNode;
-  if (guidance) {
-    body = <DualModeContent layman={guidance.layman} technical={guidance.technical} />;
+  if (hasCleanGuidance) {
+    body = <DualModeContent layman={cleanLayman} technical={cleanTechnical} />;
   } else if (DOMAIN_GUIDANCE_KEY[domain] === null) {
-    body = <p className="max-w-prose text-sm text-text-secondary">{t('domain.engine_only')}</p>;
+    body = <p className="max-w-prose text-sm text-text-secondary">{t('life:domain.engine_only')}</p>;
+  } else if (entry?.status === 'error' && entry.error) {
+    body = (
+      <p role="alert" className="max-w-prose text-sm text-status-error" data-testid="life-domain-ai-error">
+        {displayInterpretationError(entry.error)}
+      </p>
+    );
+  } else if (sectionKey && entry?.failedSections?.[sectionKey]) {
+    body = (
+      <p role="status" className="max-w-prose text-sm text-text-secondary" data-testid="life-domain-ai-partial">
+        {t('dashboard:generation.partial_failure', {
+          sections: t(`dashboard:sections.${sectionKey}`),
+        })}
+      </p>
+    );
   } else {
-    body = <p className="max-w-prose text-sm text-text-secondary">{t('domain.ai_missing')}</p>;
+    body = <p className="max-w-prose text-sm text-text-secondary">{t('life:domain.ai_missing')}</p>;
   }
 
   return (
     <section className="space-y-5" data-testid="life-domain-ai">
-      <SectionHead heading={t('domain.ai_heading')} badge={t('domain.ai_badge')} />
+      <SectionHead heading={t('life:domain.ai_heading')} badge={t('life:domain.ai_badge')} />
       <Card>{body}</Card>
     </section>
   );

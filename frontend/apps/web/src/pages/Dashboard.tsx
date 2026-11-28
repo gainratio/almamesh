@@ -61,6 +61,7 @@ import { isMappedChatStreamError } from "../hooks/useChatThread";
 import { useContentModeStore } from "../stores/contentMode";
 import type { ViewMode } from "../lib/types";
 import {
+  displayInterpretationError,
   READING_MODEL_UNAVAILABLE,
   currentInterpretationForChart,
   currentTimelineInputState,
@@ -261,6 +262,7 @@ export default function DashboardPage() {
     interpretation,
     sections: interpretationSections,
     failedSections: failedInterpretationSections,
+    failedSectionCodes: failedInterpretationSectionCodes = {},
     withheldSections = [],
     retrySections,
     isRetryingSection = false,
@@ -311,6 +313,26 @@ export default function DashboardPage() {
   // A manual timeline refresh requested while today's predictive facts are
   // still computing is queued. Natal generation never waits on these facts.
   const [timelineRegenerationQueued, setTimelineRegenerationQueued] = useState(false);
+  const regenNoticeRef = useRef<HTMLDivElement | null>(null);
+  const wasStreamingNatalRef = useRef(false);
+
+  useEffect(() => {
+    const wasStreaming = wasStreamingNatalRef.current;
+    wasStreamingNatalRef.current = isStreamingInterpretation;
+    if (!wasStreaming || isStreamingInterpretation) return;
+    if (
+      (interpretationStatus === 'error' && Boolean(streamingError) && !regenErrorDismissed) ||
+      failedInterpretationSections.length > 0
+    ) {
+      regenNoticeRef.current?.scrollIntoView?.({ block: 'nearest' });
+    }
+  }, [
+    failedInterpretationSections.length,
+    interpretationStatus,
+    isStreamingInterpretation,
+    regenErrorDismissed,
+    streamingError,
+  ]);
 
   // Dead/retired/typo'd model → the switch-model prompt. The hook stores the
   // stable sentinel for this case; the raw-message sniff keeps recognizing
@@ -462,6 +484,13 @@ export default function DashboardPage() {
 
   const handleRegenerateTimeline = useCallback(async () => {
     if (!chartId) return;
+    if (chartEngineContext?.error) {
+      setTimelineRegenerationQueued(false);
+      const store = useInterpretationStore.getState();
+      const token = store.startCurrentTimeline(chartId, activeProfileId ?? undefined);
+      store.setCurrentTimelineError(chartId, chartEngineContext.error.message, 'unknown', token);
+      return;
+    }
     if (currentTimelineInputState(chartId) === 'pending') {
       setTimelineRegenerationQueued(true);
       return;
@@ -475,7 +504,7 @@ export default function DashboardPage() {
     } catch (err) {
       safeError('dashboard.interpretation_failed', err);
     }
-  }, [chartId, streamCurrentTimeline, viewMode]);
+  }, [activeProfileId, chartEngineContext?.error, chartId, streamCurrentTimeline, viewMode]);
   const astronomicalData = chartDetails || chartData?.chart_data?.astronomical_calculations;
 
   // Check if interpretation has actual content (not just placeholders).
@@ -526,13 +555,14 @@ export default function DashboardPage() {
       isLoading ||
       !aiConfigured ||
       isTimelineStreaming ||
-      currentTimelineInputState(chartId) === 'pending'
+      (!chartEngineContext?.error && currentTimelineInputState(chartId) === 'pending')
     ) {
       return;
     }
     handleRegenerateTimeline();
   }, [
     aiConfigured,
+    chartEngineContext?.error,
     chartId,
     handleRegenerateTimeline,
     isLoading,
@@ -678,6 +708,88 @@ export default function DashboardPage() {
       </button>
     </>
   );
+
+  const showRegenError =
+    !isStreamingInterpretation &&
+    interpretationStatus === 'error' &&
+    Boolean(streamingError) &&
+    !regenErrorDismissed &&
+    hasValidInterpretation;
+
+  const regenErrorBanner = showRegenError ? (
+    readingDegradesGracefully ? (
+      <NarrationUnavailable
+        outage={readingOutage}
+        context="kept"
+        testId="reading-regen-error"
+        actions={regenRecoveryActions}
+      />
+    ) : (
+      <div
+        className="flex items-start gap-3 rounded-lg border border-status-error/40 bg-status-error/10 px-4 py-3 text-sm"
+        role="alert"
+        data-testid="reading-regen-error"
+      >
+        <div className="space-y-2">
+          <p className="text-status-error">
+            {t('dashboard:generation.regen_failed', { error: streamingError ?? '' })}
+          </p>
+          <div className="flex flex-wrap items-center gap-3">{regenRecoveryActions}</div>
+        </div>
+      </div>
+    )
+  ) : null;
+
+  const showPartialFailure =
+    !isStreamingInterpretation && failedInterpretationSections.length > 0 && Boolean(interpretation);
+
+  const partialFailureBanner = showPartialFailure ? (
+    <div
+      className="rounded-lg border border-accent-gold/40 bg-accent-gold/10 px-4 py-3 text-sm text-text-primary"
+      role="alert"
+      data-testid="interpretation-partial-failure"
+    >
+      <p>
+        {t('dashboard:generation.partial_failure', {
+          sections: failedInterpretationSections
+            .map((key) => {
+              const name = t(`dashboard:sections.${key}`);
+              const code = failedInterpretationSectionCodes[key];
+              return code ? `${name} (${code})` : name;
+            })
+            .join(', '),
+        })}
+        {Object.values(failedInterpretationSectionCodes).includes('ai.reasoning_timeout')
+          ? ` ${t('chat:errors.reasoning_timeout')}`
+          : null}
+      </p>
+      {sectionRetryError ? (
+        <p className="mt-1 text-status-error" role="alert" data-testid="interpretation-partial-retry-error">
+          {sectionRetryError}
+        </p>
+      ) : null}
+      <button
+        type="button"
+        disabled={isRetryingSection}
+        onClick={() => {
+          if (summaryReady && chartId) {
+            void retrySections(chartId, failedInterpretationSections, {
+              intent: 'user-request',
+              view_mode: viewMode === 'astrologer' ? 'expert' : 'layman',
+            });
+          } else {
+            void handleGenerateSeparatedInterpretation();
+          }
+        }}
+        className="mt-1.5 underline hover:no-underline disabled:opacity-50"
+        data-testid="interpretation-partial-retry"
+      >
+        {t('dashboard:actions.retry')}
+      </button>
+    </div>
+  ) : null;
+
+  const readingSectionMounted = Boolean(summaryReady && interpretation);
 
   return (
     <>
@@ -954,6 +1066,16 @@ export default function DashboardPage() {
           </Card>
         )}
 
+        {/* Fallback slot when `reading-section` is not mounted (e.g. `core` failed
+            so `summary` is empty while other sections exist): never let a failed
+            or partial regeneration vanish silently into a render dead-zone. */}
+        {!readingSectionMounted && (regenErrorBanner || partialFailureBanner) && (
+          <div ref={regenNoticeRef} className="scroll-mt-24 space-y-3">
+            {regenErrorBanner}
+            {partialFailureBanner}
+          </div>
+        )}
+
         {aiConfigured && chartId &&
           (isTimelineStreaming || timelineStatus === 'error') && (
           <Card
@@ -1019,7 +1141,7 @@ export default function DashboardPage() {
               </>
             ) : (
               <div className="space-y-3 text-sm text-text-secondary" role="alert">
-                <p>{timelineError}</p>
+                <p>{displayInterpretationError(timelineError)}</p>
                 <button
                   type="button"
                   onClick={handleRegenerateTimeline}
@@ -1058,58 +1180,10 @@ export default function DashboardPage() {
                 />
               </p>
             )}
-            {/* A FAILED regeneration must be VISIBLE: keep-old-until-success
-                keeps the reading below, and this dismissible strip carries the
-                why + the recovery actions (Retry / switch model / AI settings).
-                A provider-side outage degrades into the calm notice — the
-                reading on screen is untouched, so nothing here is broken. */}
-            {interpretationStatus === 'error' && streamingError && !regenErrorDismissed &&
-              readingDegradesGracefully && (
-              <NarrationUnavailable
-                outage={readingOutage}
-                context="kept"
-                testId="reading-regen-error"
-                actions={regenRecoveryActions}
-              />
-            )}
-            {interpretationStatus === 'error' && streamingError && !regenErrorDismissed &&
-              !readingDegradesGracefully && (
-              <div
-                className="flex items-start gap-3 rounded-lg border border-status-error/40 bg-status-error/10 px-4 py-3 text-sm"
-                role="alert"
-                data-testid="reading-regen-error"
-              >
-                <div className="space-y-2">
-                  <p className="text-status-error">
-                    {t('dashboard:generation.regen_failed', { error: streamingError })}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-3">{regenRecoveryActions}</div>
-                </div>
-              </div>
-            )}
-            {/* Honest partial-failure notice: per-section LLM failures degrade
-                those sections to empty — say which ones and offer a regenerate
-                instead of silently rendering blank sections. */}
-            {failedInterpretationSections.length > 0 && (
-              <div
-                className="text-sm text-text-secondary"
-                role="status"
-                data-testid="interpretation-partial-failure"
-              >
-                <p>
-                  {t('dashboard:generation.partial_failure', {
-                    sections: failedInterpretationSections
-                      .map((key) => t(`dashboard:sections.${key}`))
-                      .join(', '),
-                  })}
-                </p>
-                <button
-                  onClick={handleGenerateSeparatedInterpretation}
-                  className="mt-1 underline hover:no-underline"
-                  data-testid="interpretation-partial-retry"
-                >
-                  {t('dashboard:actions.retry')}
-                </button>
+            {(regenErrorBanner || partialFailureBanner) && (
+              <div ref={regenNoticeRef} className="scroll-mt-24 space-y-3">
+                {regenErrorBanner}
+                {partialFailureBanner}
               </div>
             )}
             {withheldSections.length > 0 && chartId && aiConfigured && (
@@ -1125,7 +1199,7 @@ export default function DashboardPage() {
                       .join(', '),
                   })}
                 </p>
-                {sectionRetryError ? (
+                {sectionRetryError && !showPartialFailure ? (
                   <p className="mt-1 text-status-error" role="alert" data-testid="interpretation-withheld-error">
                     {sectionRetryError}
                   </p>

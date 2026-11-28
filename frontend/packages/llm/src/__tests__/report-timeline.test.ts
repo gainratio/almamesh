@@ -53,7 +53,7 @@ const REPLIES: Record<string, unknown> = {
   core: { summary: p("Natal."), strengths: [], challenges: [], life_themes: [] },
   yoga: { integrated_yoga_narrative: { layman: "Life journey.", technical: "Raja Yoga." } },
   guidance1: { family_guidance: p("Home.") },
-  guidance2: {},
+  guidance2: { finances_guidance: p("Steady.") },
   remedial: { remedial_measures: p("Walk.") },
 };
 

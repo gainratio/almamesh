@@ -7,11 +7,15 @@ export const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 
 /**
  * Public Google OAuth 2.0 Web Client ID (`*.apps.googleusercontent.com`) registered
- * strictly to `https://almamesh.com` and `http://localhost:4173`.
+ * strictly to `https://almamesh.com`, `https://www.almamesh.com`, and `http://localhost:4173`.
  */
 export const GOOGLE_CLIENT_ID = '';
 
-const REGISTERED_ORIGINS = new Set(['https://almamesh.com', 'http://localhost:4173']);
+const REGISTERED_ORIGINS = new Set([
+  'https://almamesh.com',
+  'https://www.almamesh.com',
+  'http://localhost:4173',
+]);
 const HOOKS_LOOPBACK_ORIGIN = /^http:\/\/(?:localhost|127\.0\.0\.1):\d+$/;
 
 export interface DriveEnvShape {

@@ -13,6 +13,7 @@ export interface StreamChunk {
   /** OpenAI-compatible token counts; OpenRouter sends them on the last chunk. */
   readonly usage?: unknown;
   readonly choices?: ReadonlyArray<{
+    readonly error?: unknown;
     readonly delta?: {
       readonly content?: unknown;
       readonly tool_calls?: unknown;
@@ -55,13 +56,29 @@ function answerDeadline(ms: number | undefined): { readonly expired: Promise<nev
   return { expired, clear: () => clearTimeout(timer) };
 }
 
+function parseHttpStatus(code: unknown): number | undefined {
+  if (typeof code === "number" && Number.isInteger(code) && code >= 400 && code <= 599) {
+    return code;
+  }
+  if (typeof code === "string" && /^[45]\d\d$/.test(code.trim())) {
+    return Number(code.trim());
+  }
+  return undefined;
+}
+
+function fallbackOpts(options: SseOptions): { status?: number } | undefined {
+  return options.inBandFallbackStatus === undefined
+    ? undefined
+    : { status: options.inBandFallbackStatus };
+}
+
 /** Parse an OpenAI-compatible SSE body into JSON chunks, failing on in-band errors. */
 export async function* sseChunks(
   response: Response,
   options: SseOptions = {},
 ): AsyncGenerator<StreamChunk> {
   if (!response.body) {
-    throw new LlmRequestError("LLM endpoint returned an empty streaming response");
+    throw new LlmRequestError("LLM endpoint returned an empty streaming response", fallbackOpts(options));
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
@@ -102,13 +119,10 @@ export async function* sseChunks(
  * failure so the caller maps it to the same code instead of ending silently.
  */
 function midStreamError(payload: StreamChunk, options: SseOptions): LlmRequestError {
-  const raw = payload.error;
+  const raw = payload.error ?? payload.choices?.[0]?.error;
   const row = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
   const detail = typeof row.message === "string" && row.message ? row.message : "unknown error";
-  const status =
-    typeof row.code === "number" && Number.isInteger(row.code) && row.code >= 400 && row.code <= 599
-      ? row.code
-      : options.inBandFallbackStatus;
+  const status = parseHttpStatus(row.code) ?? options.inBandFallbackStatus;
   const body = JSON.stringify({ error: raw ?? null }).slice(0, MAX_ERROR_BODY_CHARS);
   return new LlmRequestError(
     `LLM endpoint failed mid-stream: ${detail.slice(0, MAX_ERROR_BODY_CHARS)}`,
@@ -126,14 +140,16 @@ function* parseSseEvent(event: string, options: SseOptions): Generator<StreamChu
     try {
       payload = JSON.parse(data) as StreamChunk;
     } catch {
-      throw new LlmRequestError("LLM endpoint returned invalid streaming JSON");
+      throw new LlmRequestError("LLM endpoint returned invalid streaming JSON", fallbackOpts(options));
     }
     if (typeof payload !== "object" || payload === null) {
-      throw new LlmRequestError("LLM endpoint returned invalid streaming JSON");
+      throw new LlmRequestError("LLM endpoint returned invalid streaming JSON", fallbackOpts(options));
     }
+    const choice = payload.choices?.[0];
     if (
       (payload.error !== undefined && payload.error !== null) ||
-      payload.choices?.[0]?.finish_reason === "error"
+      (choice?.error !== undefined && choice?.error !== null) ||
+      choice?.finish_reason === "error"
     ) {
       throw midStreamError(payload, options);
     }

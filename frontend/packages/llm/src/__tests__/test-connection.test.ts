@@ -89,4 +89,20 @@ describe("testProviderConnection", () => {
       testProviderConnection({ config: OPENROUTER_CFG, fetchImpl: fetchImpl as unknown as typeof fetch }),
     ).rejects.toBeInstanceOf(TypeError);
   });
+
+  it("rejects an HTTP 200 OpenRouter in-band error body (including string status codes)", async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse(
+        { error: { code: "402", message: "Insufficient credits" } },
+        { status: 200 },
+      ),
+    );
+    const err = await testProviderConnection({
+      config: OPENROUTER_CFG,
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(LlmRequestError);
+    expect((err as LlmRequestError).status).toBe(402);
+    expect((err as LlmRequestError).message).toContain("Insufficient credits");
+  });
 });

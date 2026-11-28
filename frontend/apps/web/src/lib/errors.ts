@@ -236,7 +236,11 @@ const AI_ERROR_CATALOG = {
     ...starterPack['ai.provider.server_error'],
     match: (raw: unknown) => {
       const status = httpStatusOf(raw);
-      return status !== undefined && status >= 500;
+      return (
+        (status !== undefined && (status === 408 || status >= 500)) ||
+        nameOf(raw) === 'SectionTimeoutError' ||
+        /\bsection timed out\b/i.test(messageOf(raw))
+      );
     },
   },
   'net.unreachable': {

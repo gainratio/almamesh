@@ -18,12 +18,13 @@
 
 import type { TitledPersona } from "@almamesh/shared-types";
 
-import { chatCompletionJson, type ChatMessage } from "./client";
-import { ensurePrivacy, type ProviderConfig } from "./config";
+import { chatCompletionJson, LlmRequestError, type ChatMessage } from "./client";
+import { ensurePrivacy, isLocalEndpoint, type ProviderConfig } from "./config";
 import { withLanguage, type PromptLanguage } from "./language";
 import { buildMeshFactsBlock } from "./mesh-facts";
 import { sanitizeMeshEdgeForLlm } from "./mesh-sanitize";
 import type { MeshEdgeContext, MeshRelationship } from "./mesh-types";
+import { asString } from "./persona-parse";
 import { ANTI_SCAM_RELATIONSHIP_FENCE, OUTPUT_DISCIPLINE_RULES, type ViewMode } from "./prompt";
 import {
   jsonReflectionIssues,
@@ -34,6 +35,7 @@ import {
   rewordedOr,
   withholdFailingValues,
 } from "./reflection";
+import { REPORT_SECTION_TIMEOUT_MS, SectionTimeoutError, withSectionDeadline } from "./section-timeout";
 
 // =============================================================================
 // Public API
@@ -52,7 +54,7 @@ export type MeshReadingEvent =
   | { type: "section_start"; section: MeshReadingSectionKey }
   | { type: "section_complete"; section: MeshReadingSectionKey }
   | { type: "complete"; reading: MeshReading }
-  | { type: "error"; section?: MeshReadingSectionKey; message: string };
+  | { type: "error"; section?: MeshReadingSectionKey; message: string; status?: number };
 
 export interface MeshReadingParams {
   /** The RAW engine mesh edge; sanitized internally (boundary unskippable). */
@@ -208,28 +210,64 @@ function buildMeshSectionMessages(
 // Parsing + orchestration (mirrors streamStructuredInterpretation)
 // =============================================================================
 
-function asString(value: unknown): string {
-  return typeof value === "string" ? value : "";
-}
-
 const EMPTY_PERSONA: TitledPersona = { title: "", layman: "", technical: "" };
 
 function parseTitledPersona(raw: string): TitledPersona {
   const json: unknown = JSON.parse(raw);
   if (!json || typeof json !== "object" || Array.isArray(json)) {
-    return EMPTY_PERSONA;
+    throw new Error("Invalid mesh section output: expected a JSON object.");
   }
   const rec = json as Record<string, unknown>;
+  const layman = asString(rec.layman);
+  const technical = asString(rec.technical);
+  if (layman.trim() === "" && technical.trim() === "") {
+    throw new Error("Invalid mesh section output: empty persona.");
+  }
   return {
     title: asString(rec.title),
-    layman: asString(rec.layman),
-    technical: asString(rec.technical),
+    layman,
+    technical,
   };
 }
 
 type SectionOutcome =
   | { section: MeshReadingSectionKey; ok: true; raw: string }
-  | { section: MeshReadingSectionKey; ok: false; message: string };
+  | { section: MeshReadingSectionKey; ok: false; error: unknown };
+
+function isTransientMeshFailure(err: unknown): boolean {
+  if (err instanceof LlmRequestError) {
+    const status = err.status;
+    return status === undefined || status === 408 || status === 429 || status >= 500;
+  }
+  return err instanceof TypeError;
+}
+
+function meshOutcomeStatus(err: unknown): number | undefined {
+  if (err instanceof LlmRequestError) return err.status;
+  if (err instanceof SectionTimeoutError) return 504;
+  return undefined;
+}
+
+function requestMeshJson(messages: ChatMessage[], params: MeshReadingParams): Promise<string> {
+  const call = (signal?: AbortSignal) =>
+    chatCompletionJson({
+      config: params.config,
+      messages,
+      ...(signal ? { signal } : {}),
+      ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
+    });
+  const withRetry = (signal?: AbortSignal) =>
+    call(signal).catch((err: unknown) => {
+      if (signal?.aborted || !isTransientMeshFailure(err)) throw err;
+      return call(signal);
+    });
+  if (isLocalEndpoint(params.config.baseUrl)) {
+    return withRetry(params.signal);
+  }
+  return withSectionDeadline({ totalMs: REPORT_SECTION_TIMEOUT_MS }, params.signal, (deadline) =>
+    withRetry(deadline.signal),
+  );
+}
 
 /**
  * One section's JSON through the reflection check (PR #366): a text that foretells, narrates the
@@ -238,17 +276,12 @@ type SectionOutcome =
  * reword request itself fails.
  */
 async function reflectedSection(messages: ChatMessage[], params: MeshReadingParams): Promise<string> {
-  const request = (sent: ChatMessage[]) =>
-    chatCompletionJson({
-      config: params.config,
-      messages: sent,
-      ...(params.signal ? { signal: params.signal } : {}),
-      ...(params.fetchImpl ? { fetchImpl: params.fetchImpl } : {}),
-    });
-  const raw = await request(messages);
+  const raw = await requestMeshJson(messages, params);
   const issues = jsonReflectionIssues(raw);
   if (issues.length === 0) return raw;
-  const retry = await rewordedOr(raw, params.signal, () => request([...messages, ...reflectionRetry(raw, issues)]));
+  const retry = await rewordedOr(raw, params.signal, () =>
+    requestMeshJson([...messages, ...reflectionRetry(raw, issues)], params),
+  );
   return withholdFailingValues(mergeCleanJsonLeaves(raw, retry), READING_WITHHELD[params.language ?? "en"]);
 }
 
@@ -265,11 +298,7 @@ function runOneSection(
   );
   return reflectedSection(messages, params)
     .then((raw): SectionOutcome => ({ section, ok: true, raw }))
-    .catch((err: unknown): SectionOutcome => ({
-      section,
-      ok: false,
-      message: err instanceof Error ? err.message : String(err),
-    }));
+    .catch((error: unknown): SectionOutcome => ({ section, ok: false, error }));
 }
 
 function abortError(): Error {
@@ -329,10 +358,23 @@ export async function* streamMeshReading(
   };
   let applied = 0;
   const failures: string[] = [];
+  let representativeStatus: number | undefined;
+  let representativeBody: string | undefined;
   for (const outcome of outcomes) {
     if (!outcome.ok) {
-      failures.push(outcome.message);
-      yield { type: "error", section: outcome.section, message: outcome.message };
+      const message = outcome.error instanceof Error ? outcome.error.message : String(outcome.error);
+      const status = meshOutcomeStatus(outcome.error);
+      if (representativeStatus === undefined && status !== undefined) {
+        representativeStatus = status;
+        representativeBody = outcome.error instanceof LlmRequestError ? outcome.error.body : undefined;
+      }
+      failures.push(message);
+      yield {
+        type: "error",
+        section: outcome.section,
+        message,
+        ...(status === undefined ? {} : { status }),
+      };
       continue;
     }
     try {
@@ -348,8 +390,11 @@ export async function* streamMeshReading(
   }
 
   if (applied === 0) {
-    throw new Error(
+    throw new LlmRequestError(
       `Mesh reading failed: all ${outcomes.length} sections failed. ${summarizeFailures(failures)}`,
+      representativeStatus !== undefined
+        ? { status: representativeStatus, body: representativeBody }
+        : undefined,
     );
   }
 

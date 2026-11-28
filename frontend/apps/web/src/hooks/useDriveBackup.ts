@@ -64,7 +64,7 @@ export interface DriveBackupController {
   closePassphraseSetup(): void;
   connect(): Promise<void>;
   refresh(): Promise<void>;
-  backUpNow(explicitPassphrase?: string): Promise<void>;
+  backUpNow(explicitPassphrase?: string): Promise<boolean | void>;
   restoreEntry(entry: DriveBackupEntry): Promise<void>;
   trashEntry(entry: DriveBackupEntry): Promise<void>;
   disconnect(): Promise<void>;
@@ -156,28 +156,30 @@ export function useDriveBackup(options: UseDriveBackupOptions): DriveBackupContr
     return () => { active = false; };
   }, [autoList, drive, inMemoryOnly, loadList, reportError, rows, t]);
 
-  const runAction = async (fn: (active: BackupDrive) => Promise<void>) => {
-    if (drive === null || inMemoryOnly) return;
+  const runAction = async (fn: (active: BackupDrive) => Promise<void>): Promise<boolean> => {
+    if (drive === null || inMemoryOnly) return false;
     setError(null);
     setBusy(true);
     try {
       await withSilentRenewalAllowed(() => fn(drive), returnTo);
+      return true;
     } catch (err) {
       reportError(err);
+      return false;
     } finally {
       setBusy(false);
     }
   };
 
-  const backUpNow = async (explicitPassphrase?: string) => {
+  const backUpNow = async (explicitPassphrase?: string): Promise<boolean> => {
     const chosen = explicitPassphrase ?? getSessionPassphrase();
     if (chosen === null || checkBackupPassphrase(chosen, chosen) !== null) {
       setPassphraseOpen(true);
-      return;
+      return false;
     }
     setPassphraseOpen(false);
     setStatus(null);
-    await runAction(async (active) => {
+    return runAction(async (active) => {
       const built = await buildExport(chosen);
       setSessionPassphrase(chosen);
       const code = await resolveOwnCode(ownDeviceCode, rows);
@@ -212,28 +214,33 @@ export function useDriveBackup(options: UseDriveBackupOptions): DriveBackupContr
     passphraseOpen,
     openPassphraseSetup: () => setPassphraseOpen(true),
     closePassphraseSetup: () => setPassphraseOpen(false),
-    connect: () =>
-      runAction(async (active) => {
+    connect: async () => {
+      await runAction(async (active) => {
         setStatus(null);
         if ((await active.connect(returnTo ?? `${window.location.pathname}${window.location.search}`)) === 'connected') {
           setConnected(true);
           setNeedsReconnect(false);
           await loadList(active);
         }
-      }),
-    refresh: () => runAction(async (active) => { await loadList(active); setNeedsReconnect(false); }),
+      });
+    },
+    refresh: async () => {
+      await runAction(async (active) => { await loadList(active); setNeedsReconnect(false); });
+    },
     backUpNow,
-    restoreEntry: (entry) =>
-      runAction(async (active) => {
+    restoreEntry: async (entry) => {
+      await runAction(async (active) => {
         setStatus(null);
         if (entry.sizeBytes > MAX_BACKUP_FILE_BYTES) throw new DriveError('too_large');
         const olderThanLocal = lastBackupAt !== null && entry.meta.createdAt.getTime() < new Date(lastBackupAt).getTime();
         await restore.stageContent(await active.download(entry.id), getSessionPassphrase() ?? undefined, { olderThanLocal });
-      }),
-    trashEntry: (entry) =>
-      runAction(async (active) => { await active.remove(entry.id); await loadList(active); setStatus(t('drive.status_trashed')); }),
-    disconnect: () =>
-      runAction(async (active) => {
+      });
+    },
+    trashEntry: async (entry) => {
+      await runAction(async (active) => { await active.remove(entry.id); await loadList(active); setStatus(t('drive.status_trashed')); });
+    },
+    disconnect: async () => {
+      await runAction(async (active) => {
         await active.disconnect();
         await rows?.remove([LAST_BACKUP_ROW_KEY]);
         setSessionPassphrase(null);
@@ -244,6 +251,7 @@ export function useDriveBackup(options: UseDriveBackupOptions): DriveBackupContr
         setEntries([]);
         setLastBackupAt(null);
         setStatus(t('drive.status_disconnected'));
-      }),
+      });
+    },
   };
 }

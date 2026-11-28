@@ -35,7 +35,7 @@
   "narration": {
     "chart_complete_title": "Your chart is complete",
     "chart_complete_body": "Your ascendant, moon, dasha periods and Life Atlas are all calculated on-device — they are complete and correct. Only the written interpretation, an optional AI extra, is missing.",
-    "kept_title": "Your reading is unchanged",
+    "kept_title": "Could not refresh your reading — your earlier reading is kept below",
     "kept_body": "Your chart and the reading below are exactly as they were. Only the refresh of the written interpretation didn't go through.",
     "reason_no_key": "No AI provider is connected yet.",
     "next_no_key": "Connect an AI model whenever you'd like a written interpretation — nothing else on this page changes.",
