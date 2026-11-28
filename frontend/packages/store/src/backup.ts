@@ -21,7 +21,6 @@ import type {
   BackupStoreSnapshot,
   BackupStores,
 } from '@almamesh/shared-types';
-import { SqliteStateConflictError } from '@gainratio/browser/sqlite';
 import {
   abortBackupRestore,
   beginBackupRestore,
@@ -278,12 +277,14 @@ export async function applyBrowserBackupAtomically(
   envelope: BackupEnvelopePlain,
   deps: BackupDeps,
   epoch: number,
+  setAside: readonly SetAsideRecord[] = [],
 ): Promise<void> {
   if (envelope.format !== 'almamesh-backup' || envelope.formatVersion !== 1) {
     await applyBackup(envelope, deps);
     return;
   }
   await enforceArmedPortableImportRevision();
+  await holdSetAsideRecords(setAside);
   const writes = BACKUP_STORES.map((entry) => {
     const snapshot = envelope.stores[entry.key];
     return {
@@ -307,22 +308,7 @@ export async function applyBrowserBackupAtomically(
  */
 export async function holdSetAsideRecords(records: readonly SetAsideRecord[]): Promise<void> {
   if (records.length === 0) return;
-  const repository = await requirePortableStateRepository();
-  const safetyRevision = armedPortableImportRevision;
-  if (safetyRevision === undefined) {
-    await repository.holdSetAside(records, new Date().toISOString());
-    return;
-  }
-  try {
-    await repository.holdSetAside(records, new Date().toISOString(), safetyRevision);
-    armedPortableImportRevision = safetyRevision + 1;
-  } catch (error) {
-    armedPortableImportRevision = undefined;
-    if (error instanceof SqliteStateConflictError) {
-      throw new PortableImportRevisionConflictError(safetyRevision, (await repository.runtimeInfo()).epoch);
-    }
-    throw error;
-  }
+  await (await requirePortableStateRepository()).holdSetAside(records, new Date().toISOString());
 }
 
 /** Export the canonical browser dataset as a real, standard SQLite database. */
@@ -347,9 +333,6 @@ export async function importPortableBrowserState(
   options: PortableBrowserImportOptions = {},
 ): Promise<void> {
   const imported = await readPortableStateDatabase(bytes);
-  // User-written records of a person the file no longer holds are kept on this
-  // device, never dropped with the import.
-  await holdSetAsideRecords(imported.repairs.setAside);
   const restored = restoredIdsFromPortableRows(imported.values);
   const importedPreferences = imported.values.get(PORTABLE_PREFERENCES_KEY);
   const preservedPreferences =
@@ -361,6 +344,9 @@ export async function importPortableBrowserState(
   const epoch = await beginBackupRestore(restored);
   try {
     await enforceArmedPortableImportRevision();
+    // User-written records of a person the file no longer holds are kept on this
+    // device after the safety-revision fence passes, before canonical rows replace.
+    await holdSetAsideRecords(imported.repairs.setAside);
     await commitDatasetGeneration(
       epoch,
       PORTABLE_STATE_KEYS.map((key) => ({

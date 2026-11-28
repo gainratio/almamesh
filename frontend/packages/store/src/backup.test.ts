@@ -547,7 +547,7 @@ describe('holdSetAsideRecords', () => {
     await expect(holdSetAsideRecords([])).resolves.toBeUndefined();
   });
 
-  it('advances an armed safety revision across set-aside holds, while still rejecting a competing write', async () => {
+  it('holds set-aside records inside applyBrowserBackupAtomically only after the safety-revision fence passes, and a background holdSetAsideRecords call properly trips the fence', async () => {
     const sqlite = new PortableMemoryStore();
     const destination = new PortableStateRepository(sqlite);
     const emptyEnvelope: BackupEnvelopePlain = {
@@ -573,27 +573,28 @@ describe('holdSetAsideRecords', () => {
 
       const cleanRevision = await readPortableStateRevision();
       armPortableImportRevision(cleanRevision);
-      await holdSetAsideRecords([record]);
       // Simulate beginBackupRestore's single SQLite transaction (+1 epoch):
       await destination.write(
         PORTABLE_LEDGER_KEY,
         JSON.stringify({ version: 1, activeEpoch: 0, restoreEpoch: 1, restoreInProgress: true }),
       );
       await expect(
-        applyBrowserBackupAtomically(emptyEnvelope, emptyDeps, 1),
+        applyBrowserBackupAtomically(emptyEnvelope, emptyDeps, 1, [record]),
       ).resolves.toBeUndefined();
       expect((await destination.listSetAside()).size).toBe(1);
 
-      // A genuine competing write BEFORE holdSetAsideRecords fails closed immediately!
-      const thirdSafetyRevision = await readPortableStateRevision();
-      armPortableImportRevision(thirdSafetyRevision);
+      // If background reconcilePortableReferences calls holdSetAsideRecords after armPortableImportRevision,
+      // the fence is NOT bypassed — Replace fails closed with PortableImportRevisionConflictError!
+      const secondRevision = await readPortableStateRevision();
+      armPortableImportRevision(secondRevision);
+      await holdSetAsideRecords([{ row: 'almamesh-life-events', personId: 'other', value: '[{"id":"e2"}]' }]);
       await destination.write(
-        'almamesh-language',
-        JSON.stringify({ state: { language: 'hi' }, version: 1 }),
+        PORTABLE_LEDGER_KEY,
+        JSON.stringify({ version: 1, activeEpoch: 1, restoreEpoch: 2, restoreInProgress: true }),
       );
-      await expect(holdSetAsideRecords([record])).rejects.toBeInstanceOf(
-        PortableImportRevisionConflictError,
-      );
+      await expect(
+        applyBrowserBackupAtomically(emptyEnvelope, emptyDeps, 2, [record]),
+      ).rejects.toBeInstanceOf(PortableImportRevisionConflictError);
     } finally {
       clearPortableImportRevisionFence();
       setPortableStateRepositoryForTests(undefined);

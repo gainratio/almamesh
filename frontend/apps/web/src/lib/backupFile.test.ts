@@ -612,4 +612,81 @@ describe('pickBackupFile', () => {
     await expect(first).resolves.toBeNull();
     await expect(second).resolves.toBe('SECOND');
   });
+
+  it('reads an already-populated Safari input.files[0] within 300ms (never hanging 30s) when change is dropped', async () => {
+    vi.useFakeTimers();
+    const file = new File(['SAFARI_FAST'], 'backup.json', { type: 'application/json' });
+    const detachedSafariInput = {
+      type: '',
+      accept: '',
+      files: [file],
+      addEventListener() {},
+      removeEventListener() {},
+      click() {
+        window.dispatchEvent(new Event('focus'));
+      },
+    };
+    vi.spyOn(document, 'createElement').mockReturnValue(detachedSafariInput as unknown as HTMLElement);
+
+    const promise = pickBackupFile();
+    await vi.advanceTimersByTimeAsync(350);
+
+    await expect(promise).resolves.toBe('SAFARI_FAST');
+    vi.useRealTimers();
+  });
+
+  it('cleans up window focus listener if input.click() throws synchronously, and never lets a second click cancel an active file read', async () => {
+    vi.useFakeTimers();
+    const throwingInput = {
+      type: '',
+      accept: '',
+      files: [] as File[],
+      addEventListener() {},
+      removeEventListener() {},
+      click() {
+        throw new DOMException('Blocked by sandbox', 'SecurityError');
+      },
+    };
+    vi.spyOn(document, 'createElement').mockReturnValueOnce(throwingInput as unknown as HTMLElement);
+    await expect(pickBackupFile()).rejects.toThrow(/Blocked by sandbox/);
+
+    // Now start a slow multi-MB read on `change` and verify a second pickBackupFile() does NOT cancel the active read!
+    const { file, bytes } = slowFile(2_000);
+    const handlers: Record<string, Array<() => void>> = {};
+    const readingInput = {
+      type: '',
+      accept: '',
+      files: [file],
+      addEventListener(name: string, cb: () => void) {
+        (handlers[name] ??= []).push(cb);
+      },
+      removeEventListener() {},
+      click() {
+        for (const cb of handlers.change ?? []) cb();
+      },
+    };
+    const idleSecondInput = {
+      type: '',
+      accept: '',
+      files: [] as File[],
+      addEventListener(_name: string, cb: () => void) {
+        if (_name === 'cancel') setTimeout(cb, 10);
+      },
+      removeEventListener() {},
+      click() {},
+    };
+    vi.spyOn(document, 'createElement')
+      .mockReturnValueOnce(readingInput as unknown as HTMLElement)
+      .mockReturnValueOnce(idleSecondInput as unknown as HTMLElement);
+
+    const activeRead = pickBackupFile();
+    const secondPick = pickBackupFile();
+    await vi.advanceTimersByTimeAsync(2_100);
+
+    await expect(secondPick).resolves.toBeNull();
+    const result = await activeRead;
+    expect(result).toBeInstanceOf(Uint8Array);
+    expect((result as Uint8Array).byteLength).toBe(bytes.byteLength);
+    vi.useRealTimers();
+  });
 });

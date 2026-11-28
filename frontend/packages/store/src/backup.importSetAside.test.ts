@@ -19,22 +19,43 @@ vi.mock('./portableState', async (importOriginal) => ({
 vi.mock('./deletionTombstones', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./deletionTombstones')>()),
   requirePortableStateRepository: vi.fn(async () => ({
+    runtimeInfo: vi.fn(async () => ({ epoch: 2 })),
     holdSetAside: vi.fn(async (records: unknown) => {
       order.push(`hold ${JSON.stringify(records)}`);
     }),
   })),
   beginBackupRestore: vi.fn(async () => {
     order.push('begin');
-    throw new Error('stop after begin');
+    return 1;
+  }),
+  commitDatasetGeneration: vi.fn(async () => {
+    order.push('commit');
+    throw new Error('stop at commit');
+  }),
+  abortBackupRestore: vi.fn(async () => {
+    order.push('abort');
   }),
 }));
 
-const { importPortableBrowserState } = await import('./backup');
+const { armPortableImportRevision, importPortableBrowserState, PortableImportRevisionConflictError } =
+  await import('./backup');
 
 describe('importing a .almamesh / SQLite backup with orphaned life events', () => {
-  it('holds them in SQLite before the import replaces anything', async () => {
-    await expect(importPortableBrowserState(new Uint8Array([1]))).rejects.toThrow(/stop after begin/);
+  it('holds them in SQLite after the restore lease and fence, before commitDatasetGeneration replaces anything', async () => {
+    order.length = 0;
+    await expect(importPortableBrowserState(new Uint8Array([1]))).rejects.toThrow(/stop at commit/);
 
-    expect(order).toEqual([`hold ${JSON.stringify([record])}`, 'begin']);
+    expect(order).toEqual(['begin', `hold ${JSON.stringify([record])}`, 'commit', 'abort']);
+  });
+
+  it('never writes set-aside records if the armed safety-revision fence rejects', async () => {
+    order.length = 0;
+    // Safety revision 0 expects fenced epoch 1, while runtimeInfo reports epoch 2 (competing write).
+    armPortableImportRevision(0);
+    await expect(importPortableBrowserState(new Uint8Array([1]))).rejects.toBeInstanceOf(
+      PortableImportRevisionConflictError,
+    );
+
+    expect(order).toEqual(['begin', 'abort']);
   });
 });

@@ -1487,9 +1487,24 @@ describe('LLM chatContextTokens preference parity and raw OPFS SQLite import hea
       });
       expect(() => decodePortablePreferences(candidate)).toThrow(/chatContextTokens/);
     }
+
+    for (const protoKey of ['toString', 'constructor', 'valueOf', 'hasOwnProperty']) {
+      const candidate = JSON.stringify({
+        version: 1,
+        values: {
+          'almamesh-llm-settings': JSON.stringify({ [protoKey]: 'smuggled' }),
+        },
+      });
+      expect(() => decodePortablePreferences(candidate)).toThrow(PortableStateCorruptError);
+    }
+    const rawProto = JSON.stringify({
+      version: 1,
+      values: { 'almamesh-llm-settings': '{"__proto__":"smuggled"}' },
+    });
+    expect(() => decodePortablePreferences(rawProto)).toThrow(PortableStateCorruptError);
   });
 
-  it('heals an OPFS SQLite database captured with an abandoned restore lease, stale-epoch row, and loading predictive state', async () => {
+  it('heals an OPFS SQLite database captured with an abandoned deletion lease (sanitizing tombstoned profiles), stale-epoch rows, and loading predictive state', async () => {
     const raw = new MemorySqliteStore();
     const enc = new TextEncoder();
     await raw.batch([
@@ -1501,10 +1516,13 @@ describe('LLM chatContextTokens preference parity and raw OPFS SQLite import hea
           JSON.stringify({
             version: 1,
             activeEpoch: 2,
-            restoreEpoch: 2,
+            restoreEpoch: 3,
             restoreInProgress: true,
             restoreStartedAt: 1_700_000_000_000,
             leaseOwner: 'crashed-tab',
+            profileIds: ['victim'],
+            threadIds: [],
+            chartIds: [],
           }),
         ),
       },
@@ -1521,10 +1539,15 @@ describe('LLM chatContextTokens preference parity and raw OPFS SQLite import hea
                   name: 'Asha',
                   createdAt: '2026-01-01T00:00:00.000Z',
                   avatarTint: '#C9A24B',
-                  memoryFacts: [{ id: 'f1', category: 'career', text: 'Software engineer', createdAt: '2026-01-02T00:00:00.000Z' }],
+                },
+                victim: {
+                  id: 'victim',
+                  name: 'Deleted Person',
+                  createdAt: '2026-01-02T00:00:00.000Z',
+                  avatarTint: '#3A4FB0',
                 },
               },
-              activeProfileId: 'p1',
+              activeProfileId: 'victim',
             },
             version: 1,
             datasetEpoch: 2,
@@ -1535,12 +1558,29 @@ describe('LLM chatContextTokens preference parity and raw OPFS SQLite import hea
         type: 'put',
         namespace: PORTABLE_STATE_NAMESPACE,
         key: 'almamesh-life-events',
-        // Stale row left behind from epoch 0 (before Start Fresh bumped activeEpoch to 2).
         value: enc.encode(
           JSON.stringify({
-            state: { eventsByProfile: { deleted_person: [{ id: 'e1', date: '', createdAt: '2026-01-01T00:00:00.000Z' }] } },
+            state: {
+              eventsByProfile: {
+                victim: [{ id: 'e_victim', date: '2020-01-01', createdAt: '2020-01-01T00:00:00.000Z' }],
+                p1: [{ id: 'e_kept', date: '2021-01-01', createdAt: '2021-01-01T00:00:00.000Z' }],
+              },
+            },
             version: 4,
-            datasetEpoch: 0,
+            datasetEpoch: 2,
+          }),
+        ),
+      },
+      {
+        type: 'put',
+        namespace: PORTABLE_STATE_NAMESPACE,
+        key: 'almamesh-chat-history',
+        // Partial write at abandoned restoreEpoch 3 must be discarded, not accepted.
+        value: enc.encode(
+          JSON.stringify({
+            state: { threads: {}, messages: {}, summaries: {} },
+            version: 4,
+            datasetEpoch: 3,
           }),
         ),
       },
@@ -1562,18 +1602,48 @@ describe('LLM chatContextTokens preference parity and raw OPFS SQLite import hea
       createStore: async () => raw,
     });
 
-    expect(imported.values.has('almamesh-profiles')).toBe(true);
-    expect(imported.values.has('almamesh-life-events')).toBe(false);
+    const profiles = JSON.parse(imported.values.get('almamesh-profiles')!).state;
+    expect(Object.keys(profiles.profiles)).toEqual(['p1']);
+    expect(profiles.activeProfileId).toBe('p1');
+    // Tombstoned victim's life events were purged, NOT moved into set-aside!
+    expect(imported.repairs.setAside).toEqual([]);
+    expect(Object.keys(JSON.parse(imported.values.get('almamesh-life-events')!).state.eventsByProfile)).toEqual(['p1']);
+    expect(imported.values.has('almamesh-chat-history')).toBe(false);
     expect(JSON.parse(imported.values.get('almamesh-predictive')!).state).toEqual({ status: 'idle' });
     expect(JSON.parse(imported.values.get(PORTABLE_LEDGER_KEY)!)).toMatchObject({
       activeEpoch: 2,
-      restoreEpoch: 2,
+      restoreEpoch: 3,
       restoreInProgress: false,
+      profileIds: [],
     });
 
-    // Genuine corruption inside an AlmaMesh database throws PortableStateCorruptError.
-    const corrupt = new MemorySqliteStore();
-    await corrupt.batch([
+    // Missing ledger with datasetEpoch > 0 fails closed as corrupt instead of wiping user rows!
+    const missingLedgerEpoch2 = new MemorySqliteStore();
+    await missingLedgerEpoch2.put(
+      PORTABLE_STATE_NAMESPACE,
+      'almamesh-profiles',
+      enc.encode(JSON.stringify({ state: { profiles: { p1: { id: 'p1' } }, activeProfileId: 'p1' }, version: 1, datasetEpoch: 2 })),
+    );
+    missingLedgerEpoch2.epoch = 0;
+    await expect(
+      readPortableStateDatabase(new Uint8Array([1]), { createStore: async () => missingLedgerEpoch2 }),
+    ).rejects.toBeInstanceOf(PortableStateCorruptError);
+
+    // Negative activeEpoch fails closed, never deleting epoch-0 rows!
+    const negativeLedger = new MemorySqliteStore();
+    await negativeLedger.put(
+      PORTABLE_STATE_NAMESPACE,
+      PORTABLE_LEDGER_KEY,
+      enc.encode(JSON.stringify({ version: 1, activeEpoch: -1, restoreEpoch: 0, restoreInProgress: false })),
+    );
+    negativeLedger.epoch = 0;
+    await expect(
+      readPortableStateDatabase(new Uint8Array([1]), { createStore: async () => negativeLedger }),
+    ).rejects.toBeInstanceOf(PortableStateCorruptError);
+
+    // Malformed predictive status (e.g. number) is NOT masked by the loading/error healer.
+    const badPredictive = new MemorySqliteStore();
+    await badPredictive.batch([
       {
         type: 'put',
         namespace: PORTABLE_STATE_NAMESPACE,
@@ -1583,13 +1653,26 @@ describe('LLM chatContextTokens preference parity and raw OPFS SQLite import hea
       {
         type: 'put',
         namespace: PORTABLE_STATE_NAMESPACE,
-        key: 'almamesh-profiles',
-        value: enc.encode(JSON.stringify({ state: { profiles: { p1: null }, activeProfileId: 'p1' }, version: 1, datasetEpoch: 0 })),
+        key: 'almamesh-predictive',
+        value: enc.encode(JSON.stringify({ state: { status: 123 }, version: 7, datasetEpoch: 0 })),
       },
     ]);
-    corrupt.epoch = 0;
+    badPredictive.epoch = 0;
     await expect(
-      readPortableStateDatabase(new Uint8Array([1]), { createStore: async () => corrupt }),
+      readPortableStateDatabase(new Uint8Array([1]), { createStore: async () => badPredictive }),
     ).rejects.toBeInstanceOf(PortableStateCorruptError);
+
+    // Duplicate set-aside keys with differing metadata versions deduplicate cleanly in holdSetAside.
+    const dupRepo = new PortableStateRepository(new MemorySqliteStore());
+    await expect(
+      dupRepo.holdSetAside(
+        [
+          { row: 'almamesh-life-events', personId: 'gone', value: '[{"id":"e1"}]', version: 3 },
+          { row: 'almamesh-life-events', personId: 'gone', value: '[{"id":"e1"}]', version: 4 },
+        ],
+        '2026-11-27T00:00:00.000Z',
+      ),
+    ).resolves.toBeUndefined();
+    expect((await dupRepo.listSetAside()).size).toBe(1);
   });
 });

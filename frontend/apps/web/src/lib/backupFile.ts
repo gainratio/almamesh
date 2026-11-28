@@ -64,12 +64,16 @@ const ALL_BACKUP_PICKER_TYPES = [
 /** FileSaver.js's figure: WebKit can read a download's Blob URL long after the click. */
 const DOWNLOAD_BLOB_URL_LIFETIME_MS = 40_000;
 /**
- * Allow cloud file providers (Google Drive, iCloud Drive, Android DocumentsUI)
- * time to materialize a chosen file and fire `change` after the window refocuses.
- * Modern browsers fire `cancel` immediately when dismissed; a fresh click also
- * supersedes any unsettled fallback input.
+ * When iOS Safari populates `input.files[0]` before refocus and drops `change`
+ * on a detached input, read it promptly (300 ms) rather than making the user wait.
  */
-const FILE_PICKER_CANCEL_GRACE_MS = 30_000;
+const SAFARI_FOCUS_READ_MS = 300;
+/**
+ * When `input.files` is still empty on refocus, allow cloud file providers
+ * (Google Drive, iCloud Drive, Android DocumentsUI) one bounded window to finish
+ * downloading and dispatch `change` before settling as cancelled on no-`cancel` browsers.
+ */
+const CLOUD_PICKER_CANCEL_GRACE_MS = 30_000;
 let cancelPendingInputPick: (() => void) | undefined;
 const SQLITE_HEADER = new Uint8Array([
   0x53, 0x51, 0x4c, 0x69, 0x74, 0x65, 0x20, 0x66,
@@ -265,34 +269,39 @@ function pickFileViaInput(): Promise<BackupFileContent | null> {
 
     let settled = false;
     let reading = false;
-    let focusTimer: ReturnType<typeof setTimeout> | undefined;
+    let focusHandled = false;
+    let safariTimer: ReturnType<typeof setTimeout> | undefined;
+    let cloudCancelTimer: ReturnType<typeof setTimeout> | undefined;
     const clearPending = () => {
       if (cancelPendingInputPick === cancelThisPick) cancelPendingInputPick = undefined;
+    };
+    const cleanup = () => {
+      clearPending();
+      clearTimeout(safariTimer);
+      clearTimeout(cloudCancelTimer);
+      window.removeEventListener('focus', onFocus);
+      input.removeEventListener?.('change', onChange);
+      input.removeEventListener?.('cancel', onCancel);
     };
     const settle = (value: BackupFileContent | null) => {
       if (settled) return;
       settled = true;
-      clearPending();
-      clearTimeout(focusTimer);
-      window.removeEventListener('focus', onFocus);
+      cleanup();
       resolve(value);
     };
     const cancelThisPick = () => settle(null);
-    cancelPendingInputPick = cancelThisPick;
     const fail = (error: unknown) => {
       if (settled) return;
       settled = true;
-      clearPending();
-      clearTimeout(focusTimer);
-      window.removeEventListener('focus', onFocus);
+      cleanup();
       reject(error instanceof Error ? error : new Error(String(error)));
     };
-    // Once a file is chosen, only its read settles the pick: a multi-MB read
-    // on a slow phone outlasts any refocus grace and must never become "cancelled".
+    // Once a file is chosen, detach picker listeners and clear `cancelPendingInputPick`
+    // immediately so neither refocus timers nor a second button tap cancels an active read.
     const read = (file: File) => {
       if (reading || settled) return;
       reading = true;
-      clearTimeout(focusTimer);
+      cleanup();
       readBackupFile(file).then(settle, fail);
     };
     const onChange = () => {
@@ -303,22 +312,34 @@ function pickFileViaInput(): Promise<BackupFileContent | null> {
       }
       read(file);
     };
-    // Refocus without a selection means the dialog was dismissed. iOS Safari
-    // refocuses BEFORE it dispatches `change`, sometimes by seconds, but the
-    // chosen file is already on `input.files`: read it rather than cancel.
+    const onCancel = () => settle(null);
     const onFocus = () => {
-      clearTimeout(focusTimer);
-      focusTimer = setTimeout(() => {
-        if (reading) return;
+      if (focusHandled || reading || settled) return;
+      focusHandled = true;
+      safariTimer = setTimeout(() => {
+        if (reading || settled) return;
         const file = input.files?.[0];
-        if (file === undefined) settle(null);
-        else read(file);
-      }, FILE_PICKER_CANCEL_GRACE_MS);
+        if (file !== undefined) {
+          read(file);
+          return;
+        }
+        cloudCancelTimer = setTimeout(() => {
+          if (reading || settled) return;
+          const lateFile = input.files?.[0];
+          if (lateFile !== undefined) read(lateFile);
+          else settle(null);
+        }, CLOUD_PICKER_CANCEL_GRACE_MS - SAFARI_FOCUS_READ_MS);
+      }, SAFARI_FOCUS_READ_MS);
     };
 
+    cancelPendingInputPick = cancelThisPick;
     input.addEventListener('change', onChange, { once: true });
-    input.addEventListener('cancel', () => settle(null), { once: true });
+    input.addEventListener('cancel', onCancel, { once: true });
     window.addEventListener('focus', onFocus);
-    input.click();
+    try {
+      input.click();
+    } catch (error) {
+      fail(error);
+    }
   });
 }
