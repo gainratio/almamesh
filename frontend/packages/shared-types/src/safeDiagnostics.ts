@@ -121,7 +121,7 @@ export const KNOWN_ERROR_CLASSES: ReadonlySet<string> = new Set([
   'ChatSummaryGenerationError', 'DriveError', 'EngineBootCancelledError', 'EngineBootstrapError', 'EngineCacheNotDurableError',
   'EngineNotReadyError', 'EngineStorageBlockedError', 'EngineWarmingError', 'InterpretationSetAsideError',
   'JsonBoundsError', 'LlmRequestError', 'LocalTimeError', 'PeriodSkyTimeoutError', 'PeriodSkyUnavailableError', 'DurableReceiptError',
-  'PortableImportRevisionConflictError', 'PortableStateStartupError', 'PortableStateTooNewError',
+  'PortableImportRevisionConflictError', 'PortableStateCorruptError', 'PortableStateStartupError', 'PortableStateTooNewError',
   'PortableStateUnavailableError', 'PortableStorageUnavailableError', 'PrivacyViolationError',
   'PyodidePackageLoadError', 'ReasoningTimeoutError', 'ReportParseError', 'ResetIncompleteError',
   'SectionTimeoutError', 'SemanticMemoryStorageUnavailableError', 'SetAsideRestoreError', 'StoreSaveError',

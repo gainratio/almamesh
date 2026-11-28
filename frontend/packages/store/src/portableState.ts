@@ -20,6 +20,7 @@ import {
   type PortableRepairReport,
   type SetAsideRecord,
 } from './portableRepair';
+import { sanitizePersistedValue, type TombstoneIdSets } from './tombstoneSanitizer';
 
 export {
   EMPTY_PORTABLE_REPAIR_REPORT,
@@ -122,6 +123,11 @@ export const PORTABLE_STORE_MAX_VERSIONS = {
   'almamesh-preferences': 1,
   'almamesh-deletion-tombstones': 1,
 } as const satisfies Readonly<Record<PortableVersionedRowKey, number>>;
+
+/** An AlmaMesh portable database whose canonical row or preference is corrupt. */
+export class PortableStateCorruptError extends Error {
+  public override readonly name = 'PortableStateCorruptError';
+}
 
 /** A structurally valid backup whose store schema requires a newer AlmaMesh. */
 export class PortableStateTooNewError extends Error {
@@ -393,21 +399,32 @@ export class PortableStateRepository {
    * digest of the record). Resolves only once SQLite provably holds every one,
    * so a caller may then drop them from the dataset.
    */
-  public async holdSetAside(records: readonly SetAsideRecord[], at: string): Promise<void> {
+  public async holdSetAside(
+    records: readonly SetAsideRecord[],
+    at: string,
+    expectedEpoch?: number,
+  ): Promise<void> {
     if (records.length === 0) return;
+    validateSetAsideRecordList(records);
     const rows = await Promise.all(records.map(async (record) => ({
       key: `${record.personId}/${record.row}/${await sha256Hex(record.value)}`,
       value: JSON.stringify({ ...record, setAsideAt: at }),
     })));
-    await this.#store.batch(rows.map(({ key, value }) => ({
-      type: 'put',
-      namespace: PORTABLE_SET_ASIDE_NAMESPACE,
-      key,
-      value: encoder.encode(value),
-    })));
+    const deduped = new Map<string, string>();
+    for (const { key, value } of rows) deduped.set(key, value);
+    const uniqueRows = [...deduped.entries()].map(([key, value]) => ({ key, value }));
+    await this.#store.batch(
+      uniqueRows.map(({ key, value }) => ({
+        type: 'put',
+        namespace: PORTABLE_SET_ASIDE_NAMESPACE,
+        key,
+        value: encoder.encode(value),
+      })),
+      expectedEpoch === undefined ? {} : { expectedEpoch },
+    );
     // Verify each record by its own key: never capped by a listing page.
     const held = await Promise.all(
-      rows.map(async ({ key, value }) => {
+      uniqueRows.map(async ({ key, value }) => {
         const row = await this.#store.get(PORTABLE_SET_ASIDE_NAMESPACE, key);
         return row !== undefined && decode(row.value, key) === value;
       }),
@@ -498,7 +515,7 @@ export class PortableStateRepository {
       // A reference our own app left pointing at a person or chart that is
       // gone is repairable, not corruption; it must never block the export.
       const repaired = repairPortableReferences(snapshot.values);
-      validatePortableSnapshot({ ...snapshot, values: repaired.values });
+      validatePortableSnapshot({ ...snapshot, values: repaired.values }, repaired.repairs);
       // Backups carry the canonical dataset only; the quarantine stays local.
       // The raw file is never what leaves: it may hold quarantine rows (their
       // writes are not fenced by the dataset epoch, so no re-read here could be
@@ -638,12 +655,17 @@ export async function validatePortableStateDatabase(bytes: Uint8Array): Promise<
 /** Read a validated transport database without exposing arbitrary SQL. */
 export async function readPortableStateDatabase(
   bytes: Uint8Array,
+  options: {
+    /** Unit-test seam; production always uses the EdgeProc in-memory store. */
+    readonly createStore?: () => Promise<SqliteStateStore>;
+  } = {},
 ): Promise<PortableStateSnapshot & { readonly repairs: PortableRepairReport }> {
-  const store = await createSqliteStateStore({
-    name: 'almamesh-import-validation',
-    initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
-    persistence: 'memory',
-  });
+  const store = await (options.createStore?.() ??
+    createSqliteStateStore({
+      name: 'almamesh-import-validation',
+      initialSchemaVersion: PORTABLE_STATE_SCHEMA_VERSION,
+      persistence: 'memory',
+    }));
   const repository = new PortableStateRepository(store);
   try {
     const stage = await store.stageImport(bytes);
@@ -651,10 +673,11 @@ export async function readPortableStateDatabase(
     await store.commitImport(stage.stageId, { expectedEpoch: 0 });
     await repository.checkIntegrity();
     const read = await repository.snapshot();
+    const normalized = normalizeImportedPortableValues(read.values);
     // Files exported before the repair existed may still carry stale references.
-    const repaired = repairPortableReferences(read.values);
+    const repaired = repairPortableReferences(normalized);
     const snapshot = { ...read, values: repaired.values, repairs: repaired.repairs };
-    validatePortableSnapshot(snapshot);
+    validatePortableSnapshot(snapshot, repaired.repairs);
     return snapshot;
   } finally {
     await repository.dispose();
@@ -679,7 +702,7 @@ export async function mergeLegacyPreferencesIntoPortableState(
   } = {},
 ): Promise<Uint8Array> {
   if (candidate === null || typeof candidate !== 'object' || Array.isArray(candidate)) {
-    throw new Error('Legacy portable settings are not an object.');
+    throw new PortableStateCorruptError('Legacy portable settings are not an object.');
   }
   const legacy: Partial<Record<PortablePreferenceMirrorKey, string>> = {};
   for (const key of PORTABLE_PREFERENCE_MIRROR_KEYS) {
@@ -698,13 +721,19 @@ export async function mergeLegacyPreferencesIntoPortableState(
   const repository = new PortableStateRepository(store, options.validateExport, options.rebuildExport);
   try {
     const stage = await store.stageImport(bytes);
-    if (stage.schemaVersion !== PORTABLE_STATE_SCHEMA_VERSION) {
-      throw new Error(`Unsupported portable state schema version ${stage.schemaVersion}.`);
-    }
+    assertSupportedPortableStateSchema(stage.schemaVersion);
     await store.commitImport(stage.stageId, { expectedEpoch: 0 });
     await repository.checkIntegrity();
     const read = await repository.snapshot();
-    validatePortableSnapshot({ ...read, values: repairPortableReferences(read.values).values });
+    const normalized = normalizeImportedPortableValues(read.values);
+    const repaired = repairPortableReferences(normalized);
+    validatePortableSnapshot({ ...read, values: repaired.values }, repaired.repairs);
+    for (const [key, value] of normalized) {
+      if (read.values.get(key) !== value) await repository.write(key, value);
+    }
+    for (const key of read.values.keys()) {
+      if (!normalized.has(key)) await repository.delete(key);
+    }
 
     const current = await readPortablePreferences(repository);
     await repository.write(
@@ -849,10 +878,211 @@ function assertQuarantineKey(key: string): void {
   }
 }
 
-function validatePortableSnapshot(snapshot: PortableStateSnapshot): void {
-  const ledgerRaw = snapshot.values.get(PORTABLE_LEDGER_KEY);
-  if (ledgerRaw === undefined) throw new Error('Portable state is missing its generation ledger.');
+interface ImportedLedgerPlan {
+  readonly activeEpoch: number;
+  readonly restoreEpoch: number;
+  readonly wasRestoreInProgress: boolean;
+  readonly tombstones: TombstoneIdSets;
+}
+
+function readValidTombstoneList(candidate: unknown): readonly string[] | null {
+  if (candidate === undefined) return [];
+  if (!Array.isArray(candidate) || candidate.length > MAX_COLLECTION_ENTRIES) return null;
+  for (const item of candidate) {
+    if (typeof item !== 'string' || item.length === 0 || item.length > MAX_IDENTIFIER_CHARACTERS) {
+      return null;
+    }
+  }
+  return candidate as readonly string[];
+}
+
+function canSynthesizeEpochZeroLedger(values: ReadonlyMap<string, string>): boolean {
+  if (!PORTABLE_STATE_KEYS.some((key) => values.has(key))) return false;
+  for (const key of PORTABLE_DATASET_KEYS) {
+    const raw = values.get(key);
+    if (raw === undefined) continue;
+    assertJsonTextWithinBounds(raw, key);
+    const parsed = parseJsonRecord(raw, key);
+    if (parsed.datasetEpoch !== undefined && parsed.datasetEpoch !== 0) return false;
+  }
+  return true;
+}
+
+function planImportedLedger(values: Map<string, string>): ImportedLedgerPlan | undefined {
+  const ledgerRaw = values.get(PORTABLE_LEDGER_KEY);
+  if (ledgerRaw === undefined) {
+    if (!canSynthesizeEpochZeroLedger(values)) return undefined;
+    values.set(PORTABLE_LEDGER_KEY, INITIAL_PORTABLE_LEDGER);
+    return {
+      activeEpoch: 0,
+      restoreEpoch: 0,
+      wasRestoreInProgress: false,
+      tombstones: { profileIds: [], threadIds: [], chartIds: [] },
+    };
+  }
+  assertJsonTextWithinBounds(ledgerRaw, PORTABLE_LEDGER_KEY);
   const ledger = parseJsonRecord(ledgerRaw, PORTABLE_LEDGER_KEY);
+  validateBoundedJson(ledger, PORTABLE_LEDGER_KEY);
+  if (
+    ledger.version !== 1 ||
+    !Number.isSafeInteger(ledger.activeEpoch) ||
+    (ledger.activeEpoch as number) < 0 ||
+    !Number.isSafeInteger(ledger.restoreEpoch) ||
+    (ledger.restoreEpoch as number) < 0 ||
+    typeof ledger.restoreInProgress !== 'boolean'
+  ) {
+    return undefined;
+  }
+  const profileIds = readValidTombstoneList(ledger.profileIds);
+  const threadIds = readValidTombstoneList(ledger.threadIds);
+  const chartIds = readValidTombstoneList(ledger.chartIds);
+  if (profileIds === null || threadIds === null || chartIds === null) return undefined;
+  const activeEpoch = ledger.activeEpoch as number;
+  const restoreEpoch = ledger.restoreEpoch as number;
+  const hasTombstones = profileIds.length > 0 || threadIds.length > 0 || chartIds.length > 0;
+  if (ledger.restoreInProgress || hasTombstones) {
+    values.set(
+      PORTABLE_LEDGER_KEY,
+      JSON.stringify({
+        version: 1,
+        activeEpoch,
+        restoreEpoch: Math.max(activeEpoch, restoreEpoch),
+        restoreInProgress: false,
+        memoryRebuildPending: ledger.memoryRebuildPending === true,
+        profileIds: [],
+        threadIds: [],
+        chartIds: [],
+        reviveProfileIds: [],
+        reviveThreadIds: [],
+        reviveChartIds: [],
+      }),
+    );
+  }
+  return {
+    activeEpoch,
+    restoreEpoch,
+    wasRestoreInProgress: ledger.restoreInProgress,
+    tombstones: { profileIds, threadIds, chartIds },
+  };
+}
+
+function normalizeImportedDatasetRow(
+  values: Map<string, string>,
+  key: (typeof PORTABLE_DATASET_KEYS)[number],
+  plan: ImportedLedgerPlan,
+): void {
+  const raw = values.get(key);
+  if (raw === undefined) return;
+  assertJsonTextWithinBounds(raw, key);
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = parseJsonRecord(raw, key);
+  } catch {
+    return;
+  }
+  const maxVersion = PORTABLE_STORE_MAX_VERSIONS[key];
+  if (
+    !Number.isSafeInteger(parsed.version) ||
+    (parsed.version as number) < 0 ||
+    (parsed.version as number) > maxVersion ||
+    !isPlainRecord(parsed.state)
+  ) {
+    return;
+  }
+  validateBoundedJson(parsed.state, key);
+  const rawEpoch = parsed.datasetEpoch;
+  if (rawEpoch !== undefined && (!Number.isSafeInteger(rawEpoch) || (rawEpoch as number) < 0)) return;
+  const rowEpoch = (rawEpoch as number | undefined) ?? 0;
+  const isAbandonedPartial =
+    plan.wasRestoreInProgress &&
+    plan.restoreEpoch !== plan.activeEpoch &&
+    rowEpoch === plan.restoreEpoch;
+  if (rowEpoch < plan.activeEpoch || isAbandonedPartial) {
+    values.delete(key);
+    return;
+  }
+  if (rowEpoch !== plan.activeEpoch) return;
+  let nextRaw = raw;
+  const { profileIds, threadIds, chartIds } = plan.tombstones;
+  if (profileIds.length > 0 || threadIds.length > 0 || chartIds.length > 0) {
+    nextRaw = sanitizePersistedValue(key, nextRaw, plan.tombstones);
+  }
+  const nextParsed = parseJsonRecord(nextRaw, key);
+  if (
+    key === 'almamesh-predictive' &&
+    isPlainRecord(nextParsed.state) &&
+    (nextParsed.state.status === 'loading' || nextParsed.state.status === 'error')
+  ) {
+    nextRaw = JSON.stringify({ ...nextParsed, state: { status: 'idle' } });
+  }
+  if (nextRaw !== raw) values.set(key, nextRaw);
+}
+
+/** Heal transient OPFS states (abandoned lease, tombstoned rows, loading predictive cache) on import. */
+function normalizeImportedPortableValues(rawValues: ReadonlyMap<string, string>): ReadonlyMap<string, string> {
+  try {
+    const values = new Map(rawValues);
+    const plan = planImportedLedger(values);
+    if (plan === undefined) return rawValues;
+    for (const key of PORTABLE_DATASET_KEYS) normalizeImportedDatasetRow(values, key, plan);
+    return values;
+  } catch (error) {
+    if (error instanceof PortableStateTooNewError || error instanceof PortableStateCorruptError) {
+      throw error;
+    }
+    throw new PortableStateCorruptError(
+      error instanceof Error ? error.message : String(error),
+      { cause: error },
+    );
+  }
+}
+
+export function validateSetAsideRecordList(records: readonly SetAsideRecord[]): void {
+  for (const record of records) {
+    assertIdentifier(record.personId, record.row);
+    if (record.personId.includes('\0') || record.personId.includes('/')) {
+      throw new PortableStateCorruptError(
+        `Portable state row "${record.row}" contains an invalid person identifier.`,
+      );
+    }
+    assertJsonTextWithinBounds(record.value, record.row);
+  }
+}
+
+function validateSetAsideRepairs(repairs: PortableRepairReport | undefined): void {
+  if (repairs === undefined) return;
+  validateSetAsideRecordList(repairs.setAside);
+}
+
+function validatePortableSnapshot(
+  snapshot: PortableStateSnapshot,
+  repairs?: PortableRepairReport,
+): void {
+  const ledgerRaw = snapshot.values.get(PORTABLE_LEDGER_KEY);
+  if (ledgerRaw === undefined) {
+    if (snapshot.values.size > 0) {
+      throw new PortableStateCorruptError('Portable state is missing its generation ledger.');
+    }
+    throw new Error('Portable state is missing its generation ledger.');
+  }
+  try {
+    validateSetAsideRepairs(repairs);
+    validatePortableSnapshotWithLedger(snapshot, ledgerRaw);
+  } catch (error) {
+    if (error instanceof PortableStateTooNewError || error instanceof PortableStateCorruptError) {
+      throw error;
+    }
+    throw new PortableStateCorruptError(
+      error instanceof Error ? error.message : String(error),
+      { cause: error },
+    );
+  }
+}
+
+function validatePortableSnapshotWithLedger(snapshot: PortableStateSnapshot, ledgerRaw: string): void {
+  assertJsonTextWithinBounds(ledgerRaw, PORTABLE_LEDGER_KEY);
+  const ledger = parseJsonRecord(ledgerRaw, PORTABLE_LEDGER_KEY);
+  validateBoundedJson(ledger, PORTABLE_LEDGER_KEY);
   if (
     Number.isSafeInteger(ledger.version) &&
     (ledger.version as number) > PORTABLE_STORE_MAX_VERSIONS[PORTABLE_LEDGER_KEY]
@@ -866,7 +1096,9 @@ function validatePortableSnapshot(snapshot: PortableStateSnapshot): void {
   if (
     ledger.version !== 1 ||
     !Number.isSafeInteger(ledger.activeEpoch) ||
+    (ledger.activeEpoch as number) < 0 ||
     !Number.isSafeInteger(ledger.restoreEpoch) ||
+    (ledger.restoreEpoch as number) < 0 ||
     ledger.restoreInProgress !== false
   ) {
     throw new Error('Portable state generation ledger is not settled or valid.');
@@ -1280,31 +1512,36 @@ function validatePortablePreferenceMirror(
     }
     return;
   }
-  const allowed = new Set([
-    'apiBase',
-    'apiKey',
-    'model',
-    'interpretationModel',
-    'chatModel',
-    'privacyMode',
-    'engine',
-  ]);
-  const maximumLength: Readonly<Record<string, number>> = {
-    apiBase: 2_048,
-    apiKey: 8_192,
-    model: 512,
-    interpretationModel: 512,
-    chatModel: 512,
-    privacyMode: 128,
-    engine: 128,
-  };
+  validatePortableLlmSettings(parsed);
+}
+
+const MAX_CHAT_CONTEXT_TOKENS = 10_000_000;
+const LLM_SETTING_MAX_LENGTH: ReadonlyMap<string, number> = new Map([
+  ['apiBase', 2_048],
+  ['apiKey', 8_192],
+  ['model', 512],
+  ['interpretationModel', 512],
+  ['chatModel', 512],
+  ['privacyMode', 128],
+  ['engine', 128],
+]);
+
+function validatePortableLlmSettings(parsed: Record<string, unknown>): void {
   for (const [setting, settingValue] of Object.entries(parsed)) {
-    if (
-      !allowed.has(setting) ||
-      typeof settingValue !== 'string' ||
-      settingValue.length > maximumLength[setting]!
-    ) {
-      throw new Error(`Portable LLM setting "${setting}" is invalid.`);
+    if (settingValue === undefined) continue;
+    if (setting === 'chatContextTokens') {
+      if (
+        !Number.isSafeInteger(settingValue) ||
+        (settingValue as number) <= 0 ||
+        (settingValue as number) > MAX_CHAT_CONTEXT_TOKENS
+      ) {
+        throw new PortableStateCorruptError('Portable LLM setting "chatContextTokens" is invalid.');
+      }
+      continue;
+    }
+    const max = LLM_SETTING_MAX_LENGTH.get(setting);
+    if (max === undefined || typeof settingValue !== 'string' || settingValue.length > max) {
+      throw new PortableStateCorruptError(`Portable LLM setting "${setting}" is invalid.`);
     }
   }
 }

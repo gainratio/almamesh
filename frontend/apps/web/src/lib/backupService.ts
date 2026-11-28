@@ -39,6 +39,7 @@ import {
   PORTABLE_DATASET_KEYS,
   PORTABLE_PREFERENCES_KEY,
   PORTABLE_STATE_KEYS,
+  PortableStateCorruptError,
   PortableStateTooNewError,
   PortableStateUnavailableError,
   readDeletionTombstones,
@@ -52,6 +53,7 @@ import {
   repairPortableReferences,
   holdSetAsideRecords,
   type SetAsideRecord,
+  validateSetAsideRecordList,
   sealBackup,
   type PortableStateSnapshot,
   type StorageTier,
@@ -352,12 +354,18 @@ async function stageOpenedBackup(
   if (!hasSqliteHeader(opened.database)) {
     throw new BackupError('corrupt', 'The backup unlocked but holds no AlmaMesh database.');
   }
-  const bytes = Object.keys(opened.settings).length === 0
-    ? opened.database
-    : await (override?.mergeLegacyPreferences ?? mergeLegacyPreferencesIntoPortableState)(
-        opened.database,
-        opened.settings,
-      );
+  let bytes: Uint8Array;
+  try {
+    bytes =
+      Object.keys(opened.settings).length === 0
+        ? opened.database
+        : await (override?.mergeLegacyPreferences ?? mergeLegacyPreferencesIntoPortableState)(
+            opened.database,
+            opened.settings,
+          );
+  } catch (error) {
+    rethrowPortableStageError(error);
+  }
   const { envelope, repairs } = await readPortableEnvelope(bytes, override);
   return { kind: 'bundle', envelope, wasEncrypted: true, bytes, repairs };
 }
@@ -431,6 +439,14 @@ function repairEnvelopeReferences(envelope: BackupEnvelopePlain): {
     Object.entries(envelope.stores).map(([key, snapshot]) => [key, JSON.stringify(snapshot)]),
   );
   const repaired = repairPortableReferences(values);
+  try {
+    validateSetAsideRecordList(repaired.repairs.setAside);
+  } catch (error) {
+    if (error instanceof PortableStateCorruptError) {
+      throw new BackupError('corrupt', error.message);
+    }
+    throw error;
+  }
   if (repaired.values === values) return { envelope, repairs: repaired.repairs };
   const stores: BackupEnvelopePlain['stores'] = {};
   for (const [key, value] of repaired.values) {
@@ -444,6 +460,20 @@ function repairEnvelopeReferences(envelope: BackupEnvelopePlain): {
  * that cannot start (no OPFS/worker support) surfaces as
  * PortableStateUnavailableError instead of hanging or posing as a bad file.
  */
+function rethrowPortableStageError(error: unknown): never {
+  if (error instanceof PortableStateUnavailableError) throw error;
+  if (error instanceof PortableStateTooNewError) {
+    throw new BackupError(
+      'too_new',
+      'This backup was made by a newer version of AlmaMesh. Update the app first.',
+    );
+  }
+  if (error instanceof PortableStateCorruptError) {
+    throw new BackupError('corrupt', error.message);
+  }
+  throw new BackupError('bad_format', 'This SQLite file is not a valid AlmaMesh backup.');
+}
+
 async function readPortableEnvelope(
   bytes: Uint8Array,
   override?: Pick<BackupDepsOverride, 'readPortableState'>,
@@ -456,14 +486,7 @@ async function readPortableEnvelope(
       repairs: 'repairs' in snapshot ? (snapshot.repairs as PortableRepairReport) : EMPTY_PORTABLE_REPAIR_REPORT,
     };
   } catch (error) {
-    if (error instanceof PortableStateUnavailableError) throw error;
-    if (error instanceof PortableStateTooNewError) {
-      throw new BackupError(
-        'too_new',
-        'This backup was made by a newer version of AlmaMesh. Update the app first.',
-      );
-    }
-    throw new BackupError('bad_format', 'This SQLite file is not a valid AlmaMesh backup.');
+    rethrowPortableStageError(error);
   }
 }
 
@@ -536,9 +559,9 @@ export async function commitBackupImport(
     return;
   }
   // User-written records of a person the file no longer holds stay on this
-  // device (set aside), never dropped with the import.
+  // device (set aside), never dropped with the import — held inside the restore
+  // lease after the revision fence passes, before canonical rows are replaced.
   const setAside = staged.repairs?.setAside ?? [];
-  if (setAside.length > 0) await (override?.holdSetAside ?? holdSetAsideRecords)(setAside);
   const epoch = await beginRestore(restoredIds(plain));
   let rollback: BackupEnvelopePlain;
   try {
@@ -552,10 +575,20 @@ export async function commitBackupImport(
   const applyGeneration = async (
     envelope: BackupEnvelopePlain,
     generation: number,
+    recordsToHold: readonly SetAsideRecord[] = [],
   ): Promise<void> => {
     if (browserEffects) {
-      await applyBrowserBackupAtomically(envelope, resolveDeps(override), generation);
+      await applyBrowserBackupAtomically(
+        envelope,
+        resolveDeps(override),
+        generation,
+        recordsToHold,
+        override?.holdSetAside ?? holdSetAsideRecords,
+      );
     } else {
+      if (recordsToHold.length > 0) {
+        await (override?.holdSetAside ?? holdSetAsideRecords)(recordsToHold);
+      }
       await applyBackup(envelope, resolveDeps(override, generation));
       await finalizeRestore(generation);
     }
@@ -563,7 +596,7 @@ export async function commitBackupImport(
   try {
     await purgeSky();
     if (!browserEffects) await clear();
-    await applyGeneration(plain, epoch);
+    await applyGeneration(plain, epoch, setAside);
   } catch (error) {
     if (browserEffects) {
       await abortRestore(epoch);

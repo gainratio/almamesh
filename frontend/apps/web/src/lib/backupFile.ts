@@ -50,11 +50,31 @@ const SQLITE_PICKER_TYPE: BackupPickerType = {
   accept: { 'application/vnd.sqlite3': ['.sqlite3', '.sqlite', '.db'] },
 };
 
-const ALL_BACKUP_PICKER_TYPES = [ALMAMESH_PICKER_TYPE, SQLITE_PICKER_TYPE, JSON_PICKER_TYPE];
+const BINARY_BACKUP_PICKER_TYPE: BackupPickerType = {
+  description: 'Cloud or binary AlmaMesh backup',
+  accept: { 'application/octet-stream': ['.almamesh', '.sqlite3', '.sqlite', '.db'] },
+};
+
+const ALL_BACKUP_PICKER_TYPES = [
+  ALMAMESH_PICKER_TYPE,
+  SQLITE_PICKER_TYPE,
+  JSON_PICKER_TYPE,
+  BINARY_BACKUP_PICKER_TYPE,
+];
 /** FileSaver.js's figure: WebKit can read a download's Blob URL long after the click. */
 const DOWNLOAD_BLOB_URL_LIFETIME_MS = 40_000;
-/** Give Safari's file input time to publish `change` after the window refocuses. */
-const FILE_PICKER_CANCEL_GRACE_MS = 300;
+/**
+ * When iOS Safari populates `input.files[0]` before refocus and drops `change`
+ * on a detached input, read it promptly (300 ms) rather than making the user wait.
+ */
+const SAFARI_FOCUS_READ_MS = 300;
+/**
+ * When `input.files` is still empty on refocus, allow cloud file providers
+ * (Google Drive, iCloud Drive, Android DocumentsUI) one bounded window to finish
+ * downloading and dispatch `change` before settling as cancelled on no-`cancel` browsers.
+ */
+const CLOUD_PICKER_CANCEL_GRACE_MS = 30_000;
+let cancelPendingInputPick: (() => void) | undefined;
 const SQLITE_HEADER = new Uint8Array([
   0x53, 0x51, 0x4c, 0x69, 0x74, 0x65, 0x20, 0x66,
   0x6f, 0x72, 0x6d, 0x61, 0x74, 0x20, 0x33, 0x00,
@@ -240,33 +260,48 @@ export async function pickBackupFile(): Promise<BackupFileContent | null> {
 }
 
 function pickFileViaInput(): Promise<BackupFileContent | null> {
+  cancelPendingInputPick?.();
   return new Promise<BackupFileContent | null>((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'application/vnd.almamesh.backup,application/vnd.sqlite3,application/json,.almamesh,.sqlite3,.sqlite,.db,.json';
+    input.accept =
+      'application/octet-stream,application/vnd.almamesh.backup,application/vnd.sqlite3,application/x-sqlite3,application/json,.almamesh,.sqlite3,.sqlite,.db,.json';
 
     let settled = false;
     let reading = false;
-    let focusTimer: ReturnType<typeof setTimeout> | undefined;
+    let focusHandled = false;
+    let safariTimer: ReturnType<typeof setTimeout> | undefined;
+    let cloudCancelTimer: ReturnType<typeof setTimeout> | undefined;
+    const clearPending = () => {
+      if (cancelPendingInputPick === cancelThisPick) cancelPendingInputPick = undefined;
+    };
+    const cleanup = () => {
+      clearPending();
+      clearTimeout(safariTimer);
+      clearTimeout(cloudCancelTimer);
+      window.removeEventListener('focus', onFocus);
+      input.removeEventListener?.('change', onChange);
+      input.removeEventListener?.('cancel', onCancel);
+    };
     const settle = (value: BackupFileContent | null) => {
       if (settled) return;
       settled = true;
-      clearTimeout(focusTimer);
-      window.removeEventListener('focus', onFocus);
+      cleanup();
       resolve(value);
     };
+    const cancelThisPick = () => settle(null);
     const fail = (error: unknown) => {
       if (settled) return;
       settled = true;
-      window.removeEventListener('focus', onFocus);
+      cleanup();
       reject(error instanceof Error ? error : new Error(String(error)));
     };
-    // Once a file is chosen, only its read settles the pick: a multi-MB read
-    // on a slow phone outlasts any refocus grace and must never become "cancelled".
+    // Once a file is chosen, detach picker listeners and clear `cancelPendingInputPick`
+    // immediately so neither refocus timers nor a second button tap cancels an active read.
     const read = (file: File) => {
       if (reading || settled) return;
       reading = true;
-      clearTimeout(focusTimer);
+      cleanup();
       readBackupFile(file).then(settle, fail);
     };
     const onChange = () => {
@@ -277,22 +312,34 @@ function pickFileViaInput(): Promise<BackupFileContent | null> {
       }
       read(file);
     };
-    // Refocus without a selection means the dialog was dismissed. iOS Safari
-    // refocuses BEFORE it dispatches `change`, sometimes by seconds, but the
-    // chosen file is already on `input.files`: read it rather than cancel.
+    const onCancel = () => settle(null);
     const onFocus = () => {
-      clearTimeout(focusTimer);
-      focusTimer = setTimeout(() => {
-        if (reading) return;
+      if (focusHandled || reading || settled) return;
+      focusHandled = true;
+      safariTimer = setTimeout(() => {
+        if (reading || settled) return;
         const file = input.files?.[0];
-        if (file === undefined) settle(null);
-        else read(file);
-      }, FILE_PICKER_CANCEL_GRACE_MS);
+        if (file !== undefined) {
+          read(file);
+          return;
+        }
+        cloudCancelTimer = setTimeout(() => {
+          if (reading || settled) return;
+          const lateFile = input.files?.[0];
+          if (lateFile !== undefined) read(lateFile);
+          else settle(null);
+        }, CLOUD_PICKER_CANCEL_GRACE_MS - SAFARI_FOCUS_READ_MS);
+      }, SAFARI_FOCUS_READ_MS);
     };
 
+    cancelPendingInputPick = cancelThisPick;
     input.addEventListener('change', onChange, { once: true });
-    input.addEventListener('cancel', () => settle(null), { once: true });
+    input.addEventListener('cancel', onCancel, { once: true });
     window.addEventListener('focus', onFocus);
-    input.click();
+    try {
+      input.click();
+    } catch (error) {
+      fail(error);
+    }
   });
 }

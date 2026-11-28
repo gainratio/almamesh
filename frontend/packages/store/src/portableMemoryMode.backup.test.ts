@@ -118,4 +118,31 @@ describe('private mode (SQLite in memory) backup', () => {
     const restored = await target.deletionAwareIdbStorage.getItem(PROFILES);
     expect(JSON.parse(restored as string).state.profiles.p1.name).toBe('Ada');
   });
+
+  it('imports behind armPortableImportRevision even when the backup carries set-aside orphan records', async () => {
+    const target = await privateTab();
+    await saveProfile(target.deletionAwareIdbStorage, 'local-person');
+
+    const incomingRows: [string, string][] = [
+      ['almamesh-deletion-tombstones', JSON.stringify({ version: 1, activeEpoch: 0, restoreEpoch: 0, restoreInProgress: false })],
+      [PROFILES, JSON.stringify({ state: { profiles: { p1: { id: 'p1', name: 'Restored' } }, activeProfileId: 'p1' }, version: 1, datasetEpoch: 0 })],
+      [
+        'almamesh-life-events',
+        JSON.stringify({
+          state: { eventsByProfile: { deleted_owner: [{ id: 'ev1', date: '2020-05-01', createdAt: '2020-05-01T00:00:00.000Z' }] } },
+          version: 4,
+          datasetEpoch: 0,
+        }),
+      ],
+    ];
+    const bytes = new TextEncoder().encode(JSON.stringify(incomingRows));
+
+    const safetyRevision = await target.readPortableStateRevision();
+    target.armPortableImportRevision(safetyRevision);
+    await expect(target.importPortableBrowserState(bytes)).resolves.toBeUndefined();
+
+    expect((await target.repository.listSetAside()).size).toBe(1);
+    const restored = await target.deletionAwareIdbStorage.getItem(PROFILES);
+    expect(JSON.parse(restored as string).state.profiles.p1.name).toBe('Restored');
+  });
 });

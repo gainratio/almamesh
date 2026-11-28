@@ -277,12 +277,15 @@ export async function applyBrowserBackupAtomically(
   envelope: BackupEnvelopePlain,
   deps: BackupDeps,
   epoch: number,
+  setAside: readonly SetAsideRecord[] = [],
+  hold: (records: readonly SetAsideRecord[]) => Promise<void> = holdSetAsideRecords,
 ): Promise<void> {
   if (envelope.format !== 'almamesh-backup' || envelope.formatVersion !== 1) {
     await applyBackup(envelope, deps);
     return;
   }
   await enforceArmedPortableImportRevision();
+  if (setAside.length > 0) await hold(setAside);
   const writes = BACKUP_STORES.map((entry) => {
     const snapshot = envelope.stores[entry.key];
     return {
@@ -331,9 +334,6 @@ export async function importPortableBrowserState(
   options: PortableBrowserImportOptions = {},
 ): Promise<void> {
   const imported = await readPortableStateDatabase(bytes);
-  // User-written records of a person the file no longer holds are kept on this
-  // device, never dropped with the import.
-  await holdSetAsideRecords(imported.repairs.setAside);
   const restored = restoredIdsFromPortableRows(imported.values);
   const importedPreferences = imported.values.get(PORTABLE_PREFERENCES_KEY);
   const preservedPreferences =
@@ -345,6 +345,9 @@ export async function importPortableBrowserState(
   const epoch = await beginBackupRestore(restored);
   try {
     await enforceArmedPortableImportRevision();
+    // User-written records of a person the file no longer holds are kept on this
+    // device after the safety-revision fence passes, before canonical rows replace.
+    await holdSetAsideRecords(imported.repairs.setAside);
     await commitDatasetGeneration(
       epoch,
       PORTABLE_STATE_KEYS.map((key) => ({

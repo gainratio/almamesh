@@ -23,6 +23,7 @@ import {
   BackupError,
   collectBackup,
   EMPTY_PORTABLE_REPAIR_REPORT,
+  PortableStateCorruptError,
   PortableStateUnavailableError,
   PortableStateTooNewError,
   type PortableStateSnapshot,
@@ -1005,7 +1006,7 @@ describe('legacy JSON import repairs dangling references (2026-10-05 audit)', ()
     expect(staged.repairs?.droppedReadingChartIds).toEqual(['c1']);
   });
 
-  it('holds set-aside life events in SQLite before a legacy JSON import replaces anything', async () => {
+  it('holds set-aside life events inside the restore lease before a legacy JSON import replaces anything', async () => {
     const order: string[] = [];
     const record = { row: 'almamesh-life-events', personId: 'gone', value: '[]' } as const;
     const plain: BackupEnvelopePlain = {
@@ -1014,13 +1015,21 @@ describe('legacy JSON import repairs dangling references (2026-10-05 audit)', ()
       app: { version: 'legacy' },
       exportedAt: FIXED_NOW,
       encryption: 'none',
-      stores: {},
+      stores: {
+        'almamesh-profiles': { version: 1, state: { profiles: { p1: { id: 'p1' } }, activeProfileId: 'p1' } },
+      },
+    };
+    const idb = memTier();
+    const origSet = idb.set.bind(idb);
+    idb.set = async (key, value) => {
+      order.push(`write:${key}`);
+      return origSet(key, value);
     };
 
     await commitBackupImport(
       { kind: 'json', envelope: plain, wasEncrypted: false, repairs: { ...EMPTY_PORTABLE_REPAIR_REPORT, setAside: [record] } },
       {
-        tiers: { idb: memTier(), local: memTier() },
+        tiers: { idb, local: memTier() },
         holdSetAside: vi.fn(async () => void order.push('hold')),
         beginBackupRestore: vi.fn(async () => {
           order.push('begin');
@@ -1031,7 +1040,7 @@ describe('legacy JSON import repairs dangling references (2026-10-05 audit)', ()
       },
     );
 
-    expect(order.slice(0, 2)).toEqual(['hold', 'begin']);
+    expect(order.slice(0, 3)).toEqual(['begin', 'hold', 'write:almamesh-profiles']);
   });
 
   it('reports what a SQLite backup needed repaired, for the preview', async () => {
@@ -1043,5 +1052,24 @@ describe('legacy JSON import repairs dangling references (2026-10-05 audit)', ()
     });
 
     expect(staged.repairs).toBe(repairs);
+  });
+
+  it('surfaces corrupt AlmaMesh SQLite rows as BackupError corrupt with the row reason, instead of claiming the file is not an AlmaMesh backup', async () => {
+    const sqlite = new Uint8Array([...new TextEncoder().encode('SQLite format 3\0'), 1]);
+    await expect(
+      stageBackupImport(sqlite, undefined, {
+        readPortableState: vi
+          .fn()
+          .mockRejectedValue(
+            new PortableStateCorruptError(
+              'Portable state row "almamesh-profiles" profile "p1" is not an object.',
+            ),
+          ),
+      }),
+    ).rejects.toMatchObject({
+      name: 'BackupError',
+      code: 'corrupt',
+      message: 'Portable state row "almamesh-profiles" profile "p1" is not an object.',
+    });
   });
 });

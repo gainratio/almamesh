@@ -6,17 +6,24 @@ import {
   armPortableImportRevision,
   BACKUP_STORES,
   BackupError,
+  clearPortableImportRevisionFence,
   collectBackup,
   assertPortableImportRevision,
   PREDICTIVE_CACHE_KEY,
   PortableImportRevisionConflictError,
+  readPortableStateRevision,
   type BackupDeps,
   type BackupTier,
   type StorageTier,
   holdSetAsideRecords,
 } from './backup';
 import { setPortableStateRepositoryForTests } from './deletionTombstones';
-import type { PortableStateRepository } from './portableState';
+import {
+  PORTABLE_LEDGER_KEY,
+  PortableStateRepository,
+  seedPortableLedger,
+} from './portableState';
+import { PortableMemoryStore } from './portableMemoryStore.testkit';
 import { migrateInterpretationPersistedState } from './interpretation';
 
 /**
@@ -538,5 +545,59 @@ describe('holdSetAsideRecords', () => {
 
   it('does not open SQLite when there is nothing to hold', async () => {
     await expect(holdSetAsideRecords([])).resolves.toBeUndefined();
+  });
+
+  it('holds set-aside records inside applyBrowserBackupAtomically only after the safety-revision fence passes, and a background holdSetAsideRecords call properly trips the fence', async () => {
+    const sqlite = new PortableMemoryStore();
+    const destination = new PortableStateRepository(sqlite);
+    const emptyEnvelope: BackupEnvelopePlain = {
+      format: 'almamesh-backup',
+      formatVersion: 1,
+      app: { version: 'x' },
+      exportedAt: '2026-07-01T12:00:00.000Z',
+      encryption: 'none',
+      stores: {},
+    };
+    const emptyDeps: BackupDeps = {
+      tiers: { idb: makeTier(), local: makeTier() },
+      appVersion: 'x',
+      now: '2026-07-01T12:00:00.000Z',
+    };
+    try {
+      await seedPortableLedger(destination);
+      await destination.write(
+        'almamesh-profiles',
+        JSON.stringify({ state: { profiles: { local: { id: 'local' } }, activeProfileId: 'local' }, version: 1, datasetEpoch: 0 }),
+      );
+      setPortableStateRepositoryForTests(destination);
+
+      const cleanRevision = await readPortableStateRevision();
+      armPortableImportRevision(cleanRevision);
+      // Simulate beginBackupRestore's single SQLite transaction (+1 epoch):
+      await destination.write(
+        PORTABLE_LEDGER_KEY,
+        JSON.stringify({ version: 1, activeEpoch: 0, restoreEpoch: 1, restoreInProgress: true }),
+      );
+      await expect(
+        applyBrowserBackupAtomically(emptyEnvelope, emptyDeps, 1, [record]),
+      ).resolves.toBeUndefined();
+      expect((await destination.listSetAside()).size).toBe(1);
+
+      // If background reconcilePortableReferences calls holdSetAsideRecords after armPortableImportRevision,
+      // the fence is NOT bypassed — Replace fails closed with PortableImportRevisionConflictError!
+      const secondRevision = await readPortableStateRevision();
+      armPortableImportRevision(secondRevision);
+      await holdSetAsideRecords([{ row: 'almamesh-life-events', personId: 'other', value: '[{"id":"e2"}]' }]);
+      await destination.write(
+        PORTABLE_LEDGER_KEY,
+        JSON.stringify({ version: 1, activeEpoch: 1, restoreEpoch: 2, restoreInProgress: true }),
+      );
+      await expect(
+        applyBrowserBackupAtomically(emptyEnvelope, emptyDeps, 2, [record]),
+      ).rejects.toBeInstanceOf(PortableImportRevisionConflictError);
+    } finally {
+      clearPortableImportRevisionFence();
+      setPortableStateRepositoryForTests(undefined);
+    }
   });
 });
